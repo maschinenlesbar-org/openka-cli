@@ -263,18 +263,37 @@ needed, and no Land has yet been shown to need it.
 Bayern, Niedersachsen and Thüringen remain genuinely out of reach: the answer exists
 upstream but the Parlamentsspiegel does not render it in the result row.
 
-## A known gap: one document per record
+## Reading more than one document
 
-`pickPrimaryDocument` reads a single document — the answer where there is one. That
-is right for a combined paper and right where the answer reprints the questions, as
-the Bundestag's and NRW's do. It is wrong for Saarland, which publishes the question
-and the answer as two separate papers and does *not* reprint the questions in the
-answer: those records carry every answer and abstain on every question.
+A record's documents are all read, not just one, because a Land that publishes the
+question and the answer as separate papers — Saarland does — otherwise yields a
+record with every answer and no question at all. The answer paper does not
+necessarily reprint the questions; the Bundestag's and NRW's do, Saarland's does not.
 
-Reading both documents — questions from the question paper, answers from the answer
-paper — is the fix, and it needs the tier to merge two segmentations rather than
-run one. `fixtures/saarland/saarland-17-1331` pins the current behaviour so the
-improvement will be visible when it lands.
+The merge is deliberately plain. Each document is segmented on its own, then:
+
+- questions come from a `question_pdf` or `combined_pdf`, first one wins;
+- answers come from an `answer_pdf` or `combined_pdf`, first one wins;
+- the merged set is checked with **the same consistency rules** a single reading has
+  to pass, via `checkSegments`.
+
+That last point is what makes it safe to segment a question paper permissively.
+A paper with no answers cannot pass the answer-shaped checks, so those are deferred
+(`requireAnswers: false`) and run once on the merged result instead of being
+skipped. A numbered table in a question paper is still caught, just later.
+
+Two consequences worth knowing:
+
+- **Parse order is fixed** — `question_pdf`, then `combined_pdf`, then `answer_pdf`,
+  ties broken by URL. `full_text` and `input_sha256` therefore do not depend on the
+  order discovery happened to list the documents in.
+- **`input_sha256` covers everything parsed.** With one document it is that
+  document's digest; with several it is a digest over their digests in parse order,
+  so the stamp still names exactly the bytes the record came from.
+
+Saarland went from 0 of 4 records with questions to 3 of 4 complete when this
+landed, and two Bundestag goldens changed because their questions now come from the
+question paper rather than from the answer's reprint of it.
 
 ## Adding a source
 

@@ -454,6 +454,126 @@ describe("validators", () => {
   });
 });
 
+describe("reading more than one document", () => {
+  const metadata = {
+    reference: "17/1331",
+    legislative_period: 17,
+    title: "Zwei Papiere",
+    askers: [],
+    answered_by: {},
+    dates: {},
+  };
+
+  /** A minimal PDF holding the given text, so the tier can be driven end to end. */
+  function pdf(lines: string[]): Buffer {
+    const content = lines
+      .map((line, i) => `BT /F1 12 Tf 72 ${760 - i * 18} Td (${line.replace(/([()\\])/g, "\\$1")}) Tj ET`)
+      .join("\n");
+    return Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj",
+        `4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
+        "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj",
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+  }
+
+  const questionPaper = pdf(["1. Erste Frage?", "2. Zweite Frage?"]);
+  const answerPaper = pdf(["Zu 1.:", "Erste Antwort.", "Zu 2.:", "Zweite Antwort."]);
+
+  it("takes questions from the question paper and answers from the answer paper", async () => {
+    // Saarland's shape: the answer paper does not reprint the questions, so reading
+    // only one document yields every answer and no question at all.
+    const { record } = await extract({
+      parliament: "saarland",
+      documentType: "kleine_anfrage",
+      tier: "structured",
+      metadata,
+      documents: [
+        { role: "answer_pdf", url: "https://x.invalid/a.pdf", bytes: answerPaper, urlStable: true },
+        { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: questionPaper, urlStable: true },
+      ],
+      env: {},
+    });
+    deepStrictEqual(record.qa, [
+      { number: "1", question: "Erste Frage?", answer: "Erste Antwort." },
+      { number: "2", question: "Zweite Frage?", answer: "Zweite Antwort." },
+    ]);
+    deepStrictEqual(record.extraction.abstained_fields, []);
+  });
+
+  it("does not depend on the order the documents were discovered in", async () => {
+    const build = async (documents: { role: "question_pdf" | "answer_pdf"; url: string; bytes: Buffer }[]) =>
+      (
+        await extract({
+          parliament: "saarland",
+          documentType: "kleine_anfrage",
+          tier: "structured",
+          metadata,
+          documents: documents.map((document) => ({ ...document, urlStable: true })),
+          env: {},
+        })
+      ).record;
+    const forward = await build([
+      { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: questionPaper },
+      { role: "answer_pdf", url: "https://x.invalid/a.pdf", bytes: answerPaper },
+    ]);
+    const reversed = await build([
+      { role: "answer_pdf", url: "https://x.invalid/a.pdf", bytes: answerPaper },
+      { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: questionPaper },
+    ]);
+    deepStrictEqual(forward, reversed);
+  });
+
+  it("hashes both documents into the provenance stamp", async () => {
+    const { record } = await extract({
+      parliament: "saarland",
+      documentType: "kleine_anfrage",
+      tier: "structured",
+      metadata,
+      documents: [
+        { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: questionPaper, urlStable: true },
+        { role: "answer_pdf", url: "https://x.invalid/a.pdf", bytes: answerPaper, urlStable: true },
+      ],
+      env: {},
+    });
+    // Not either document's own digest: a digest over both, so the stamp names
+    // exactly the bytes the record was derived from.
+    const single = record.source_documents.map((document) => document.sha256);
+    ok(!single.includes(record.extraction.input_sha256));
+    ok(/^[0-9a-f]{64}$/.test(record.extraction.input_sha256));
+  });
+
+  it("abstains when the merged reading fails its consistency checks", async () => {
+    // A question paper numbered 1 and 2, an answer paper answering 7 and 8: the
+    // merge has holes at 3..6 and must not be published.
+    const { record } = await extract({
+      parliament: "saarland",
+      documentType: "kleine_anfrage",
+      tier: "structured",
+      metadata,
+      documents: [
+        { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: questionPaper, urlStable: true },
+        {
+          role: "answer_pdf",
+          url: "https://x.invalid/a.pdf",
+          bytes: pdf(["Zu 7.:", "Siebte Antwort.", "Zu 8.:", "Achte Antwort."]),
+          urlStable: true,
+        },
+      ],
+      env: {},
+    });
+    strictEqual(record.qa.length, 0);
+    ok(record.extraction.abstained_fields.includes("qa"));
+  });
+});
+
 describe("the tier stack", () => {
   const metadata = {
     reference: "19/10006",

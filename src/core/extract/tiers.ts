@@ -26,7 +26,7 @@ import { sha256 } from "../repro/hash.js";
 import { extractorVersion } from "../repro/version.js";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "../pdf/index.js";
 import { findMarkers, findMinistry } from "./metadata.js";
-import { RULE_SETS, segmentQa, type SegmentationRules } from "./segment.js";
+import { RULE_SETS, checkSegments, segmentQa, type QaSegment, type SegmentationRules } from "./segment.js";
 import { validateExtractedRecord } from "./validators.js";
 import { abstainingPerceiver, type Perceiver } from "../perceive/perceiver.js";
 
@@ -101,53 +101,63 @@ export class Abstentions {
  * no record at all is to have no usable reference or period, since without those
  * the record has no identity to file it under.
  */
+/** A document that was parsed, with the role it plays for the record. */
+interface ParsedDocument {
+  role: SourceDocumentRole;
+  text: string;
+  sha256: string;
+}
+
+/**
+ * The order documents are parsed and concatenated in. It is fixed so that
+ * `full_text` and `input_sha256` do not depend on the order discovery happened to
+ * list them in; within a role, the URL breaks ties.
+ */
+const ROLE_ORDER: SourceDocumentRole[] = ["question_pdf", "combined_pdf", "answer_pdf", "metadata"];
+
+function parseOrder(documents: FetchedDocument[]): FetchedDocument[] {
+  return [...documents]
+    .filter((document) => document.role !== "metadata")
+    .sort((a, b) => {
+      const byRole = ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role);
+      return byRole !== 0 ? byRole : a.url < b.url ? -1 : a.url > b.url ? 1 : 0;
+    });
+}
+
 export async function extract(request: ExtractRequest): Promise<ExtractResult> {
   const abstentions = new Abstentions();
   const artifacts: ModelArtifact[] = [];
-  const primary = pickPrimaryDocument(request.documents);
+  const ordered = parseOrder(request.documents);
 
-  let text: string | undefined;
+  const parsed: ParsedDocument[] = [];
   let tier: Tier = request.tier;
 
   if (request.tier === "ocr") {
-    text = await runOcr(primary, request.perceiver ?? abstainingPerceiver, abstentions, artifacts);
-  } else {
-    // `structured` and `text_layer` run the same code deliberately. The difference
-    // between them is a statement about the *source* (does it hand us fields, or
-    // only a PDF?), not about what to do with a document once we hold one — and
-    // keeping one code path is what lets `ka verify` re-run an extraction without
-    // having to know which of the two the adapter declared.
-    if (primary === undefined) {
-      abstentions.add("full_text", "no document was fetched for this record");
-    } else {
-      text = tryText(primary.bytes, abstentions);
-      if (text === undefined) abstentions.add("full_text", "no usable text layer");
+    const primary = pickPrimaryDocument(request.documents);
+    const text = await runOcr(primary, request.perceiver ?? abstainingPerceiver, abstentions, artifacts);
+    if (text !== undefined && primary !== undefined) {
+      parsed.push({ role: primary.role, text, sha256: sha256(primary.bytes) });
     }
+  } else if (ordered.length === 0) {
+    abstentions.add("full_text", "no document was fetched for this record");
+  } else {
+    // Every document is read, not just one. A Land that publishes the question and
+    // the answer as separate papers — Saarland does — otherwise yields a record
+    // with every answer and no questions, because only the answer paper was read.
+    for (const document of ordered) {
+      const text = tryText(document.bytes, abstentions);
+      if (text === undefined) continue;
+      parsed.push({ role: document.role, text, sha256: sha256(document.bytes) });
+    }
+    if (parsed.length === 0) abstentions.add("full_text", "no usable text layer");
   }
 
   // The recorded tier is what actually happened, not what was asked for: a
   // structured source whose PDF parsed really did run the text-layer path.
-  if (request.tier !== "ocr") tier = text === undefined ? "structured" : "text_layer";
+  if (request.tier !== "ocr") tier = parsed.length === 0 ? "structured" : "text_layer";
 
-  const qa: QaPair[] = [];
-  if (text !== undefined && text.trim() !== "") {
-    const flat = text.split(PAGE_SEPARATOR).join("\n");
-    const segmented = segmentQa(flat, request.ruleSets ?? RULE_SETS);
-    if (segmented.rules === undefined) {
-      abstentions.add("qa", `no segmentation rule set matched (${segmented.rejections.join("; ")})`);
-    } else {
-      segmented.segments.forEach((segment, index) => {
-        const pair: QaPair = { number: segment.number };
-        if (segment.question !== undefined) pair.question = segment.question;
-        else abstentions.add(`qa[${index}].question`, `rule set ${segmented.rules} found no question text`);
-        if (segment.answer !== undefined) pair.answer = segment.answer;
-        else abstentions.add(`qa[${index}].answer`, `rule set ${segmented.rules} found no answer text`);
-        qa.push(pair);
-      });
-    }
-  } else {
-    abstentions.add("qa", "no document text was available to segment");
-  }
+  const text = parsed.length === 0 ? undefined : parsed.map((document) => document.text).join(PAGE_SEPARATOR);
+  const qa: QaPair[] = segmentDocuments(parsed, request.ruleSets ?? RULE_SETS, abstentions);
 
   const answeredBy: AnsweredBy = { ...request.metadata.answered_by };
   if (answeredBy.ministry === undefined && text !== undefined) {
@@ -171,7 +181,16 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
     })
     .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 
-  const inputSha = primary !== undefined ? sha256(primary.bytes) : sha256(canonicalMetadataBytes(request.metadata));
+  // What was actually parsed. With one document that is its digest; with several it
+  // is a digest over their digests in parse order, so the stamp still identifies
+  // exactly the bytes this record was derived from. With none, the source metadata
+  // is the input, because that is all the record was built from.
+  const inputSha =
+    parsed.length === 1
+      ? (parsed[0] as ParsedDocument).sha256
+      : parsed.length > 1
+        ? sha256(parsed.map((document) => document.sha256).join("\n"))
+        : sha256(canonicalMetadataBytes(request.metadata));
 
   const extraction: Extraction = {
     tier,
@@ -338,4 +357,110 @@ function clearField(record: KaRecord, path: string): void {
       if (pair !== undefined) delete pair[match[2] as "question" | "answer"];
     }
   }
+}
+
+/**
+ * Turn the parsed documents into question/answer pairs.
+ *
+ * One document is segmented directly. Several are segmented separately and then
+ * merged by question number: questions come from the paper that asked them, answers
+ * from the paper that answered them. A combined paper counts as both.
+ *
+ * The merge is checked with the same consistency rules a single reading has to
+ * pass. Segmenting the parts permissively and validating the whole is what lets a
+ * question paper — which legitimately contains no answers — be read at all, without
+ * giving up the guards that stop a numbered table being read as a question list.
+ */
+function segmentDocuments(
+  parsed: ParsedDocument[],
+  ruleSets: readonly SegmentationRules[],
+  abstentions: Abstentions,
+): QaPair[] {
+  if (parsed.length === 0) {
+    abstentions.add("qa", "no document text was available to segment");
+    return [];
+  }
+
+  const flatten = (text: string): string => text.split(PAGE_SEPARATOR).join("\n");
+
+  if (parsed.length === 1) {
+    const only = parsed[0] as ParsedDocument;
+    const segmented = segmentQa(flatten(only.text), ruleSets);
+    if (segmented.rules === undefined) {
+      abstentions.add("qa", `no segmentation rule set matched (${segmented.rejections.join("; ")})`);
+      return [];
+    }
+    return collect(segmented.segments, segmented.rules, abstentions);
+  }
+
+  const readings = parsed.map((document) => ({
+    role: document.role,
+    result: segmentQa(flatten(document.text), ruleSets, { requireAnswers: false }),
+  }));
+
+  const order: string[] = [];
+  const questions = new Map<string, string>();
+  const answers = new Map<string, string>();
+  const used: string[] = [];
+
+  for (const reading of readings) {
+    if (reading.result.rules === undefined) continue;
+    used.push(`${reading.role}:${reading.result.rules}`);
+    const asksQuestions = reading.role === "question_pdf" || reading.role === "combined_pdf";
+    const givesAnswers = reading.role === "answer_pdf" || reading.role === "combined_pdf";
+    for (const segment of reading.result.segments) {
+      if (!order.includes(segment.number)) order.push(segment.number);
+      if (asksQuestions && segment.question !== undefined && !questions.has(segment.number)) {
+        questions.set(segment.number, segment.question);
+      }
+      if (givesAnswers && segment.answer !== undefined && !answers.has(segment.number)) {
+        answers.set(segment.number, segment.answer);
+      }
+    }
+  }
+
+  if (used.length === 0) {
+    const reasons = readings.flatMap((reading) => reading.result.rejections);
+    abstentions.add("qa", `no segmentation rule set matched any document (${reasons.join("; ")})`);
+    return [];
+  }
+
+  order.sort(compareNumbers);
+  const merged: QaSegment[] = order.map((number) => {
+    const segment: QaSegment = { number };
+    const question = questions.get(number);
+    const answer = answers.get(number);
+    if (question !== undefined) segment.question = question;
+    if (answer !== undefined) segment.answer = answer;
+    return segment;
+  });
+
+  const problem = checkSegments(merged, used.join(" + "));
+  if (problem !== undefined) {
+    abstentions.add("qa", `the merged reading of ${parsed.length} documents is not believable (${problem})`);
+    return [];
+  }
+  return collect(merged, used.join(" + "), abstentions);
+}
+
+/** Question numbers in their natural order: 1, 1a, 2, 10 — not lexicographic. */
+function compareNumbers(a: string, b: string): number {
+  const left = Number.parseInt(a, 10);
+  const right = Number.parseInt(b, 10);
+  if (left !== right) return left - right;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Turn segments into pairs, recording an abstention for every hole. */
+function collect(segments: QaSegment[], label: string, abstentions: Abstentions): QaPair[] {
+  const qa: QaPair[] = [];
+  segments.forEach((segment, index) => {
+    const pair: QaPair = { number: segment.number };
+    if (segment.question !== undefined) pair.question = segment.question;
+    else abstentions.add(`qa[${index}].question`, `rule set ${label} found no question text`);
+    if (segment.answer !== undefined) pair.answer = segment.answer;
+    else abstentions.add(`qa[${index}].answer`, `rule set ${label} found no answer text`);
+    qa.push(pair);
+  });
+  return qa;
 }

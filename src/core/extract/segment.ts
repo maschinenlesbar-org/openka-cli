@@ -448,8 +448,22 @@ function bodyBetween(lines: string[], marker: Marker, next: Marker | undefined):
   return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+export interface SegmentOptions {
+  /**
+   * Whether a reading must include answers to be believed. True for a document
+   * that should hold both; false when segmenting a question paper on its own,
+   * which legitimately has none. The answer-shaped checks are then deferred to
+   * `checkSegments` on the merged result — they still run, just later.
+   */
+  requireAnswers?: boolean;
+}
+
 /** Run one rule set. Returns the pairs it found plus why it is or is not usable. */
-export function applyRules(text: string, rules: SegmentationRules): { segments: QaSegment[]; rejection?: string } {
+export function applyRules(
+  text: string,
+  rules: SegmentationRules,
+  options: SegmentOptions = {},
+): { segments: QaSegment[]; rejection?: string } {
   if (rules.onlyWhenUnmarked === true && ANY_ANSWER_HEADING.test(text)) {
     return { segments: [], rejection: `${rules.key}: the document has answer headings, so a family that reads them applies` };
   }
@@ -501,8 +515,22 @@ export function applyRules(text: string, rules: SegmentationRules): { segments: 
     return segment;
   });
 
-  const rejection = consistencyProblem(segments, rules.key, rules.answerFollowsQuestion === true);
+  const rejection = consistencyProblem(
+    segments,
+    rules.key,
+    rules.answerFollowsQuestion === true,
+    options.requireAnswers !== false,
+  );
   return rejection === undefined ? { segments } : { segments, rejection };
+}
+
+/**
+ * Apply the consistency checks to a set of pairs that was assembled rather than
+ * read from one document — the merge of a question paper and an answer paper.
+ * Returns the reason it is not believable, or `undefined`.
+ */
+export function checkSegments(segments: QaSegment[], label: string): string | undefined {
+  return consistencyProblem(segments, label);
 }
 
 /**
@@ -517,7 +545,12 @@ export function applyRules(text: string, rules: SegmentationRules): { segments: 
  * "Zu 8. und 11., 11.a. bis d.:" and then carries on with 9 — and rejecting that
  * would throw away a correctly parsed document for being untidy.
  */
-function consistencyProblem(segments: QaSegment[], key: string, inferredAnswers = false): string | undefined {
+function consistencyProblem(
+  segments: QaSegment[],
+  key: string,
+  inferredAnswers = false,
+  requireAnswers = true,
+): string | undefined {
   if (segments.length === 0) return `${key}: matched no question/answer pairs`;
   const integers = segments.map((segment) => Number.parseInt(segment.number, 10));
   if (integers.some((value) => !Number.isInteger(value))) return `${key}: non-numeric question numbers`;
@@ -542,6 +575,7 @@ function consistencyProblem(segments: QaSegment[], key: string, inferredAnswers 
   }
 
   const withAnswer = segments.filter((segment) => segment.answer !== undefined).length;
+  if (!requireAnswers) return undefined;
   if (withAnswer === 0) return `${key}: no answers found for ${segments.length} question(s)`;
   if (segments.length >= LARGE_QUESTION_LIST && withAnswer < segments.length * MIN_ANSWER_RATE_LARGE) {
     return (
@@ -569,12 +603,16 @@ function consistencyProblem(segments: QaSegment[], key: string, inferredAnswers 
  * was available. Ties break on the declaration order, so the choice stays
  * reproducible.
  */
-export function segmentQa(text: string, ruleSets: readonly SegmentationRules[] = RULE_SETS): SegmentationResult {
+export function segmentQa(
+  text: string,
+  ruleSets: readonly SegmentationRules[] = RULE_SETS,
+  options: SegmentOptions = {},
+): SegmentationResult {
   const rejections: string[] = [];
   let best: { rules: SegmentationRules; segments: QaSegment[]; questions: number; answers: number } | undefined;
 
   ruleSets.forEach((rules) => {
-    const { segments, rejection } = applyRules(text, rules);
+    const { segments, rejection } = applyRules(text, rules, options);
     if (rejection !== undefined) {
       rejections.push(rejection);
       return;
