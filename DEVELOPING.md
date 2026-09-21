@@ -287,36 +287,44 @@ found" with a warning, never a failed sync, and `unwrap()` refuses anything that
 not the exact success shape. A Landtag publishing a documented interface would let
 all of this be deleted, which is the point of the project.
 
-### Niedersachsen: the one that is still open
+### Niedersachsen, and a link recovered by a build-time sweep
 
-Niedersachsen publishes its answer as a separate Drucksache whose number has no
-relation to the question's, and nothing reachable connects the two. What was tried
-and ruled out, so it is not repeated:
+Niedersachsen publishes an answered Anfrage as a **new** Drucksache — a combined
+paper headed "mit Antwort der Landesregierung" — and that paper names the original
+in its header: `Drs. 19/7745`. The link exists; nothing queryable exposes it.
 
-- **The Parlamentsspiegel** knows an answer exists — the row says "1 weiteres
-  Dokument" — and never renders it. Checked with `detail`, `alles`, `weitern`, and
-  with the document-type filter dropped; the result rows are identical every time
-  and only ever carry the Kleine Anfrage.
-- **The Landtag's `/dokumentensuche/`** (permitted by robots.txt; only
-  `/service/suche/` is disallowed) is a TYPO3 browse filter over kind, Wahlperiode
-  and year. It has no lookup by number and no Vorgang view, and its URLs carry a
-  TYPO3 `cHash` computed server-side, so a query it did not generate answers 404.
-- **NILAS**, the Landtagsdokumentationssystem, is a STARWEB install — the same
-  product as Berlin's PARDOK. Its entry point redirects to `browse.tt.html`, which
-  404s from outside, and no servlet path probed answered with anything but STARWEB's
-  error page.
-- **The question documents** do not name their answer, which is expected: it appears
-  weeks later.
+What was checked and ruled out, so it is not repeated:
 
-There is one path that would work, and it suits the architecture rather than
-fighting it. Niedersachsen serves every Drucksache from a predictable static archive
-(`…/Drucksachen_19_10000/07501-08000/19-07605.pdf`), and an answer's first page
-states which Kleine Anfrage it answers. A **factory job** could sweep a number range
-once, read that reference off each answer, and freeze a question→answer map as an
-artifact the line then consumes — no search interface required, and the expensive
-part happens at build time, which is exactly where CONCEPT.md puts work like this.
-Until someone runs it, Niedersachsen yields question-only records that abstain on
-`qa`, which is the honest state of a question whose answer we cannot reach.
+- **The Parlamentsspiegel** knows an answer exists ("1 weiteres Dokument") and never
+  renders it — with `detail`, `alles`, `weitern`, or the document-type filter dropped.
+- **`/dokumentensuche/`** (permitted by robots.txt; only `/service/suche/` is
+  disallowed) is a TYPO3 browse filter over kind, Wahlperiode and year, with no
+  lookup by number and a server-computed `cHash`, so a query it did not generate
+  answers 404.
+- **NILAS** is a STARWEB install whose entry point 404s from outside.
+- **The question documents** do not name their answer; it appears weeks later.
+
+So the link is recovered the only way left: by reading the answers. Every Drucksache
+sits at a predictable URL — the outer folder is the number rounded up to a multiple
+of 2500, the inner one its 500-wide block, verified across both boundaries — so a
+sweep can walk a range, keep the papers that say "mit Antwort der Landesregierung",
+and read the `Drs.` each one cites.
+
+That is hundreds of PDFs for one window, which is far too much for a sync and
+exactly right for the factory:
+
+    ka-factory answers niedersachsen --period 19 --from 7900 --to 8115 --merge
+
+It freezes a question→answer map as a **corpus artifact** (`artifacts/…json`, the
+slot `Store.loadArtifact` reads), stamped with when it ran and what range it covers.
+`NiedersachsenSource` consumes it and attaches the answer; without it the source
+says so in a warning and yields question-only records, which is honest rather than
+wrong. A sweep of 190 Drucksachen found 67 answers and took the Land from no records
+with answers to six of eight.
+
+This is the clearest instance in the project of the two planes doing their jobs: an
+expensive, messy discovery runs once at build time and ships a frozen artifact; the
+line stays a fast, deterministic lookup.
 
 ## Reading more than one document
 

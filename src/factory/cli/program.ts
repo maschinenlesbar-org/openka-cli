@@ -14,12 +14,21 @@ import { OpenKaError } from "../../core/errors.js";
 import { PACKAGE_VERSION } from "../../core/repro/version.js";
 import { isoInstant } from "../../core/pipeline/pipeline.js";
 import { defaultDeps, type CliDeps } from "../../cli/io.js";
-import { action, addGlobalOptions, choiceOption, parseBoundedInt, parseNonEmpty, printJson } from "../../cli/shared.js";
+import {
+  action,
+  addGlobalOptions,
+  choiceOption,
+  parseBoundedInt,
+  parseNonEmpty,
+  printJson,
+  toEngineOptions,
+} from "../../cli/shared.js";
 import { truncate } from "../../cli/text.js";
 import { lintLine } from "../lib/lint.js";
 import { addGolden, listGoldens, verifyGolden } from "../lib/goldens.js";
 import { detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
 import { buildEmbeddings, importEmbeddings, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
+import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "../../cli/commands/sync.js";
 
 export const DEFAULT_FIXTURES = "fixtures";
@@ -214,6 +223,57 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
           ctx.deps.io.out(`${finding.source} [${finding.kind}] ${finding.detail}`);
           ctx.deps.io.out(`    → ${finding.suggestion}`);
         }
+      }),
+    );
+
+  program
+    .command("answers")
+    .description("sweep a Drucksachen range and freeze the question→answer map a source needs")
+    .argument("<source>", "source key; only `niedersachsen` needs this today")
+    .requiredOption("--period <n>", "legislative period", parseBoundedInt(1, 99))
+    .requiredOption("--from <n>", "first Drucksachennummer to read", parseBoundedInt(1, 999_999))
+    .requiredOption("--to <n>", "last Drucksachennummer to read", parseBoundedInt(1, 999_999))
+    .option("--merge", "keep entries from a previous sweep instead of replacing the map")
+    .option("--json", "print the report as JSON")
+    .action(
+      action(deps, async (ctx, positionals) => {
+        const source = positionals[0] as string;
+        if (source !== "niedersachsen") {
+          throw new OpenKaError(
+            `No answer sweep is defined for "${source}". Only niedersachsen needs one: every other ` +
+              "source reaches its answers through discovery.",
+          );
+        }
+        const from = ctx.opts["from"] as number;
+        const to = ctx.opts["to"] as number;
+        if (to < from) throw new OpenKaError(`--to (${to}) is before --from (${from}).`);
+
+        const report = await sweepAnswers({
+          engine: ctx.deps.createEngine(toEngineOptions(ctx.global)),
+          store: ctx.store(),
+          period: ctx.opts["period"] as number,
+          from,
+          to,
+          now: isoInstant(ctx.deps.now()),
+          ...(ctx.opts["merge"] === true ? { merge: true } : {}),
+          ...(ctx.global.quiet === true || ctx.opts["json"] === true
+            ? {}
+            : {
+                onProgress: (event) => {
+                  if (event.outcome === "answer") ctx.deps.io.err(`  + ${event.number}`);
+                },
+              }),
+        });
+
+        if (ctx.opts["json"] === true) {
+          printJson(ctx, report);
+          return;
+        }
+        ctx.deps.io.out(
+          `Read ${report.scanned} Drucksache(n): ${report.answers} answer(s), ${report.questions} question(s), ` +
+            `${report.missing} not published, ${report.unreadable} unreadable.`,
+        );
+        ctx.deps.io.out(`The map now links ${report.total} question(s) to an answer.`);
       }),
     );
 

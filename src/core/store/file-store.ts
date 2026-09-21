@@ -218,6 +218,20 @@ export class FileStore implements Store {
       .sort();
   }
 
+  // ------------------------------------------------------------ artifacts
+
+  loadArtifact<T>(name: string): T | undefined {
+    assertSafeKey(name, "artifact name");
+    const path = this.path("artifacts", `${name}.json`);
+    if (!existsSync(path)) return undefined;
+    return this.readJson<T | undefined>(path, undefined);
+  }
+
+  saveArtifact(name: string, value: unknown): void {
+    assertSafeKey(name, "artifact name");
+    this.writeJson(this.path("artifacts", `${name}.json`), value);
+  }
+
   // ----------------------------------------------------------- embeddings
 
   loadEmbeddings(): EmbeddingSet | undefined {

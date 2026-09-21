@@ -88,8 +88,9 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 | `saarland` | Landtag des Saarlandes | dedicated adapter | unwraps the iframe page the aggregator links to |
 | `sachsen` | Sächsischer Landtag | dedicated adapter | walks every document position of the EDAS viewer |
 | `thueringen` | Thüringer Landtag | dedicated adapter | looks the answer Drucksache up through Parldok's JSON API |
+| `niedersachsen` | Niedersächsischer Landtag | dedicated adapter | answers come from a map the factory sweep freezes |
 | `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
-| the other 11 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
+| the other 10 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
 
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.

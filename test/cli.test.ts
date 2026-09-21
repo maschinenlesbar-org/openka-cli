@@ -122,7 +122,7 @@ describe("ka", () => {
     const harness = cliHarness();
     strictEqual(await run(["--corpus", harness.corpus, "sources", "list"], harness.deps), EXIT_OK);
     match(harness.stdout(), /berlin\s+implemented/);
-    match(harness.stdout(), /sachsen\s+via_aggregator/);
+    match(harness.stdout(), /hessen\s+via_aggregator/);
     harness.cleanup();
   });
 

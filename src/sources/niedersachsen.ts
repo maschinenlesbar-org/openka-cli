@@ -1,0 +1,131 @@
+// Niedersachsen: the Niedersächsischer Landtag, where the answer is a *different*
+// Drucksache from the question and nothing reachable links the two.
+//
+// The Landtag republishes an answered Anfrage under a new number as a combined
+// paper — "Kleine Anfrage zur schriftlichen Beantwortung … mit Antwort der
+// Landesregierung" — and that paper names the original: `Drs. 19/7745`. The link is
+// therefore recoverable, but only by reading the answer, which means reading every
+// candidate Drucksache. That is a build-time sweep, not something a sync should do,
+// so the factory (`ka-factory answers niedersachsen`) builds a question→answer map
+// and freezes it; this adapter consumes it.
+//
+// Why not ask a search interface instead: the Parlamentsspiegel knows an answer
+// exists and never renders it, the Landtag's own document search is a browse filter
+// with server-computed cache hashes, and NILAS's STARWEB entry point is not
+// reachable from outside. DEVELOPING.md records what was tried.
+
+import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "./base.js";
+import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
+
+export const LANDTAG_NDS = "https://www.landtag-niedersachsen.de";
+
+/** The artifact name the factory writes and this adapter reads. */
+export const ANSWER_INDEX = "niedersachsen-answers";
+
+/** One entry of the frozen map: the answer paper for a question's Drucksachennummer. */
+export interface AnswerEntry {
+  /** The answer's own Drucksachennummer, e.g. `19/8100`. */
+  reference: string;
+  url: string;
+}
+
+export interface AnswerIndex {
+  /** ISO instant the sweep ran; `ka sources show` can say how stale the map is. */
+  built_at: string;
+  /** Number range swept, so a later run knows what is already covered. */
+  period: number;
+  from: number;
+  to: number;
+  /** Question Drucksachennummer -> the answer that names it. */
+  answers: Record<string, AnswerEntry>;
+}
+
+/**
+ * The archive path of a Drucksache. Verified across six numbers spanning several
+ * ranges and both folder boundaries: the outer folder is the number rounded up to a
+ * multiple of 2500, the inner one its 500-wide block.
+ *
+ *   19/7605 -> /Drucksachen/Drucksachen_19_10000/07501-08000/19-07605.pdf
+ */
+export function niedersachsenUrl(period: number, number: number): string {
+  const outer = Math.ceil(number / 2500) * 2500;
+  const low = Math.floor((number - 1) / 500) * 500 + 1;
+  const pad = (value: number): string => String(value).padStart(5, "0");
+  return `${LANDTAG_NDS}/Drucksachen/Drucksachen_${period}_${pad(outer)}/${pad(low)}-${pad(low + 499)}/${period}-${pad(number)}.pdf`;
+}
+
+/** The numeric part of a Drucksachennummer, or `undefined` if it is not one. */
+export function numberOf(reference: string): number | undefined {
+  const match = /^\s*(\d{1,2})\s*\/\s*(\d{1,6})\s*$/.exec(reference);
+  if (match === null) return undefined;
+  return Number(match[2]);
+}
+
+/**
+ * True when a document is the combined edition carrying the government's reply.
+ * The phrase is the Landtag's own, printed under the heading of every answered
+ * Anfrage and absent from every unanswered one.
+ */
+export function isAnsweredEdition(text: string): boolean {
+  return /mit\s+Antwort\s+der\s+Landesregierung/i.test(text);
+}
+
+/**
+ * The question a combined paper answers, cited in its header as `Drs. 19/7745`.
+ * Returns `undefined` when no citation is present — a paper that names no question
+ * is not evidence of a link, and inventing one would put an answer under the wrong
+ * Anfrage.
+ */
+export function citedQuestion(text: string): string | undefined {
+  const match = /\bDrs\.?\s*(\d{1,2})\s*\/\s*(\d{1,6})\b/.exec(text);
+  return match === null ? undefined : `${match[1]}/${match[2]}`;
+}
+
+export class NiedersachsenSource implements Source {
+  readonly key = "niedersachsen";
+  readonly parliament = "niedersachsen" as const;
+  readonly tier = "structured" as const;
+  readonly label = "Niedersächsischer Landtag";
+  readonly homepage = "https://www.landtag-niedersachsen.de/dokumentensuche/";
+  readonly notes =
+    "Discovery runs through the Parlamentsspiegel, which knows an answer exists but never renders " +
+    "it. The answer is a separate Drucksache that names the question in its header, so the link is " +
+    "recovered by a build-time sweep (`ka-factory answers niedersachsen`) and frozen as an " +
+    "artifact. Without that artifact this source yields question-only records, which is honest " +
+    "rather than wrong.";
+
+  private readonly aggregator = new ParlamentsspiegelSource("niedersachsen");
+
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    const discovered = await this.aggregator.discover(options);
+    const warnings = [...discovered.warnings];
+    const index = options.store?.loadArtifact<AnswerIndex>(ANSWER_INDEX);
+
+    if (index === undefined) {
+      warnings.push(
+        "no answer index in this corpus — records will carry the question only. " +
+          "Build one with `ka-factory answers niedersachsen --period 19 --from … --to …`.",
+      );
+      return finish(discovered, discovered.refs, warnings);
+    }
+
+    const refs: DocRef[] = discovered.refs.map((ref) => {
+      const answer = index.answers[ref.reference];
+      if (answer === undefined) return ref;
+      // The answer paper reprints the question above the reply, so it is combined.
+      const documents: DocRefDocument[] = [
+        ...ref.documents,
+        { role: "combined_pdf", url: answer.url, urlStable: true },
+      ];
+      return { ...ref, documents };
+    });
+    return finish(discovered, refs, warnings);
+  }
+}
+
+function finish(discovered: DiscoverResult, refs: DocRef[], warnings: string[]): DiscoverResult {
+  const result: DiscoverResult = { refs, warnings };
+  if (discovered.state !== undefined) result.state = discovered.state;
+  if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
+  return result;
+}

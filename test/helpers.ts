@@ -119,6 +119,14 @@ export class MemoryStore implements Store {
     this.states.set(state.source, state);
   }
 
+  private readonly artifacts = new Map<string, unknown>();
+  loadArtifact<T>(name: string): T | undefined {
+    return this.artifacts.get(name) as T | undefined;
+  }
+  saveArtifact(name: string, value: unknown): void {
+    this.artifacts.set(name, JSON.parse(JSON.stringify(value)) as unknown);
+  }
+
   loadEmbeddings(): EmbeddingSet | undefined {
     return this.embeddings;
   }

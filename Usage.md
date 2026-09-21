@@ -115,6 +115,7 @@ ka-factory goldens add berlin-19-10041 --note "sub-items and a date at line star
 ka-factory goldens verify                         # the regression gate
 ka-factory health --save-baseline
 ka-factory drift                                  # classified, with a repair suggestion
+ka-factory answers niedersachsen --period 19 --from 7900 --to 8115 --merge
 ka-factory embed                                  # frozen vectors for `ka search --like`
 ka-factory embed --from vectors.jsonl --model bge-m3 --model-sha256 <hex>
 ```

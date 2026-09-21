@@ -60,4 +60,5 @@ export * from "./sources/nordrhein-westfalen.js";
 export * from "./sources/saarland.js";
 export * from "./sources/sachsen.js";
 export * from "./sources/thueringen.js";
+export * from "./sources/niedersachsen.js";
 export * from "./sources/xml.js";

@@ -336,9 +336,12 @@ describe("source registry", () => {
   it("marks the parliaments with no dedicated adapter honestly", () => {
     // Niedersachsen's answer is the one the Parlamentsspiegel still will not render
     // and no other route has been found for, so the aggregator is all it has.
-    strictEqual(sourceEntry("niedersachsen")?.status, "via_aggregator");
+    // Hessen, Brandenburg, MV and the rest still reach their answers through the
+    // aggregator, which renders their follow-up documents.
     strictEqual(sourceEntry("hessen")?.status, "via_aggregator");
+    strictEqual(sourceEntry("brandenburg")?.status, "via_aggregator");
     strictEqual(sourceEntry("thueringen")?.status, "implemented");
+    strictEqual(sourceEntry("niedersachsen")?.status, "implemented");
     strictEqual(sourceEntry("berlin")?.status, "implemented");
     strictEqual(sourceEntry("sachsen")?.status, "implemented");
   });

@@ -13,6 +13,7 @@ import { BundDipSource } from "./bund.js";
 import { NordrheinWestfalenSource } from "./nordrhein-westfalen.js";
 import { SaarlandSource } from "./saarland.js";
 import { SachsenSource } from "./sachsen.js";
+import { NiedersachsenSource } from "./niedersachsen.js";
 import { ThueringenSource } from "./thueringen.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
@@ -95,6 +96,14 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     factory: () => new ThueringenSource(),
   },
   {
+    key: "niedersachsen",
+    parliament: "niedersachsen",
+    label: "Niedersächsischer Landtag",
+    status: "implemented",
+    note: "aggregator discovery; answers come from a frozen map built by `ka-factory answers niedersachsen`",
+    factory: () => new NiedersachsenSource(),
+  },
+  {
     key: "parlamentsspiegel",
     parliament: "nordrhein-westfalen",
     label: "Parlamentsspiegel (all 16 Länder)",
@@ -110,6 +119,7 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
       parliament.key !== "saarland" &&
       parliament.key !== "sachsen" &&
       parliament.key !== "thueringen" &&
+      parliament.key !== "niedersachsen" &&
       parliament.herkunft !== undefined,
   ).map((parliament) => aggregatorEntry(parliament.key, parliament.label)),
 ];

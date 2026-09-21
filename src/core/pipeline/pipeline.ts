@@ -83,6 +83,7 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
   try {
     const discoverOptions = {
       engine,
+      store,
       state,
       ...(options.since !== undefined ? { since: options.since } : {}),
       ...(options.until !== undefined ? { until: options.until } : {}),

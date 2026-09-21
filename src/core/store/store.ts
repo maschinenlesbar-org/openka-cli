@@ -74,6 +74,13 @@ export interface Store {
   getSourceState(source: string): SourceState;
   putSourceState(state: SourceState): void;
 
+  /**
+   * A frozen artifact the factory built and the line consumes — see CONCEPT.md §0.
+   * Named, JSON, and written once by a build-time job rather than by a sync.
+   */
+  loadArtifact<T>(name: string): T | undefined;
+  saveArtifact(name: string, value: unknown): void;
+
   /** Frozen embeddings produced by the factory, if any were shipped. */
   loadEmbeddings(): EmbeddingSet | undefined;
   saveEmbeddings(set: EmbeddingSet): void;

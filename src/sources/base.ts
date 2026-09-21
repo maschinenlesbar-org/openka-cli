@@ -16,7 +16,7 @@ import type {
   Tier,
 } from "../core/models/schema.js";
 import type { FetchEngine } from "../core/http/engine.js";
-import type { SourceState } from "../core/store/store.js";
+import type { SourceState, Store } from "../core/store/store.js";
 import type { SegmentationRules } from "../core/extract/segment.js";
 
 /** A document belonging to an Anfrage, as the source advertises it. */
@@ -53,6 +53,12 @@ export interface DocRef {
 
 export interface DiscoverOptions {
   engine: FetchEngine;
+  /**
+   * The corpus, for a source that consumes a frozen artifact the factory built.
+   * Only Niedersachsen needs it, to read the question→answer map its sweep
+   * produces; discovery still never *writes* to the store.
+   */
+  store?: Pick<Store, "loadArtifact">;
   /** Per-source state from the corpus: conditional-request validators and history. */
   state: SourceState;
   /** Only Anfragen dated on or after this ISO date. */
