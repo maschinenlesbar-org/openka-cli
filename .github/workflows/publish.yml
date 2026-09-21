@@ -1,0 +1,82 @@
+name: Publish
+
+# Manually publish a previously released version to the npm registry.
+# Authentication uses npm Trusted Publishing (OIDC): GitHub mints a short-lived
+# token for this run and npm verifies it against the trusted publisher
+# configured for the package — no long-lived NPM_TOKEN is stored.
+#
+# One-time setup on npmjs.com: package `@maschinenlesbar.org/openka-cli` ->
+# Settings -> Trusted Publisher -> GitHub Actions, this repo, workflow `publish.yml`.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version to publish to npm, e.g. 1.0.0'
+        required: true
+        type: string
+
+# Least privilege at the workflow level: only read. The OIDC id-token scope is
+# granted per-job, to the publish job that actually needs it.
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing (OIDC); provenance is attached automatically
+
+    steps:
+      # Publish exactly the tagged source for the requested version.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: v${{ inputs.version }}
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          # Trusted publishing requires npm >= 11.5.1. Node 24 bundles it (Node 22
+          # still ships npm 10), so npm itself is never installed ad hoc from the
+          # registry inside this id-token: write job, where a compromised package
+          # would run with the token that mints the provenance attestation.
+          node-version: 24.x
+          registry-url: 'https://registry.npmjs.org'
+          # No cache restoration in the publishing job (cache-poisoning hardening).
+          package-manager-cache: false
+
+      - name: Verify bundled npm supports Trusted Publishing (>= 11.5.1)
+        run: |
+          npm_version="$(npm --version)"
+          if ! node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$npm_version"; then
+            echo "::error::npm $npm_version is older than 11.5.1, which Trusted Publishing requires."
+            exit 1
+          fi
+
+      - name: Verify package.json matches the requested version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$pkg" != "$VERSION" ]; then
+            echo "::error::package.json version ('$pkg') does not match requested version ('$VERSION')."
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # The `prepack` hook (npm run build) produces dist/ before packing.
+      # No NPM_TOKEN: OIDC provides the short-lived credential, and provenance
+      # is generated from this workflow run.
+      - name: Publish to npm
+        run: npm publish --provenance --access public

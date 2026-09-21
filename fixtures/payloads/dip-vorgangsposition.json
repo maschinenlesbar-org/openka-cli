@@ -1,0 +1,95 @@
+{
+ "numFound": 2,
+ "documents": [
+  {
+   "id": "698315",
+   "vorgangsposition": "Kleine Anfrage",
+   "zuordnung": "BT",
+   "gang": true,
+   "fortsetzung": false,
+   "nachtrag": false,
+   "vorgangstyp": "Kleine Anfrage",
+   "titel": "Gesetzgebungsverfahren zum Gebäudemodernisierungsgesetz",
+   "typ": "Vorgangsposition",
+   "aktivitaet_anzahl": 14,
+   "dokumentart": "Drucksache",
+   "aktualisiert": "2026-08-17T13:00:13+02:00",
+   "urheber": [
+    {
+     "einbringer": false,
+     "bezeichnung": "B90/GR",
+     "titel": "Fraktion BÜNDNIS 90/DIE GRÜNEN"
+    }
+   ],
+   "fundstelle": {
+    "id": "290149",
+    "dokumentnummer": "21/7563",
+    "datum": "2026-08-13",
+    "verteildatum": "2026-08-14",
+    "dokumentart": "Drucksache",
+    "drucksachetyp": "Kleine Anfrage",
+    "herausgeber": "BT",
+    "urheber": [
+     "Fraktion BÜNDNIS 90/DIE GRÜNEN"
+    ],
+    "pdf_url": "https://dserver.bundestag.de/btd/21/075/2107563.pdf"
+   },
+   "aktivitaet_anzeige": [
+    {
+     "aktivitaetsart": "Kleine Anfrage",
+     "titel": "Dr. Alaa Alhamwi, MdB, BÜNDNIS 90/DIE GRÜNEN",
+     "pdf_url": "https://dserver.bundestag.de/btd/21/075/2107563.pdf"
+    },
+    {
+     "aktivitaetsart": "Kleine Anfrage",
+     "titel": "Dr. Julia Verlinden, MdB, BÜNDNIS 90/DIE GRÜNEN",
+     "pdf_url": "https://dserver.bundestag.de/btd/21/075/2107563.pdf"
+    }
+   ],
+   "datum": "2026-08-13",
+   "vorgang_id": "338265"
+  },
+  {
+   "id": "699313",
+   "vorgangsposition": "Antwort",
+   "zuordnung": "BT",
+   "gang": true,
+   "fortsetzung": false,
+   "nachtrag": false,
+   "vorgangstyp": "Kleine Anfrage",
+   "titel": "Gesetzgebungsverfahren zum Gebäudemodernisierungsgesetz",
+   "typ": "Vorgangsposition",
+   "aktivitaet_anzahl": 0,
+   "dokumentart": "Drucksache",
+   "aktualisiert": "2026-09-16T07:51:29+02:00",
+   "urheber": [
+    {
+     "einbringer": false,
+     "bezeichnung": "BRg",
+     "titel": "Bundesregierung"
+    }
+   ],
+   "ressort": [
+    {
+     "federfuehrend": true,
+     "titel": "Bundesministerium für Wirtschaft und Energie"
+    }
+   ],
+   "fundstelle": {
+    "id": "290675",
+    "dokumentnummer": "21/7982",
+    "datum": "2026-09-10",
+    "verteildatum": "2026-09-16",
+    "dokumentart": "Drucksache",
+    "drucksachetyp": "Antwort",
+    "herausgeber": "BT",
+    "urheber": [
+     "Bundesregierung"
+    ],
+    "pdf_url": "https://dserver.bundestag.de/btd/21/079/2107982.pdf"
+   },
+   "datum": "2026-09-10",
+   "vorgang_id": "338265"
+  }
+ ]
+}

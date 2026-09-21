@@ -1,0 +1,80 @@
+{
+  "name": "@maschinenlesbar.org/openka-cli",
+  "version": "0.0.1",
+  "description": "OpenKA — German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
+  "type": "module",
+  "bin": {
+    "ka": "dist/src/cli/index.js",
+    "ka-factory": "dist/src/factory/cli/index.js"
+  },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "LICENSING.md",
+    "CONTRIBUTING.md",
+    "DATA_LICENSE.md",
+    "CONCEPT.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test dist/test/*.test.js",
+    "lint:line": "node dist/src/factory/cli/index.js lint",
+    "docs": "node tools/docs/node_modules/typedoc/bin/typedoc src/index.ts --out out",
+    "start": "node dist/src/cli/index.js"
+  },
+  "keywords": [
+    "kleine-anfrage",
+    "parlament",
+    "bundestag",
+    "landtag",
+    "open-data",
+    "reproducible",
+    "cli"
+  ],
+  "author": "Sebastian Schürmann <sebs@2xs.org>",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/maschinenlesbar-org/openka-cli/issues"
+  },
+  "homepage": "https://maschinenlesbar-org.github.io/openka-cli/",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/sebs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  },
+  "peerDependencies": {
+    "tesseract.js": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "tesseract.js": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "typescript": "7.0.2"
+  }
+}

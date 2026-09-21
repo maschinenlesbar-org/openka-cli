@@ -1,0 +1,124 @@
+name: Release
+
+# Fires when a version tag is pushed, e.g. created by `npm version <patch|minor|major>`
+# (which bumps package.json and creates the matching tag).
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Default to read-only; the release job is granted contents: write below.
+permissions:
+  contents: read
+
+# One release run per tag; never cancel one part-way through.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload its assets
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          # Full history + tags — the changelog step below walks `git log`/`git
+          # tag` back to the previous release, which a shallow (default) clone
+          # doesn't have. fetch-depth: 0 alone doesn't reliably fetch every tag,
+          # so fetch-tags is set explicitly too.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Use Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22.x
+          # No cache restoration on tag-triggered runs (cache-poisoning hardening).
+          package-manager-cache: false
+
+      - name: Read version from package.json
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches package.json version
+        env:
+          PKG_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$PKG_VERSION" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match package.json version '$PKG_VERSION'."
+            exit 1
+          fi
+
+      # Grouped by Conventional Commits type (feat/fix/docs/...) from the log
+      # since the previous v* tag. Not committed to the repo — generated fresh
+      # per release and attached to the GitHub Release only.
+      - name: Generate changelog since the previous tag
+        id: changelog
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist-artifacts
+          out="dist-artifacts/openka-cli-${VERSION}.changelog.md"
+          node .github/scripts/changelog.mjs "$GITHUB_REF_NAME" > "$out"
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+          cat "$out"
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `npm pack` produces the npm-native package tarball (.tgz), ready to upload.
+      - name: Pack npm tarball
+        run: |
+          mkdir -p dist-artifacts
+          npm pack --pack-destination dist-artifacts
+          ls -la dist-artifacts
+
+      # CycloneDX SBOMs with exact, pinned versions and the full transitive
+      # closure, read from the installed tree (npm ci ran above). Two files:
+      #  - *.cdx.json      runtime/production graph — what consumers install
+      #  - *.dev.cdx.json  full graph incl. devDependencies — the build env
+      - name: Generate SBOMs (CycloneDX)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          base="dist-artifacts/openka-cli-${VERSION}"
+          npx --yes @cyclonedx/cyclonedx-npm@4.2.1 \
+            --omit dev \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-file "${base}.cdx.json"
+          npx --yes @cyclonedx/cyclonedx-npm@4.2.1 \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-file "${base}.dev.cdx.json"
+          ls -la dist-artifacts
+
+      # The runner's preinstalled gh CLI rather than a third-party action, so no
+      # extra code runs with contents: write. With assets, gh creates the release
+      # as a draft, uploads them, then publishes it.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NOTES_PATH: ${{ steps.changelog.outputs.path }}
+        # No PRs land in this repo (see CONTRIBUTING.md), so GitHub's own
+        # generated notes have nothing to list — --generate-notes only adds the
+        # "Full Changelog: vX...vY" compare link after our own notes above.
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$NOTES_PATH" \
+            --generate-notes \
+            dist-artifacts/*.tgz \
+            dist-artifacts/*.cdx.json \
+            dist-artifacts/*.changelog.md

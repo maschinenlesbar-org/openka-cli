@@ -1,0 +1,380 @@
+// Segmentation, metadata rules, validators and the tier stack — everything between
+// "we have some text" and "we have a record".
+
+import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  ANTWORT_FOLGT,
+  FRAGE_ANTWORT,
+  NUMMERIERT,
+  applyRules,
+  expandNumbers,
+  normaliseNumber,
+  segmentQa,
+  splitAtQuestionMark,
+} from "../src/core/extract/segment.js";
+import {
+  findDate,
+  findMarkers,
+  findMinistry,
+  findReference,
+  parseGermanDate,
+  parseUrheber,
+  periodFromReference,
+} from "../src/core/extract/metadata.js";
+import { validateExtractedRecord } from "../src/core/extract/validators.js";
+import { extract } from "../src/core/extract/tiers.js";
+import { abstainingPerceiver } from "../src/core/perceive/perceiver.js";
+import { normalizeSpaces } from "../src/core/pdf/text.js";
+import { readFixture, sampleRecord } from "./helpers.js";
+
+const FRAGE_STYLE = `
+Frage 1:
+Wie viele Brücken sind marode?
+
+Antwort zu 1:
+Vierzehn.
+
+Frage 2:
+Und wie viele werden saniert?
+
+Antwort zu 2:
+Drei.
+`;
+
+const NUMMERIERT_STYLE = `
+19. Wahlperiode
+1. Wie viele Hundeparks gibt es?
+a. Und wie ist ihr Zustand?
+Zu 1.: Elf.
+Zu 1 a): Gut.
+2. Was kostet die Wartung?
+Zu 2.: Nichts.
+`;
+
+describe("number lists in headings", () => {
+  it("normalises the ways a document writes one number", () => {
+    strictEqual(normaliseNumber("1"), "1");
+    strictEqual(normaliseNumber("1 a"), "1a");
+    strictEqual(normaliseNumber("1. a)"), "1a");
+    strictEqual(normaliseNumber("2.1"), "2.1");
+  });
+
+  it("expands grouped and ranged headings", () => {
+    deepStrictEqual(expandNumbers("1"), ["1"]);
+    deepStrictEqual(expandNumbers("2 und 3"), ["2", "3"]);
+    deepStrictEqual(expandNumbers("4 bis 6"), ["4", "5", "6"]);
+    deepStrictEqual(expandNumbers("1, 2 und 3"), ["1", "2", "3"]);
+  });
+
+  it("refuses to expand an implausibly long range", () => {
+    // A "range" of hundreds is a misread, and expanding it would fabricate
+    // hundreds of question numbers.
+    deepStrictEqual(expandNumbers("1 bis 500"), ["1", "500"]);
+  });
+});
+
+describe("segmentation", () => {
+  it("reads the Frage N: / Antwort zu N: family", () => {
+    const result = segmentQa(FRAGE_STYLE);
+    strictEqual(result.rules, "frage_antwort");
+    strictEqual(result.segments.length, 2);
+    strictEqual(result.segments[0]?.question, "Wie viele Brücken sind marode?");
+    strictEqual(result.segments[0]?.answer, "Vierzehn.");
+  });
+
+  it("reads numbered questions with letter sub-items", () => {
+    const result = segmentQa(NUMMERIERT_STYLE);
+    strictEqual(result.rules, "nummeriert");
+    deepStrictEqual(result.segments.map((segment) => segment.number), ["1", "1a", "2"]);
+    strictEqual(result.segments[1]?.answer, "Gut.");
+  });
+
+  it("drops front matter that numbers itself", () => {
+    // "19. Wahlperiode" is a numbered line on every Berlin cover page.
+    const result = segmentQa(NUMMERIERT_STYLE);
+    ok(!result.segments.some((segment) => segment.number === "19"));
+  });
+
+  it("does not read a date at the start of a line as a question", () => {
+    const text = `1. Was war los?
+Zu 1.: Nichts.
+12. November 2021 war ein Freitag.
+2. Und danach?
+Zu 2.: Auch nichts.`;
+    const result = segmentQa(text);
+    deepStrictEqual(result.segments.map((segment) => segment.number), ["1", "2"]);
+  });
+
+  it("tolerates a document whose asker skipped a number", () => {
+    // The shape of a real Berlin answer: the asker numbered 1, 2, 5, 6 and the
+    // government answered 2 and 5 together, noting "siehe Ihre Nummerierung".
+    const text = `1. Erste Frage?
+Zu 1.: Eins.
+2. Zweite Frage?
+5. Fünfte Frage?
+Zu 2. und 5. (siehe Ihre Nummerierung): Zwei und fünf.
+6. Sechste Frage?
+Zu 6.: Sechs.`;
+    const result = segmentQa(text);
+    strictEqual(result.rules, "nummeriert");
+    ok(result.segments.some((segment) => segment.number === "5"));
+  });
+
+  it("refuses a reading where the numbers are scattered over a huge range", () => {
+    const text = `1. Eine Frage?
+Zu 1.: Eine Antwort.
+115. Noch eine?
+Zu 115.: Und noch eine.`;
+    const result = segmentQa(text);
+    strictEqual(result.rules, undefined);
+    ok(result.rejections.some((reason) => reason.includes("of the numbers 1..115")));
+  });
+
+  it("refuses a text with no headings at all rather than inventing one pair", () => {
+    const result = segmentQa("Ein Fließtext ohne jede Nummerierung und ohne Fragen.");
+    strictEqual(result.rules, undefined);
+    strictEqual(result.segments.length, 0);
+    ok(result.rejections.length >= 2);
+  });
+
+  it("prefers the rule set that recognises the most questions", () => {
+    // Both families' answer patterns can fire on `Zu N:`; only the numbered family
+    // can see these questions, so it must win.
+    const onlyNumbered = applyRules(NUMMERIERT_STYLE, FRAGE_ANTWORT);
+    ok(onlyNumbered.segments.every((segment) => segment.question === undefined));
+    strictEqual(segmentQa(NUMMERIERT_STYLE).rules, NUMMERIERT.key);
+  });
+});
+
+const BUNDESTAG_STYLE = `
+21. Wahlperiode 17.08.2026
+Antwort
+der Bundesregierung
+ 1. Wie viele Beschwerden gab es?
+Es gab vierzehn.
+ 2. Und wie viele Verfahren?
+Drei, verteilt auf zwei Jahre.
+ 3. Plant die Bundesregierung etwas?
+Nein.
+`;
+
+describe("the Bundestag heading family", () => {
+  it("splits a block at the last line ending in a question mark", () => {
+    const split = splitAtQuestionMark("Wie viele X?\nUnd wie viele Y?\nEs sind vierzehn.\nMehr nicht.");
+    strictEqual(split.question, "Wie viele X?\nUnd wie viele Y?");
+    strictEqual(split.answer, "Es sind vierzehn.\nMehr nicht.");
+  });
+
+  it("abstains on the answer when nothing follows the question", () => {
+    const split = splitAtQuestionMark("Wie viele X?");
+    strictEqual(split.answer, undefined);
+  });
+
+  it("reads questions whose answer has no heading at all", () => {
+    const result = segmentQa(BUNDESTAG_STYLE);
+    strictEqual(result.rules, ANTWORT_FOLGT.key);
+    strictEqual(result.segments.length, 3);
+    strictEqual(result.segments[0]?.answer, "Es gab vierzehn.");
+    strictEqual(result.segments[2]?.answer, "Nein.");
+  });
+
+  it("needs the PDF reader to have folded the alignment spaces first", () => {
+    // The Bundestag right-aligns question numbers with U+2002 EN SPACE. These rules
+    // match ordinary spaces and tabs only, so the folding has to happen upstream in
+    // `normalizeSpaces`. This pins both halves of that contract.
+    strictEqual(applyRules(" 1. Eine Frage?\nEine Antwort.", ANTWORT_FOLGT).rejection, undefined);
+    ok(applyRules("\u20021. Eine Frage?\nEine Antwort.", ANTWORT_FOLGT).rejection !== undefined);
+    strictEqual(
+      applyRules(normalizeSpaces("\u20021. Eine Frage?\nEine Antwort."), ANTWORT_FOLGT).rejection,
+      undefined,
+    );
+  });
+
+  it("stands aside when the document does have answer headings", () => {
+    const { rejection } = applyRules(NUMMERIERT_STYLE, ANTWORT_FOLGT);
+    match(rejection ?? "", /the document has answer headings/);
+  });
+
+  it("refuses an inferred split that only worked for a few questions", () => {
+    // The shape of a Bundestag answer that reprints the whole question list first:
+    // the questions run together, so almost nothing splits.
+    const listFirst = [
+      "1. Erste Frage?",
+      "2. Zweite Frage?",
+      "3. Dritte Frage?",
+      "4. Vierte Frage?",
+      "5. Fünfte Frage?",
+      "Die Fragen werden gemeinsam beantwortet: alles bestens.",
+    ].join("\n");
+    const { rejection } = applyRules(listFirst, ANTWORT_FOLGT);
+    match(rejection ?? "", /too few to trust an inferred split/);
+  });
+
+  it("does not crash on an empty line", () => {
+    // A regex written to never match (`/$^/`) matches an empty string; the family
+    // declares "no answer pattern" instead, and this pins that.
+    strictEqual(ANTWORT_FOLGT.answer, undefined);
+    ok(segmentQa("\n\n\n").rules === undefined);
+  });
+});
+
+describe("metadata rules", () => {
+  it("parses the German date forms parliamentary documents use", () => {
+    strictEqual(parseGermanDate("04.11.2021"), "2021-11-04");
+    strictEqual(parseGermanDate("4. November 2021"), "2021-11-04");
+    strictEqual(parseGermanDate("04. Nov. 2021"), "2021-11-04");
+    strictEqual(parseGermanDate("2021-11-04"), "2021-11-04");
+  });
+
+  it("refuses a two-digit year rather than guessing a century", () => {
+    strictEqual(parseGermanDate("04.11.21"), undefined);
+  });
+
+  it("refuses an impossible date", () => {
+    strictEqual(parseGermanDate("31.02.2024"), undefined);
+  });
+
+  it("finds the first usable date in running text", () => {
+    strictEqual(findDate("Eingang beim Abgeordnetenhaus am 04. November 2021 (…)"), "2021-11-04");
+  });
+
+  it("reads a Drucksachennummer, including the spaced cover-page form", () => {
+    strictEqual(findReference("Drucksache 19 / 10 006"), "19/10006");
+    strictEqual(findReference("Drucksache 18/27064"), "18/27064");
+    strictEqual(periodFromReference("19/10006"), 19);
+  });
+
+  it("splits a PARDOK Urheber field into askers", () => {
+    deepStrictEqual(parseUrheber("Otto, Andreas (Grüne)"), [{ name: "Andreas Otto", party: "Grüne" }]);
+    deepStrictEqual(parseUrheber("Goldner, Antonia-Katharina, Dr., CDU; CDU"), [
+      { name: "Dr. Antonia-Katharina Goldner", party: "CDU" },
+    ]);
+  });
+
+  it("does not turn a bare Fraktion into a person", () => {
+    deepStrictEqual(parseUrheber("CDU"), []);
+  });
+
+  it("finds the answering ministry", () => {
+    strictEqual(
+      findMinistry("Senatsverwaltung für Umwelt, Verkehr und Klimaschutz\nHerrn Abgeordneten"),
+      "Senatsverwaltung für Umwelt, Verkehr und Klimaschutz",
+    );
+  });
+
+  it("collects attachment references and the classification marker", () => {
+    const markers = findMarkers("siehe Anlage 2 und Anlage 10.\nVS-NUR FÜR DEN DIENSTGEBRAUCH");
+    strictEqual(markers.classified, true);
+    deepStrictEqual(markers.attachments_referenced, ["Anlage 2", "Anlage 10"]);
+  });
+});
+
+describe("validators", () => {
+  it("passes a sound record", () => {
+    deepStrictEqual(validateExtractedRecord(sampleRecord()), []);
+  });
+
+  it("rejects a date outside the plausible range", () => {
+    const record = sampleRecord({ dates: { submitted: "1823-01-01" } });
+    ok(validateExtractedRecord(record).some((problem) => problem.path === "dates.submitted"));
+  });
+
+  it("rejects a question that swallowed the rest of the document", () => {
+    const record = sampleRecord({ qa: [{ number: "1", question: "x".repeat(20_001) }] });
+    ok(validateExtractedRecord(record).some((problem) => problem.path === "qa[0].question"));
+  });
+});
+
+describe("the tier stack", () => {
+  const metadata = {
+    reference: "19/10006",
+    legislative_period: 19,
+    title: "Wann kommen die Solaranlagen nach Pankow?",
+    askers: [{ name: "Andreas Otto", party: "Grüne" }],
+    answered_by: {},
+    dates: { submitted: "2021-11-04", answered: "2021-11-12" },
+  };
+  const pdf = readFixture(
+    "berlin",
+    "berlin-19-10006",
+    "7d0515afe6e596c8913c4353b6b89dbbb4da5c5ae4092a2cecb2a8660bf774ad.bin",
+  );
+  const documents = [
+    {
+      role: "combined_pdf" as const,
+      url: "https://pardok.parlament-berlin.de/x.pdf",
+      bytes: pdf,
+      urlStable: true,
+      retrievedAt: "2024-01-01T00:00:00Z",
+    },
+  ];
+
+  it("extracts a complete record from a real document", async () => {
+    const { record } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "structured",
+      metadata,
+      documents,
+      env: {},
+    });
+    strictEqual(record.id, "berlin-19-10006");
+    strictEqual(record.extraction.tier, "text_layer");
+    strictEqual(record.extraction.parse_complete, true);
+    strictEqual(record.extraction.review_status, "ok");
+    strictEqual(record.qa.length, 6);
+    match(record.answered_by.ministry ?? "", /Senatsverwaltung/);
+  });
+
+  it("is a pure function of its inputs", async () => {
+    const first = await extract({ parliament: "berlin", documentType: "schriftliche_anfrage", tier: "structured", metadata, documents, env: {} });
+    const second = await extract({ parliament: "berlin", documentType: "schriftliche_anfrage", tier: "structured", metadata, documents, env: {} });
+    deepStrictEqual(first.record, second.record);
+  });
+
+  it("abstains instead of inventing question texts when no document was fetched", async () => {
+    const { record } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "structured",
+      metadata,
+      documents: [],
+      env: {},
+    });
+    strictEqual(record.qa.length, 0);
+    strictEqual(record.extraction.tier, "structured");
+    strictEqual(record.extraction.parse_complete, false);
+    strictEqual(record.extraction.review_status, "needs_review");
+    ok(record.extraction.abstained_fields.includes("qa"));
+    ok(record.extraction.abstained_fields.includes("full_text"));
+  });
+
+  it("abstains on every page in strict mode rather than running a model", async () => {
+    const { record, notes } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "ocr",
+      metadata,
+      documents,
+      perceiver: abstainingPerceiver,
+      env: {},
+    });
+    ok(record.extraction.abstained_fields.includes("full_text"));
+    strictEqual(record.extraction.model_artifacts.length, 0);
+    ok(notes.length > 0);
+  });
+
+  it("drops a value a validator rejected instead of publishing it", async () => {
+    const { record } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "structured",
+      metadata: { ...metadata, dates: { submitted: "2021-11-12", answered: "2021-11-04" } },
+      documents,
+      env: {},
+    });
+    strictEqual(record.dates.answered, undefined);
+    ok(record.extraction.abstained_fields.includes("dates.answered"));
+  });
+});

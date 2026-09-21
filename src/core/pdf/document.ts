@@ -1,0 +1,260 @@
+// Loading a PDF's object graph and page tree.
+//
+// Deliberately, this does *not* read the cross-reference table. Parliament PDFs are
+// produced by a long tail of tools and the xref is the part that is most often
+// wrong (stale offsets after an incremental update, byte-offset drift from a
+// transfer that rewrote line endings). Instead the whole file is scanned for
+// `N G obj` headers and every object stream is expanded. That is deterministic,
+// order-defined, and recovers documents a strict xref reader would reject — while
+// still refusing anything genuinely unreadable rather than guessing.
+
+import { ParseError } from "../errors.js";
+import { decodeStream } from "./filters.js";
+import { Lexer } from "./lexer.js";
+import {
+  isDict,
+  isName,
+  isRef,
+  isStream,
+  type PdfDict,
+  type PdfStream,
+  type PdfValue,
+} from "./objects.js";
+
+export interface PdfPage {
+  /** 1-based page number in reading order. */
+  number: number;
+  dict: PdfDict;
+  /** The page's content streams, concatenated in order. */
+  content: Buffer;
+  resources: PdfDict;
+}
+
+const OBJ_HEADER = /(?<![0-9])(\d{1,10})\s+(\d{1,5})\s+obj\b/g;
+
+export class PdfDocument {
+  private readonly objects = new Map<number, PdfValue>();
+  private readonly offsets = new Map<number, number>();
+  readonly trailers: PdfDict[] = [];
+  /** True when the document declares an /Encrypt dictionary. */
+  readonly encrypted: boolean;
+
+  private constructor(readonly buf: Buffer) {
+    this.scanObjects();
+    this.collectTrailers();
+    this.expandObjectStreams();
+    this.encrypted = this.trailers.some((trailer) => trailer.has("Encrypt"));
+  }
+
+  /** Parse a PDF from bytes. Throws `ParseError` when the file is not a PDF. */
+  static load(buf: Buffer): PdfDocument {
+    const head = buf.subarray(0, 1024).toString("latin1");
+    if (!head.includes("%PDF-")) throw new ParseError("Not a PDF: missing %PDF- header");
+    return new PdfDocument(buf);
+  }
+
+  /** The PDF version from the header, e.g. `1.4`. */
+  get version(): string {
+    const match = /%PDF-(\d+\.\d+)/.exec(this.buf.subarray(0, 1024).toString("latin1"));
+    return match?.[1] ?? "unknown";
+  }
+
+  // ------------------------------------------------------------- scanning
+
+  private scanObjects(): void {
+    const text = this.buf.toString("latin1");
+    OBJ_HEADER.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = OBJ_HEADER.exec(text)) !== null) {
+      const num = Number(match[1]);
+      // A later definition of the same object number wins: that is what an
+      // incremental update means, and scanning forward sees the update last.
+      this.offsets.set(num, match.index + match[0].length);
+    }
+  }
+
+  private collectTrailers(): void {
+    const text = this.buf.toString("latin1");
+    let at = text.indexOf("trailer");
+    while (at >= 0) {
+      const lexer = new Lexer(this.buf, at + "trailer".length);
+      const value = lexer.next();
+      if (isDict(value as PdfValue)) this.trailers.push(value as PdfDict);
+      at = text.indexOf("trailer", at + 1);
+    }
+    // Cross-reference streams carry the same information in an object, so a
+    // document written without a classic trailer still yields a /Root.
+    for (const num of [...this.offsets.keys()].sort((a, b) => a - b)) {
+      const value = this.getObject(num);
+      if (isStream(value) && isName(value.dict.get("Type"), "XRef")) this.trailers.push(value.dict);
+    }
+  }
+
+  private expandObjectStreams(): void {
+    for (const num of [...this.offsets.keys()].sort((a, b) => a - b)) {
+      const value = this.getObject(num);
+      if (!isStream(value) || !isName(value.dict.get("Type"), "ObjStm")) continue;
+      let data: Buffer;
+      try {
+        data = decodeStream(value, (v) => this.resolve(v));
+      } catch {
+        continue; // an unreadable object stream costs us its objects, not the file
+      }
+      const count = this.num(value.dict.get("N")) ?? 0;
+      const first = this.num(value.dict.get("First")) ?? 0;
+      const header = new Lexer(data, 0);
+      const pairs: [number, number][] = [];
+      for (let i = 0; i < count; i++) {
+        const objNum = header.next();
+        const objOffset = header.next();
+        if (typeof objNum !== "number" || typeof objOffset !== "number") break;
+        pairs.push([objNum, objOffset]);
+      }
+      for (const [objNum, objOffset] of pairs) {
+        // Objects defined directly in the file take precedence: they are either the
+        // original or a later incremental update, both of which outrank a copy.
+        if (this.offsets.has(objNum)) continue;
+        try {
+          const lexer = new Lexer(data, first + objOffset);
+          const parsed = lexer.next();
+          if (parsed !== undefined && !(typeof parsed === "object" && parsed !== null && "kind" in parsed && parsed.kind === "keyword")) {
+            this.objects.set(objNum, parsed as PdfValue);
+          }
+        } catch {
+          /* one bad entry does not spoil the stream */
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------- accessors
+
+  /** Fetch object `num`, parsing it on first use. */
+  getObject(num: number): PdfValue | undefined {
+    const cached = this.objects.get(num);
+    if (cached !== undefined) return cached;
+    const offset = this.offsets.get(num);
+    if (offset === undefined) return undefined;
+    let value: PdfValue;
+    try {
+      const lexer = new Lexer(this.buf, offset);
+      value = lexer.readIndirectBody((length) => this.resolve(length) ?? null);
+    } catch {
+      return undefined;
+    }
+    this.objects.set(num, value);
+    return value;
+  }
+
+  /** Follow indirect references until a direct value is reached. */
+  resolve(value: PdfValue | undefined): PdfValue | undefined {
+    let current = value;
+    for (let hops = 0; isRef(current) && hops < 32; hops++) {
+      current = this.getObject(current.num);
+    }
+    return isRef(current) ? undefined : current;
+  }
+
+  /** Resolve a dictionary entry. */
+  get(dict: PdfDict | undefined, key: string): PdfValue | undefined {
+    if (dict === undefined) return undefined;
+    return this.resolve(dict.get(key));
+  }
+
+  num(value: PdfValue | undefined): number | undefined {
+    const resolved = this.resolve(value);
+    return typeof resolved === "number" ? resolved : undefined;
+  }
+
+  dict(value: PdfValue | undefined): PdfDict | undefined {
+    const resolved = this.resolve(value);
+    if (isDict(resolved)) return resolved;
+    if (isStream(resolved)) return resolved.dict;
+    return undefined;
+  }
+
+  /** The document catalog, found via a trailer /Root or by type as a fallback. */
+  catalog(): PdfDict | undefined {
+    for (const trailer of this.trailers) {
+      const root = this.dict(trailer.get("Root"));
+      if (root !== undefined && root.has("Pages")) return root;
+    }
+    for (const num of [...this.offsets.keys()].sort((a, b) => a - b)) {
+      const value = this.resolve(this.getObject(num));
+      if (isDict(value) && isName(value.get("Type"), "Catalog")) return value;
+    }
+    return undefined;
+  }
+
+  // ----------------------------------------------------------- page tree
+
+  /**
+   * The pages in reading order. Walks the page tree from the catalog; if that is
+   * missing or broken, falls back to every object of /Type /Page in object-number
+   * order, which is the order they were written in.
+   */
+  pages(): PdfPage[] {
+    const collected: PdfDict[] = [];
+    const root = this.dict(this.catalog()?.get("Pages"));
+    if (root !== undefined) this.walkPages(root, collected, new Set(), {});
+    if (collected.length === 0) {
+      for (const num of [...this.offsets.keys(), ...this.objects.keys()].sort((a, b) => a - b)) {
+        const value = this.resolve(this.getObject(num));
+        if (isDict(value) && isName(value.get("Type"), "Page")) collected.push(value);
+      }
+    }
+    return collected.map((dict, i) => ({
+      number: i + 1,
+      dict,
+      content: this.pageContent(dict),
+      resources: this.dict(dict.get("Resources")) ?? new Map(),
+    }));
+  }
+
+  private walkPages(node: PdfDict, out: PdfDict[], seen: Set<PdfDict>, inherited: Record<string, PdfValue>): void {
+    if (seen.has(node) || out.length > 10_000) return;
+    seen.add(node);
+    const next = { ...inherited };
+    for (const key of ["Resources", "MediaBox", "CropBox", "Rotate"]) {
+      const value = node.get(key);
+      if (value !== undefined) next[key] = value;
+    }
+    const kids = this.resolve(node.get("Kids"));
+    if (Array.isArray(kids)) {
+      for (const kid of kids) {
+        const child = this.dict(kid);
+        if (child !== undefined) this.walkPages(child, out, seen, next);
+      }
+      return;
+    }
+    if (isName(node.get("Type"), "Pages")) return;
+    // A leaf: apply the inherited attributes it did not define itself.
+    for (const [key, value] of Object.entries(next)) {
+      if (!node.has(key)) node.set(key, value);
+    }
+    out.push(node);
+  }
+
+  private pageContent(page: PdfDict): Buffer {
+    const contents = this.resolve(page.get("Contents"));
+    const streams: PdfStream[] = [];
+    if (isStream(contents)) streams.push(contents);
+    else if (Array.isArray(contents)) {
+      for (const item of contents) {
+        const resolved = this.resolve(item);
+        if (isStream(resolved)) streams.push(resolved);
+      }
+    }
+    const parts: Buffer[] = [];
+    for (const stream of streams) {
+      try {
+        parts.push(decodeStream(stream, (value) => this.resolve(value)));
+      } catch {
+        // A content stream we cannot decode contributes nothing; the text simply
+        // is not there, and the tier reports a shortfall rather than inventing one.
+      }
+      parts.push(Buffer.from("\n"));
+    }
+    return Buffer.concat(parts);
+  }
+}
