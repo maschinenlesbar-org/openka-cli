@@ -289,21 +289,34 @@ all of this be deleted, which is the point of the project.
 
 ### Niedersachsen: the one that is still open
 
-Niedersachsen publishes its answer as a separate document that the Parlamentsspiegel
-knows about — the row says "1 weiteres Dokument" — and will not render. That is not
-a parsing gap on our side; it was checked against the portal's own parameters
-(`detail`, `alles`, `weitern`, and dropping the document-type filter), and none of
-them produces the follow-up block. Neither question document names its answer, which
-is expected: the answer is published weeks later.
+Niedersachsen publishes its answer as a separate Drucksache whose number has no
+relation to the question's, and nothing reachable connects the two. What was tried
+and ruled out, so it is not repeated:
 
-Niedersachsen serves documents from a static archive
-(`…/Drucksachen_19_10000/07501-08000/19-07605.pdf`), so the URL is trivial *once the
-answer's Drucksachennummer is known*. Finding that number is the whole problem, and
-no route to it has been found yet: the Landtag's own search would have to be used.
+- **The Parlamentsspiegel** knows an answer exists — the row says "1 weiteres
+  Dokument" — and never renders it. Checked with `detail`, `alles`, `weitern`, and
+  with the document-type filter dropped; the result rows are identical every time
+  and only ever carry the Kleine Anfrage.
+- **The Landtag's `/dokumentensuche/`** (permitted by robots.txt; only
+  `/service/suche/` is disallowed) is a TYPO3 browse filter over kind, Wahlperiode
+  and year. It has no lookup by number and no Vorgang view, and its URLs carry a
+  TYPO3 `cHash` computed server-side, so a query it did not generate answers 404.
+- **NILAS**, the Landtagsdokumentationssystem, is a STARWEB install — the same
+  product as Berlin's PARDOK. Its entry point redirects to `browse.tt.html`, which
+  404s from outside, and no servlet path probed answered with anything but STARWEB's
+  error page.
+- **The question documents** do not name their answer, which is expected: it appears
+  weeks later.
 
-Everything else about it already works — discovery, the question document,
-and its text. It yields question-only records that abstain on `qa`, which is the honest state of a
-question nobody has published an answer to us for.
+There is one path that would work, and it suits the architecture rather than
+fighting it. Niedersachsen serves every Drucksache from a predictable static archive
+(`…/Drucksachen_19_10000/07501-08000/19-07605.pdf`), and an answer's first page
+states which Kleine Anfrage it answers. A **factory job** could sweep a number range
+once, read that reference off each answer, and freeze a question→answer map as an
+artifact the line then consumes — no search interface required, and the expensive
+part happens at build time, which is exactly where CONCEPT.md puts work like this.
+Until someone runs it, Niedersachsen yields question-only records that abstain on
+`qa`, which is the honest state of a question whose answer we cannot reach.
 
 ## Reading more than one document
 
