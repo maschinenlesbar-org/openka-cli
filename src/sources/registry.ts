@@ -10,6 +10,7 @@ import { PARLIAMENTS, type ParliamentKey } from "../core/models/parliaments.js";
 import type { Source } from "./base.js";
 import { BerlinSource } from "./berlin.js";
 import { BundDipSource } from "./bund.js";
+import { NordrheinWestfalenSource } from "./nordrhein-westfalen.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export type SourceStatus = "implemented" | "via_aggregator" | "planned";
@@ -59,6 +60,14 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     factory: () => new BerlinSource(),
   },
   {
+    key: "nordrhein-westfalen",
+    parliament: "nordrhein-westfalen",
+    label: "Landtag Nordrhein-Westfalen",
+    status: "implemented",
+    note: "discovery through the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer",
+    factory: () => new NordrheinWestfalenSource(),
+  },
+  {
     key: "parlamentsspiegel",
     parliament: "nordrhein-westfalen",
     label: "Parlamentsspiegel (all 16 Länder)",
@@ -67,7 +76,11 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     factory: () => new ParlamentsspiegelSource(),
   },
   ...PARLIAMENTS.filter(
-    (parliament) => parliament.key !== "bund" && parliament.key !== "berlin" && parliament.herkunft !== undefined,
+    (parliament) =>
+      parliament.key !== "bund" &&
+      parliament.key !== "berlin" &&
+      parliament.key !== "nordrhein-westfalen" &&
+      parliament.herkunft !== undefined,
   ).map((parliament) => aggregatorEntry(parliament.key, parliament.label)),
 ];
 

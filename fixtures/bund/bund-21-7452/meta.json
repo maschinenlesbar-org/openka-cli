@@ -2,7 +2,7 @@
   "extractor_version": "pkg:0.0.1",
   "human_verified": false,
   "id": "bund-21-7452",
-  "note": "Bundestag: the question list is reprinted before any answer, so the inferred split is refused",
+  "note": "Bundestag: all 18 questions answered together (Die Fragen 1 bis 18 werden zusammen beantwortet)",
   "source": "bund",
   "tier": "text_layer"
 }

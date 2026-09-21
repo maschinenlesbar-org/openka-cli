@@ -56,4 +56,5 @@ export * from "./sources/pardok.js";
 export * from "./sources/berlin.js";
 export * from "./sources/bund.js";
 export * from "./sources/parlamentsspiegel.js";
+export * from "./sources/nordrhein-westfalen.js";
 export * from "./sources/xml.js";

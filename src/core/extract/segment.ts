@@ -121,6 +121,26 @@ export const ANTWORT_FOLGT: SegmentationRules = {
 /** Rule sets are tried in this fixed order, so the choice is reproducible. */
 export const RULE_SETS: readonly SegmentationRules[] = [FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT];
 
+/**
+ * A government answering several questions at once, in the sentence every German
+ * parliament uses for it: "Die Fragen 1 und 2 werden aufgrund des Sachzusammenhangs
+ * gemeinsam beantwortet." The answer then sits under the last of the grouped
+ * questions and the earlier ones look unanswered — which is a hole we would
+ * otherwise report, in a document that answered everything it was asked.
+ */
+const GROUPED_ANSWER = new RegExp(
+  `\\bDie\\s+Frage[n]?\\s+${NUMBER_LIST}\\s+werden\\b[^.]{0,160}?\\bbeantwortet\\b`,
+  "i",
+);
+
+/** The question numbers an answer body says it also covers. */
+export function groupedAnswerNumbers(body: string): string[] {
+  // Only the opening of the answer is considered: a sentence deep inside a long
+  // answer is discussing something else, not announcing this answer's scope.
+  const match = GROUPED_ANSWER.exec(body.slice(0, 400));
+  return match === null ? [] : expandNumbers(match[1] as string);
+}
+
 /** Any answer heading at all — the guard for `onlyWhenUnmarked`. */
 const ANY_ANSWER_HEADING = new RegExp(
   `^[ \\t]*(?:Antwort(?:en)?[ \\t]*(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${NUMBER_LIST}`,
@@ -130,14 +150,36 @@ const ANY_ANSWER_HEADING = new RegExp(
 /**
  * Split a block into the question and the answer that follows it.
  *
- * The rule: the question ends at the **last** line of the block that ends with a
- * question mark. The last rather than the first, because a numbered item often asks
- * several things ("Wie viele X? Und wie viele Y?"); answers, in these documents, do
- * not end their lines with question marks. A block with no such line is all
- * question, and the answer abstains — which is the honest reading of a question
- * nobody answered.
+ * Two steps, because documents mark the boundary in two different ways:
+ *
+ *  1. **By paragraph.** The question is the leading paragraphs up to and including
+ *     the last one containing a question mark; the rest is the answer. This is what
+ *     NRW needs: its questions read "… zu gewinnen? (Bitte nach Maßnahmenart
+ *     differenzieren)", so the question mark is not at the end of the question, and
+ *     a line-based rule loses the whole answer.
+ *  2. **By line**, when the block is a single paragraph: the question ends at the
+ *     last line ending in a question mark. This is what the Bundestag needs, where
+ *     the answer does not always start a new paragraph.
+ *
+ * The *last* question mark rather than the first, because a numbered item often
+ * asks several things. A block with no question mark at all is all question and the
+ * answer abstains — the honest reading of a question nobody answered.
  */
 export function splitAtQuestionMark(body: string): { question: string; answer?: string } {
+  const paragraphs = body.split(/\n[ \t]*\n/);
+  if (paragraphs.length > 1) {
+    let lastParagraph = -1;
+    for (let i = 0; i < paragraphs.length; i++) {
+      if ((paragraphs[i] as string).includes("?")) lastParagraph = i;
+    }
+    if (lastParagraph >= 0 && lastParagraph < paragraphs.length - 1) {
+      return {
+        question: paragraphs.slice(0, lastParagraph + 1).join("\n\n").trim(),
+        answer: paragraphs.slice(lastParagraph + 1).join("\n\n").trim(),
+      };
+    }
+  }
+
   const lines = body.split("\n");
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -333,6 +375,16 @@ export function applyRules(text: string, rules: SegmentationRules): { segments: 
       }
     }
   });
+
+  // Propagate a grouped answer to every question it says it covers — but only to
+  // numbers the document already showed us. A grouped sentence naming a question
+  // that has no heading anywhere is a misread of the sentence, not a discovery of a
+  // question, and adding it would invent a Q/A pair with no question in it.
+  for (const body of [...answers.values()]) {
+    for (const covered of groupedAnswerNumbers(body)) {
+      if (order.includes(covered) && !answers.has(covered)) answers.set(covered, body);
+    }
+  }
 
   const segments: QaSegment[] = order.map((number) => {
     const segment: QaSegment = { number };

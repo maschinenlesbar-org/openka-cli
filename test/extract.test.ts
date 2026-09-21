@@ -11,6 +11,7 @@ import {
   expandNumbers,
   normaliseNumber,
   segmentQa,
+  groupedAnswerNumbers,
   splitAtQuestionMark,
 } from "../src/core/extract/segment.js";
 import {
@@ -216,6 +217,47 @@ describe("the Bundestag heading family", () => {
     // declares "no answer pattern" instead, and this pins that.
     strictEqual(ANTWORT_FOLGT.answer, undefined);
     ok(segmentQa("\n\n\n").rules === undefined);
+  });
+});
+
+describe("grouped answers", () => {
+  it("reads the numbers a government says it is answering together", () => {
+    deepStrictEqual(
+      groupedAnswerNumbers("Die Fragen 1 und 2 werden aufgrund des Sachzusammenhangs gemeinsam beantwortet."),
+      ["1", "2"],
+    );
+    deepStrictEqual(groupedAnswerNumbers("Die Fragen 1 bis 18 werden zusammen beantwortet."), [
+      "1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18",
+    ]);
+  });
+
+  it("ignores such a sentence deep inside a long answer", () => {
+    // Only the opening of an answer announces its scope; a sentence 400 characters
+    // in is discussing something else.
+    deepStrictEqual(groupedAnswerNumbers("x".repeat(500) + " Die Fragen 1 und 2 werden gemeinsam beantwortet."), []);
+  });
+
+  it("attaches a grouped answer to every question it covers", () => {
+    const text = [
+      "1. Wie oft wurde gefragt?",
+      "",
+      "2. Und wann? (Bitte nach Datum aufschlüsseln)",
+      "",
+      "Die Fragen 1 und 2 werden aufgrund des Sachzusammenhangs gemeinsam beantwortet.",
+      "",
+      "Dreimal, im Mai.",
+    ].join("\n");
+    const result = segmentQa(text);
+    strictEqual(result.segments.length, 2);
+    ok(result.segments[0]?.answer?.startsWith("Die Fragen 1 und 2"));
+    strictEqual(result.segments[0]?.answer, result.segments[1]?.answer);
+  });
+
+  it("splits a question that ends in a parenthetical after the question mark", () => {
+    // The NRW shape: "… zu gewinnen? (Bitte nach Maßnahmenart differenzieren)".
+    const split = splitAtQuestionMark("1. Wie viele?\n(Bitte aufschlüsseln)\n\nEs sind vierzehn.");
+    strictEqual(split.question, "1. Wie viele?\n(Bitte aufschlüsseln)");
+    strictEqual(split.answer, "Es sind vierzehn.");
   });
 });
 

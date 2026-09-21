@@ -245,17 +245,21 @@ describe("ka verify", () => {
 });
 
 describe("golden fixtures", () => {
-  it("ships goldens for every heading family, every source, and honest failures", () => {
+  it("ships goldens for every source kind and for an honest failure", () => {
     const goldens = listGoldens(FIXTURES);
     const parliaments = new Set(goldens.map((golden) => golden.record.parliament));
-    // One per source kind: a structured XML feed, a JSON API, and the aggregator.
+    // One per source kind: a structured XML feed (Berlin), a JSON API (Bundestag),
+    // a dedicated Land adapter (NRW) and the aggregator (Baden-Württemberg).
     ok(parliaments.has("berlin"));
     ok(parliaments.has("bund"));
+    ok(parliaments.has("nordrhein-westfalen"));
     ok(parliaments.has("baden-wuerttemberg"));
     ok(goldens.some((golden) => golden.record.qa.length >= 6));
-    // Two documents that no rule set can read: the abstention is pinned too, so a
-    // future rule that starts reading them is a visible, reviewable change.
-    strictEqual(goldens.filter((golden) => golden.record.extraction.abstained_fields.includes("qa")).length, 2);
+    // A document no rule set can read. Pinning the abstention means a future rule
+    // that starts reading it shows up as a visible, reviewable change — which is
+    // exactly what happened to the two Bundestag goldens when the grouped-answer
+    // rule landed.
+    ok(goldens.some((golden) => golden.record.extraction.abstained_fields.includes("qa")));
   });
 
   it("every golden re-extracts to exactly its frozen record", async () => {

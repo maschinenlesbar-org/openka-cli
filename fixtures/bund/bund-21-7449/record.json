@@ -20,17 +20,13 @@
   },
   "document_type": "kleine_anfrage",
   "extraction": {
-    "abstained_fields": [
-      "qa[0].answer",
-      "qa[2].answer",
-      "qa[7].answer"
-    ],
+    "abstained_fields": [],
     "extractor_version": "pkg:0.0.1",
     "input_sha256": "11416ffa4ff1c219786ebacc90570fb1ac9e98bfb3c3efe96bf4b2189ffb613f",
     "model_artifacts": [],
-    "parse_complete": false,
+    "parse_complete": true,
     "reproducible": true,
-    "review_status": "needs_review",
+    "review_status": "ok",
     "tier": "text_layer"
   },
   "full_text": "Deutscher Bundestag Drucksache 21/7652\n21. Wahlperiode 17.08.2026\nAntwort\nder Bundesregierung\nauf die Kleine Anfrage der Abgeordneten Ulrich von Zons, Knuth Meyer-Soltau\nund der Fraktion der AfD\n– Drucksache 21/7449 –\nDiskriminierungstatbestände im Zusammenhang mit nicht binären\nGeschlechtsidentitäten im Rahmen des Allgemeinen Gleichbehandlungsgesetzes\nVorbemerkung der Fragesteller\nDie Bundesregierung hat in den vergangenen Jahren den Schutz vor Diskrimi-\nnierung aufgrund des Geschlechts im Rahmen des Allgemeinen Gleichbe-\nhandlungsgesetzes (AGG) zunehmend auf vielfältige Formen subjektiver Ge-\nschlechtsidentität ausgeweitet (vgl. hierzu DIE ZEIT, Berichterstattung zu Ge-\nschlechtseintragsänderungen und Diskriminierungsvorwürfen [2024/2025];\nSüddeutsche Zeitung, „Fälle von Diskriminierung nehmen weiter zu“, 3. Juni\n2025). Diese Entwicklung wirft aus Sicht der Fragesteller Fragen hinsichtlich\nder Rechtsklarheit, der praktischen Umsetzung sowie der Auswirkungen auf\nBehörden, Gerichte und Arbeitgeber auf.\nInsbesondere die Einbeziehung nichtbinärer Geschlechtsidentitäten in den\nSchutzbereich des AGG führt zu neuen rechtlichen und administrativen He-\nrausforderungen (vgl. Legal Tribune Online, Berichterstattung zum Urteil des\nOberlandesgerichts (OLG) Frankfurt [nichtbinäre Personen, Deutsche Bahn],\n2022). Es bestehen Unklarheiten darüber, wie häufig entsprechende Diskrimi-\nnierungsvorwürfe tatsächlich auftreten, wie viele Verfahren geführt werden,\nwie diese ausgehen und in welchem Umfang staatliche Stellen oder private\nArbeitgeber betroffen sind (vgl. Antidiskriminierungsstelle des Bundes, Jah-\nresbericht 2024).\nZudem wird vermehrt berichtet, dass sogenannte Deadnaming-Vorwürfe –\nalso die Verwendung eines früheren oder amtlich eingetragenen Namens – zu\nKonflikten in Behörden, Schulen und im Arbeitsleben führen (vgl. DER SPIE-\nGEL, Artikel zu Deadnaming und Misgendering im Kontext des Selbstbestim-\nmungsgesetzes (SBGG) [2023 bis 2025]). Aus Sicht der Fragesteller ist zu\nklären, inwieweit solche Vorwürfe rechtlich relevant sind, ob sie statistisch er-\nfasst werden und ob sie zu gerichtlichen Auseinandersetzungen führen (vgl.\nLegal Tribune Online, „Falsche Anrede: Bank muss trans Kundin Entschädi-\ngung zahlen“ 19. Juni 2025).\nEine transparente und belastbare Datengrundlage ist erforderlich, um beurtei-\nlen zu können, ob die Ausweitung des Diskriminierungsschutzes auf nicht bi-\nnäre Identitäten zu einer sachgerechten Anwendung des AGG führt oder ob\nsie zu Rechtsunsicherheit, administrativer Überlastung und Konflikten in\nDie Antwort wurde namens der Bundesregierung mit Schreiben des Bundesministeriums für Bildung, Familie, Senioren,\nFrauen und Jugend vom 17. August 2026 übermittelt.\nDie Drucksache enthält zusätzlich – in kleinerer Schrifttype – den Fragetext.\fDrucksache 21/7652 – 2 – Deutscher Bundestag – 21. Wahlperiode\nstaatlichen Einrichtungen und im Arbeitsleben beiträgt (vgl. Statistisches Bun-\ndesamt [Destatis], Daten zur Änderung des Geschlechtseintrags 2024/2025).\nDie Fragesteller sehen daher Aufklärungsbedarf hinsichtlich Umfang, Häufig-\nkeit und rechtlicher Bewertung entsprechender Fälle (vgl. queer.de, „Mehr als\n22 000 Menschen haben Geschlechtseintrag geändert“, 29. Oktober 2025).\n 1. Wie viele Beschwerden wegen Diskriminierung aufgrund des Merkmals\n„Geschlecht“ gemäß § 1 AGG hat die Antidiskriminierungsstelle des\nBundes (ADS) seit dem 1. Januar 2020 bis heute erhalten, bei denen eine\nnicht binäre oder diverse Geschlechtsidentität eine Rolle spielte?\n 2. In wie vielen dieser in Frage 1 erfragten Beschwerden haben sich die be-\ntroffenen Personen ausdrücklich als nicht binär oder divers identifiziert\noder wurde eine entsprechende Geschlechtsidentität von der ADS er-\nfasst?\nDie Fragen 1 und 2 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDie Antidiskriminierungsstelle des Bundes (ADS) registriert Beratungsanfra-\ngen nach den im Allgemeinen Gleichbehandlungsgesetz (AGG) genannten Dis-\nkriminierungsmerkmalen. Für den Zeitraum seit 1. Januar 2020 hat die ADS\nfolgende Anfragen zum Diskriminierungsmerkmal „Geschlecht“ von Bera-\ntungssuchenden, die trans*, inter* oder nicht-binäre Geschlechtsidentität ange-\ngeben haben, erfasst:\n2020: 154 Anfragen\n2021: 154 Anfragen\n2022: 178 Anfragen\n2023: 279 Anfragen\n2024: 388 Anfragen\n2025: 374 Anfragen.\nEine weitergehende Aufschlüsselung nur nach Fällen, in denen eine nicht-binä-\nre Geschlechtsidentität oder der Geschlechtseintrag „divers“ eine Rolle spielen,\nerfolgt nicht.\n 3. Wie viele Gerichtsverfahren (Zivil-, Verwaltungs- oder Arbeitsgerichts-\nverfahren) sind der Bundesregierung bekannt, in denen seit 2020 eine\nDiskriminierung wegen nicht binärer Geschlechtsidentität im Rahmen\ndes AGG geltend gemacht wurde?\n 4. In wie vielen dieser in Frage 3 erfragten Verfahren wurde das Merkmal\n„Geschlecht“ des AGG auf nicht binäre Personen angewendet?\nDie Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.\fDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7652\n 5. Welche Maßnahmen hat die Bundesregierung gegebenenfalls bereits er-\ngriffen oder plant sie, gegebenenfalls zu ergreifen, um Betroffene nicht\nbinärer Geschlechtsidentitäten über ihre Rechte nach dem AGG aufzu-\nklären?\nDie aktuelle Bundesregierung hat hierzu keine Maßnahmen durchgeführt oder\ngeplant.\nDie Unabhängige Bundesbeauftragte für Antidiskriminierung und die ebenfalls\nunabhängig tätige ADS haben nach § 27 AGG unter anderem die Aufgabe,\nÖffentlichkeitsarbeit zu betreiben. Maßnahmen dieser Öffentlichkeitsarbeit zur\nAufklärung über das AGG richten sich grundsätzlich an alle Menschen in\nDeutschland. Spezifische Fragen des Diskriminierungsschutzes von nicht-binä-\nren Personen werden anlassbezogen unter anderem auf der Internetseite der\nADS, in ihren Jahresberichten und in der Social-Media-Arbeit aufgegriffen.\n 6. Plant die Bundesregierung, die ADS mit zusätzlichen Ressourcen auszu-\nstatten, um Beschwerden im Zusammenhang mit nicht binären Ge-\nschlechtsidentitäten effektiver bearbeiten zu können?\nNein.\n 7. Holt sich die Bundesregierung zur aktuellen Rechtslage hinsichtlich des\nSchutzes nichtbinärer Personen unter dem Merkmal „Geschlecht“ des\nAGG juristischen Rat ein?\nDie ADS hat in Wahrnehmung ihrer gesetzlichen Aufgaben nach § 27 Absatz 3\nNummer 3 AGG eine rechtswissenschaftliche Untersuchung zu dem Thema\n„Geschlechtliche Vielfalt am Arbeitsplatz – Was das neue Selbstbestimmungs-\ngesetz und das AGG für betriebliche Verantwortliche bedeutet“ beauftragt, die\n2027 erscheinen soll (www.antidiskriminierungsstelle.de/SharedDocs/forschun\ngsprojekte/DE/Rechtsexpertise_SBGG_Arbeitgebende_LFD_Projekt.html).\n 8. In wie vielen der in Frage 1 erfragten Beschwerden wurde das Gesetz\nüber die Selbstbestimmung in Bezug auf den Geschlechtseintrag (SBGG)\nund das darin enthaltene Offenbarungsverbot nach § 13 SBGG themati-\nsiert?\n 9. In wie vielen Fällen wurde Deadnaming (Verwendung eines früheren Na-\nmens entgegen der aktuellen Geschlechtsidentität) als mögliche Diskri-\nminierung oder Belästigung wegen des Geschlechts sowie als Verletzung\ndes allgemeinen Persönlichkeitsrechts bei der ADS erfasst?\nDie Fragen 8 und 9 werden gemeinsam beantwortet.\nDiese Daten werden nicht erfasst.\n10. Holt sich die Bundesregierung zur aktuellen Rechtslage von Deadnaming\nim Hinblick auf den Diskriminierungstatbestand des Geschlechts sowie\nauf eine mögliche Belästigung nach § 3 Absatz 3 AGG und das allgemei-\nne Persönlichkeitsrecht, auch unter Berücksichtigung des SBGG (§§ 13,\n14 SBGG) juristischen Rat ein?\nNein.\fGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
@@ -44,6 +40,7 @@
   "parliament": "bund",
   "qa": [
     {
+      "answer": "Die Fragen 1 und 2 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDie Antidiskriminierungsstelle des Bundes (ADS) registriert Beratungsanfra-\ngen nach den im Allgemeinen Gleichbehandlungsgesetz (AGG) genannten Dis-\nkriminierungsmerkmalen. Für den Zeitraum seit 1. Januar 2020 hat die ADS\nfolgende Anfragen zum Diskriminierungsmerkmal „Geschlecht“ von Bera-\ntungssuchenden, die trans*, inter* oder nicht-binäre Geschlechtsidentität ange-\ngeben haben, erfasst:\n2020: 154 Anfragen\n2021: 154 Anfragen\n2022: 178 Anfragen\n2023: 279 Anfragen\n2024: 388 Anfragen\n2025: 374 Anfragen.\nEine weitergehende Aufschlüsselung nur nach Fällen, in denen eine nicht-binä-\nre Geschlechtsidentität oder der Geschlechtseintrag „divers“ eine Rolle spielen,\nerfolgt nicht.",
       "number": "1",
       "question": "Wie viele Beschwerden wegen Diskriminierung aufgrund des Merkmals\n„Geschlecht“ gemäß § 1 AGG hat die Antidiskriminierungsstelle des\nBundes (ADS) seit dem 1. Januar 2020 bis heute erhalten, bei denen eine\nnicht binäre oder diverse Geschlechtsidentität eine Rolle spielte?"
     },
@@ -53,6 +50,7 @@
       "question": "In wie vielen dieser in Frage 1 erfragten Beschwerden haben sich die be-\ntroffenen Personen ausdrücklich als nicht binär oder divers identifiziert\noder wurde eine entsprechende Geschlechtsidentität von der ADS er-\nfasst?"
     },
     {
+      "answer": "Die Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7652",
       "number": "3",
       "question": "Wie viele Gerichtsverfahren (Zivil-, Verwaltungs- oder Arbeitsgerichts-\nverfahren) sind der Bundesregierung bekannt, in denen seit 2020 eine\nDiskriminierung wegen nicht binärer Geschlechtsidentität im Rahmen\ndes AGG geltend gemacht wurde?"
     },
@@ -77,6 +75,7 @@
       "question": "Holt sich die Bundesregierung zur aktuellen Rechtslage hinsichtlich des\nSchutzes nichtbinärer Personen unter dem Merkmal „Geschlecht“ des\nAGG juristischen Rat ein?"
     },
     {
+      "answer": "Die Fragen 8 und 9 werden gemeinsam beantwortet.\nDiese Daten werden nicht erfasst.",
       "number": "8",
       "question": "In wie vielen der in Frage 1 erfragten Beschwerden wurde das Gesetz\nüber die Selbstbestimmung in Bezug auf den Geschlechtseintrag (SBGG)\nund das darin enthaltene Offenbarungsverbot nach § 13 SBGG themati-\nsiert?"
     },
@@ -95,14 +94,14 @@
   "schema_version": "1.0",
   "source_documents": [
     {
-      "retrieved_at": "2026-09-21T21:18:50Z",
+      "retrieved_at": "2026-09-21T21:57:33Z",
       "role": "question_pdf",
       "sha256": "c7b565ac2dc17e8069591ac7d5c4fbcb68ba6c3fc30f367e2223108ebbbacaa2",
       "url": "https://dserver.bundestag.de/btd/21/074/2107449.pdf",
       "url_stable": true
     },
     {
-      "retrieved_at": "2026-09-21T21:18:50Z",
+      "retrieved_at": "2026-09-21T21:57:33Z",
       "role": "answer_pdf",
       "sha256": "11416ffa4ff1c219786ebacc90570fb1ac9e98bfb3c3efe96bf4b2189ffb613f",
       "url": "https://dserver.bundestag.de/btd/21/076/2107652.pdf",

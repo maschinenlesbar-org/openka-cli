@@ -84,16 +84,21 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 |--------|-----------|------|-------|
 | `berlin` | Abgeordnetenhaus von Berlin | structured XML | daily open-data export per Wahlperiode, in the `Parlamentsspiegel Export 1.0` format |
 | `bund` | Deutscher Bundestag | structured JSON API | DIP; needs `--api-key` / `DIP_API_KEY` |
+| `nordrhein-westfalen` | Landtag NRW | dedicated adapter | discovery via the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer |
 | `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
-| the other 15 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
+| the other 14 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
 
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.
 
-Coverage is honest, not complete. On a 60-document Berlin window, 47 records extract
+Coverage is honest, not complete. On a 60-document Berlin window, 46 records extract
 completely, 56 yield at least one question/answer pair, and 4 abstain on `qa`
 entirely — those are documents dominated by tables, and they land in `ka review`
-rather than in the corpus as half-read records.
+rather than in the corpus as half-read records. On an 8-document NRW window, 6 of 8
+extract completely.
+
+A record is dated by **when the Anfrage was asked**, not when it was answered — so
+`--since`/`--until`, `--year` and `--from`/`--to` all mean the question's date.
 
 ### Credentials
 

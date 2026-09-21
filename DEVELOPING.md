@@ -148,10 +148,59 @@ The consistency checks are where the "abstain, never guess" rule becomes code:
 
 If no rule set passes, `qa` is abstained and every rejection reason is recorded.
 
-**Measured coverage** on a 60-document Berlin window (2021-11 to 2021-12):
-47 parse-complete, 56 with at least one Q/A pair, 4 abstaining on `qa` entirely. The
-four are documents dominated by tables, and they land in `ka review` rather than in
-the corpus as half-read records.
+**Grouped answers.** Governments answer several questions at once — "Die Fragen 1
+und 2 werden aufgrund des Sachzusammenhangs gemeinsam beantwortet." The answer then
+sits under the last of the grouped questions and the earlier ones look unanswered.
+`groupedAnswerNumbers` reads that sentence from the opening of an answer and
+attaches the answer to every number it names, but **only to numbers the document
+already showed us** — a grouped sentence naming a question that has no heading
+anywhere is a misread of the sentence, not the discovery of a question.
+
+**Measured coverage.** On a 60-document Berlin window (2021-11 to 2021-12):
+46 parse-complete, 56 with at least one Q/A pair, 4 abstaining on `qa` entirely —
+documents dominated by tables, which land in `ka review` rather than in the corpus
+as half-read records. On an 8-document NRW window (2025-03 to 2025-04): 6
+parse-complete, 7 with Q/A pairs.
+
+## Nordrhein-Westfalen, and what discovery is allowed to do
+
+NRW is the first dedicated Land adapter and it is worth reading as a worked example,
+because the constraint that shaped it is a legal-ish one rather than a technical one.
+
+The Landtag NRW publishes **no API and no open-data feed**, and its own document
+search at `/home/dokumente/dokumentensuche/` is **disallowed by its robots.txt**.
+Being a good citizen is a design principle (CONCEPT.md §7), so discovery runs through
+the Parlamentsspiegel — which is allowed, and which the Landtag NRW itself operates.
+What the adapter adds is everything downstream of discovery:
+
+- **Document URLs are constructed, not scraped.** `18/14035` is
+  `…/dokumentenarchiv/Dokument/MMD18-14035.pdf`. A record therefore does not depend
+  on the aggregator's link markup, and a disagreement between the constructed URL
+  and the scraped one becomes a warning instead of a broken record.
+- **The robots.txt boundary is enforced in code.** The archive is disallowed for the
+  11th–15th Wahlperiode; asking for one of those is an error, not a request we send
+  anyway.
+
+Building it surfaced three defects in the shared aggregator, all of which had been
+silently costing whole Länder:
+
+1. **A hidden date.** Each result row carries a `d-none` span with the *newest*
+   document's date — usually the answer's. Reading the row's full text dated every
+   question by its answer, so any `--since`/`--until` window excluded exactly the
+   records it was meant to include. `visibleTextOf` drops hidden elements first, and
+   `stripHidden` counts nesting, because a lazy regex stops at the first `</span>`
+   and leaves the date behind.
+2. **A free-text query.** The portal's own quick link sends `query=Anfrage` on top of
+   the structured filters. Sachsen returns 50 results without it and none with it.
+   It is gone.
+3. **The wrong date.** `applyWindow` filtered on the answer's date. A record is dated
+   by **when the Anfrage was asked** — that is its own date, and it is what every
+   upstream filters on. `CatalogEntry.year` and the `--from`/`--to` search filters
+   follow the same rule.
+
+Before the fixes, four Länder discovered nothing at all. After them, 14 of 15 do —
+Bremen genuinely has no Kleine Anfragen in the Parlamentsspiegel for the windows
+tried, and Thüringen's rows carry no Drucksachennummer, which is still open.
 
 ## Adding a source
 

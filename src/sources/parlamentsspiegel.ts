@@ -26,7 +26,7 @@ import { OpenKaError } from "../core/errors.js";
 import { PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "../core/models/parliaments.js";
 import type { AnsweredBy, DocumentType } from "../core/models/schema.js";
 import { parseGermanDate, parseUrheber } from "../core/extract/metadata.js";
-import { blocksWithClass, firstHref, regionWithClass, spanTexts, textOf } from "./html.js";
+import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "./html.js";
 import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 
 export const PARLAMENTSSPIEGEL_BASE = "https://www.parlamentsspiegel.de";
@@ -80,8 +80,12 @@ export class ParlamentsspiegelSource implements Source {
     const seen = new Set<string>();
 
     for (let page = 1; page <= MAX_PAGES; page++) {
+      // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
+      // but that is a full-text constraint on top of the structured filters, and it
+      // silently drops entire Länder whose documents do not use the word
+      // prominently — Sachsen returns 50 results without it and none with it. The
+      // structured filters are what we actually mean.
       const params: Record<string, string | number> = {
-        query: "Anfrage",
         qyVTyp: "Anfrage",
         fqDTyp: KLEINE_ANFRAGE_FILTER,
         type: "vorgang",
@@ -161,7 +165,9 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
   const documentRegion = regionWithClass(head, "ps-dokument");
   if (documentRegion === undefined) return undefined;
   const url = firstHref(documentRegion);
-  const summary = textOf(documentRegion);
+  // Hidden spans are excluded: the row carries a "Neuestes Dokument" date that
+  // belongs to the answer, and dating the question by it breaks every date window.
+  const summary = visibleTextOf(documentRegion);
   const referenceMatch = DRUCKSACHE.exec(summary);
   if (referenceMatch === null) {
     warnings.push(`result ${id[0]}: no Drucksachennummer in the result row; skipped`);
@@ -210,7 +216,7 @@ function parseFollowUps(tail: string): { url?: string; date?: string; ministry?:
   for (const folge of blocksWithClass(tail, "ps-folge")) {
     const region = regionWithClass(folge, "ps-dokument");
     if (region === undefined) continue;
-    const summary = textOf(region);
+    const summary = visibleTextOf(region);
     if (!/\bAntwort\b/.test(summary)) continue;
     const out: { url?: string; date?: string; ministry?: string } = {};
     const url = firstHref(region);

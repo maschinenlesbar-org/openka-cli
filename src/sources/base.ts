@@ -100,10 +100,17 @@ export interface Source {
   discover(options: DiscoverOptions): Promise<DiscoverResult>;
 }
 
-/** Keep only refs inside the requested date window and period, in a stable order. */
+/**
+ * Keep only refs inside the requested date window and period, in a stable order.
+ *
+ * The window is on the date the Anfrage was **asked**. That is the Anfrage's own
+ * date, it is what every upstream filters on, and using the answer's date instead
+ * makes a window silently exclude the records it was meant to include — a question
+ * asked in June is often answered in August.
+ */
 export function applyWindow(refs: DocRef[], options: DiscoverOptions): DocRef[] {
   const filtered = refs.filter((ref) => {
-    const date = ref.dates.answered ?? ref.dates.submitted;
+    const date = ref.dates.submitted ?? ref.dates.answered;
     if (options.since !== undefined && (date === undefined || date < options.since)) return false;
     if (options.until !== undefined && (date === undefined || date > options.until)) return false;
     if (options.period !== undefined && ref.legislative_period !== options.period) return false;

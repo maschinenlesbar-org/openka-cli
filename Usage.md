@@ -21,6 +21,7 @@ are authoritative; this is the narrative version.
 
 ```bash
 ka sync --source berlin --since 2024-01-01 --until 2024-06-30 --limit 200
+ka sync --source nordrhein-westfalen --since 2025-03-01 --until 2025-04-30
 ka sync --source bund --api-key "$DIP_KEY" --period 21
 ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metadata + links
 ka sync --source berlin --metadata-only                 # no downloads; qa abstains
@@ -30,6 +31,11 @@ ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /u
 
 Idempotent: a second run over an unchanged window costs one conditional request and
 stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.
+
+**Dates mean when the Anfrage was asked.** `--since`/`--until` here, and `--year`
+and `--from`/`--to` on `search` and `export`, all filter on the question's date, not
+the answer's — a question asked in June is often answered in August, and the other
+reading makes a window exclude exactly what it was meant to include.
 
 ## `ka search`
 

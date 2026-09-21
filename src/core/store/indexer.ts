@@ -35,7 +35,8 @@ export function toCatalogEntry(record: KaRecord, terms: number): CatalogEntry {
         .filter((party): party is string => party !== undefined && party !== ""),
     ),
   ].sort();
-  const year = yearOf(record.dates.answered) ?? yearOf(record.dates.submitted);
+  // Dated by when it was asked — see `applyWindow` for why that, not the answer.
+  const year = yearOf(record.dates.submitted) ?? yearOf(record.dates.answered);
   const entry: CatalogEntry = {
     id: record.id,
     parliament: record.parliament,

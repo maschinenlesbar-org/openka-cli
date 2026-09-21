@@ -15,7 +15,7 @@ export interface SearchFilters {
   reviewStatus?: string[];
   /** Only records the extractor abstained on somewhere. */
   onlyAbstained?: boolean;
-  /** ISO dates bounding `dates.answered` (falling back to `submitted`). */
+  /** ISO dates bounding `dates.submitted` (falling back to `answered`). */
   from?: string;
   to?: string;
 }
@@ -49,7 +49,8 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
     const wanted = filters.party.map((party) => party.trim().toLowerCase());
     if (!entry.parties.some((party) => wanted.includes(party))) return false;
   }
-  const date = entry.answered ?? entry.submitted;
+  // Consistent with the discovery window: a record is dated by when it was asked.
+  const date = entry.submitted ?? entry.answered;
   if (filters.from !== undefined && (date === undefined || date < filters.from)) return false;
   if (filters.to !== undefined && (date === undefined || date > filters.to)) return false;
   return true;

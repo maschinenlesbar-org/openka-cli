@@ -19,7 +19,7 @@ export interface CatalogEntry {
   parties: string[];
   submitted?: string;
   answered?: string;
-  /** Calendar year used by `--year`: the answer year, else the submission year. */
+  /** Calendar year used by `--year`: the year the Anfrage was asked. */
   year?: number;
   review_status: string;
   tier: string;

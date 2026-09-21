@@ -36,6 +36,59 @@ export function textOf(html: string): string {
 }
 
 /**
+ * Remove the regions a browser does not show (`class="d-none"`), then read the text.
+ *
+ * This is the difference between reading a result row and misreading it. The
+ * Parlamentsspiegel hides a "Neuestes Dokument: <date>" span inside every row; that
+ * date belongs to the newest document of the Vorgang — usually the *answer* — while
+ * the visible date is the question's. Taking the text of the whole row therefore
+ * dates a Kleine Anfrage by its answer, and any date window built on it excludes
+ * exactly the records it was meant to include.
+ */
+export function visibleTextOf(html: string): string {
+  return textOf(stripHidden(html));
+}
+
+/**
+ * Drop `d-none` elements, including their contents, without a DOM.
+ *
+ * Nesting has to be counted rather than matched with a lazy regex: the hidden block
+ * in a result row contains further spans, and stopping at the first `</span>` would
+ * leave the part that matters — the date — behind, which is exactly the defect this
+ * function exists to prevent.
+ */
+export function stripHidden(html: string): string {
+  const opener = /<(span|div|p)\b[^>]*\sclass="(?:[^"]*\s)?d-none(?:\s[^"]*)?"[^>]*>/i;
+  let out = html;
+  for (let guard = 0; guard < 100; guard++) {
+    const match = opener.exec(out);
+    if (match === null) break;
+    const tag = (match[1] as string).toLowerCase();
+    const end = endOfElement(out, match.index + match[0].length, tag);
+    out = out.slice(0, match.index) + " " + out.slice(end);
+  }
+  return out;
+}
+
+/**
+ * Index just past the `</tag>` that closes an element whose content starts at
+ * `from`, counting nested openings of the same tag. Returns the end of the string
+ * when the document does not close it.
+ */
+function endOfElement(html: string, from: number, tag: string): number {
+  const scanner = new RegExp(`<(/?)${tag}\\b[^>]*?(/?)>`, "gi");
+  scanner.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = scanner.exec(html)) !== null) {
+    if (match[2] === "/") continue; // self-closing
+    depth += match[1] === "/" ? -1 : 1;
+    if (depth === 0) return match.index + match[0].length;
+  }
+  return html.length;
+}
+
+/**
  * Slice out the top-level regions that begin with an opening tag carrying `cls`
  * and end at `terminator` (or the next region of the same class). Class matching
  * is on a whole word, so `ps-folge` does not match `ps-folge-dok`.

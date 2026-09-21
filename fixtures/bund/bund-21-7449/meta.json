@@ -2,7 +2,7 @@
   "extractor_version": "pkg:0.0.1",
   "human_verified": false,
   "id": "bund-21-7449",
-  "note": "Bundestag answer Drucksache: en-space-aligned numbers, answers with no heading",
+  "note": "Bundestag answer Drucksache: en-space-aligned numbers, answers with no heading, and a grouped answer for questions 1 and 2",
   "source": "bund",
   "tier": "text_layer"
 }
