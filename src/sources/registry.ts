@@ -11,6 +11,8 @@ import type { Source } from "./base.js";
 import { BerlinSource } from "./berlin.js";
 import { BundDipSource } from "./bund.js";
 import { NordrheinWestfalenSource } from "./nordrhein-westfalen.js";
+import { SaarlandSource } from "./saarland.js";
+import { SachsenSource } from "./sachsen.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export type SourceStatus = "implemented" | "via_aggregator" | "planned";
@@ -68,6 +70,22 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     factory: () => new NordrheinWestfalenSource(),
   },
   {
+    key: "saarland",
+    parliament: "saarland",
+    label: "Landtag des Saarlandes",
+    status: "implemented",
+    note: "aggregator discovery, with document URLs unwrapped from the Landtag's iframe page",
+    factory: () => new SaarlandSource(),
+  },
+  {
+    key: "sachsen",
+    parliament: "sachsen",
+    label: "Sächsischer Landtag (EDAS)",
+    status: "implemented",
+    note: "aggregator discovery, with documents resolved through the EDAS viewer's navigation frame",
+    factory: () => new SachsenSource(),
+  },
+  {
     key: "parlamentsspiegel",
     parliament: "nordrhein-westfalen",
     label: "Parlamentsspiegel (all 16 Länder)",
@@ -80,6 +98,8 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
       parliament.key !== "bund" &&
       parliament.key !== "berlin" &&
       parliament.key !== "nordrhein-westfalen" &&
+      parliament.key !== "saarland" &&
+      parliament.key !== "sachsen" &&
       parliament.herkunft !== undefined,
   ).map((parliament) => aggregatorEntry(parliament.key, parliament.label)),
 ];

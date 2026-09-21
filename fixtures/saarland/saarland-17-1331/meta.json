@@ -1,0 +1,8 @@
+{
+  "extractor_version": "pkg:0.0.1",
+  "human_verified": false,
+  "id": "saarland-17-1331",
+  "note": "Saarland: question and answer are two documents behind an iframe wrapper; the answers parse, the questions abstain because only one document is read",
+  "source": "saarland",
+  "tier": "text_layer"
+}

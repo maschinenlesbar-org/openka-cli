@@ -85,8 +85,10 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 | `berlin` | Abgeordnetenhaus von Berlin | structured XML | daily open-data export per Wahlperiode, in the `Parlamentsspiegel Export 1.0` format |
 | `bund` | Deutscher Bundestag | structured JSON API | DIP; needs `--api-key` / `DIP_API_KEY` |
 | `nordrhein-westfalen` | Landtag NRW | dedicated adapter | discovery via the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer |
+| `saarland` | Landtag des Saarlandes | dedicated adapter | unwraps the iframe page the aggregator links to |
+| `sachsen` | Sächsischer Landtag | dedicated adapter | resolves documents through the EDAS viewer's navigation frame |
 | `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
-| the other 14 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
+| the other 12 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
 
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.

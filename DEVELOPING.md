@@ -246,14 +246,35 @@ to mean four different things:
 |------|-------|-------|
 | BW, MV, Sachsen-Anhalt, SH | one Drucksache holding question *and* answer | read as `combined_pdf` |
 | Brandenburg, Hessen, NRW, RLP, Saarland | answer linked as a follow-up document | read as `answer_pdf` |
-| Sachsen | follow-up present, labelled `Antw` rather than `Antwort` | label accepted; documents are **scans**, so the `ocr` tier is what it needs |
+| Sachsen | follow-up labelled `Antw`; the link is a frameset viewer, not a file | resolved through the viewer's navigation frame |
+| Saarland | the link is an HTML page whose iframe holds the file | rewritten to the endpoint the wrapper names |
 | Bayern, Niedersachsen, Thüringen | the Vorgang exposes only the question | the answer is not reachable through the aggregator |
 
-Three of those were our own defects and are fixed: two Länder whose combined papers
-were mis-roled as questions, and one whose follow-up label we did not recognise.
-Bayern, Niedersachsen and Thüringen are not: the answer exists upstream but the
-Parlamentsspiegel does not render it in the result row, which is the concrete
-argument for giving those three a dedicated adapter.
+Most of those were our own defects and are fixed: two Länder whose combined papers
+were mis-roled as questions, one whose follow-up label we did not recognise, and two
+whose links pointed at a wrapper page rather than at a document.
+
+**Saarland and Sachsen were not scanned documents.** Both were classified that way
+because what we fetched and failed to read was HTML — a 452-byte iframe page from
+Saarland, a 1.7 kB frameset from Sachsen's EDAS viewer. Their real PDFs have clean
+text layers with no unmapped characters at all. The `ocr` tier was not what either
+needed, and no Land has yet been shown to need it.
+
+Bayern, Niedersachsen and Thüringen remain genuinely out of reach: the answer exists
+upstream but the Parlamentsspiegel does not render it in the result row.
+
+## A known gap: one document per record
+
+`pickPrimaryDocument` reads a single document — the answer where there is one. That
+is right for a combined paper and right where the answer reprints the questions, as
+the Bundestag's and NRW's do. It is wrong for Saarland, which publishes the question
+and the answer as two separate papers and does *not* reprint the questions in the
+answer: those records carry every answer and abstain on every question.
+
+Reading both documents — questions from the question paper, answers from the answer
+paper — is the fix, and it needs the tier to merge two segmentations rather than
+run one. `fixtures/saarland/saarland-17-1331` pins the current behaviour so the
+improvement will be visible when it lands.
 
 ## Adding a source
 

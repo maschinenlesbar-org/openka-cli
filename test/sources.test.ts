@@ -334,8 +334,12 @@ describe("source registry", () => {
   });
 
   it("marks the parliaments with no dedicated adapter honestly", () => {
-    strictEqual(sourceEntry("sachsen")?.status, "via_aggregator");
+    // Bayern, Niedersachsen and Thüringen have answers the Parlamentsspiegel does
+    // not render in its result rows, so the aggregator is all they have for now.
+    strictEqual(sourceEntry("bayern")?.status, "via_aggregator");
+    strictEqual(sourceEntry("thueringen")?.status, "via_aggregator");
     strictEqual(sourceEntry("berlin")?.status, "implemented");
+    strictEqual(sourceEntry("sachsen")?.status, "implemented");
   });
 
   it("builds a source for every registered key", () => {
