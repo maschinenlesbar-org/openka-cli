@@ -293,6 +293,59 @@ describe("numbered items that are not questions", () => {
   });
 });
 
+describe("the heading styles of the remaining Länder", () => {
+  it("reads Bayern's hierarchical numbering, which has no trailing dot", () => {
+    const text = [
+      "1.1 Wie hat sich die Zahl psychiatrischer Notfälle entwickelt?",
+      "Antwort:", "Sie ist gestiegen.",
+      "1.2 Welche Erkenntnisse hat die Staatsregierung?",
+      "Antwort:", "Keine.",
+      "2.1 Wie viele Übergriffe gab es?",
+      "Antwort:", "Vierzehn.",
+    ].join("\n");
+    deepStrictEqual(segmentQa(text).segments.map((segment) => segment.number), ["1.1", "1.2", "2.1"]);
+  });
+
+  it("does not read a date or a thousands-separated figure as a number", () => {
+    // Both of these appeared at the start of a line in real documents and were read
+    // as question numbers when the hierarchical form was first allowed.
+    const text = [
+      "1. Erste Frage?", "Antwort:", "Am",
+      "02.08.2024 wurde entschieden, es waren",
+      "1.154.000 Euro.",
+      "2. Zweite Frage?", "Antwort:", "Ja.",
+    ].join("\n");
+    deepStrictEqual(segmentQa(text).segments.map((segment) => segment.number), ["1", "2"]);
+  });
+
+  it("reads Sachsen-Anhalt's `Antwort auf Frage N:`", () => {
+    const text = [
+      "Frage 1:", "Wie viele Fälle gab es?",
+      "Antwort auf Frage 1:", "Vierzehn.",
+      "Frage 2:", "Und wie viele davon wurden bearbeitet?",
+      "Antwort auf Frage 2:", "Drei.",
+    ].join("\n");
+    const result = segmentQa(text);
+    strictEqual(result.rules, FRAGE_ANTWORT.key);
+    strictEqual(result.segments[0]?.answer, "Vierzehn.");
+    strictEqual(result.segments[1]?.answer, "Drei.");
+  });
+
+  it("reads Mecklenburg-Vorpommern's `Zu a)` sub-answers", () => {
+    const text = [
+      "1. In welcher Planungsregion ist das der Fall?",
+      "a) Welche zwingenden Gründe gibt es?",
+      "b) Welche Maßnahmen wurden ergriffen?",
+      "Zu a)", "Es gab keine.",
+      "Zu b)", "Auch keine.",
+    ].join("\n");
+    const result = segmentQa(text);
+    const byNumber = new Map(result.segments.map((segment) => [segment.number, segment.answer]));
+    strictEqual(byNumber.get("1a"), "Es gab keine.");
+    strictEqual(byNumber.get("1b"), "Auch keine.");
+  });
+});
+
 describe("grouped answers", () => {
   it("reads the numbers a government says it is answering together", () => {
     deepStrictEqual(

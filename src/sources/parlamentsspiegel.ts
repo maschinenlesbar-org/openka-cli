@@ -252,14 +252,16 @@ function parseFollowUps(tail: string): { url?: string; date?: string; ministry?:
     const region = regionWithClass(folge, "ps-dokument");
     if (region === undefined) continue;
     const summary = visibleTextOf(region);
-    if (!/\bAntwort\b/.test(summary)) continue;
+    // Sachsen abbreviates it: its follow-up row reads "Sachsen - Antw SMI 13.08.2025".
+    // Requiring the full word cost that Land every answer it publishes.
+    if (!/\bAntw(?:ort)?\b\.?/.test(summary)) continue;
     const out: { url?: string; date?: string; ministry?: string } = {};
     const url = firstHref(region);
     if (url !== undefined && /^https?:/i.test(url)) out.url = url;
     const date = findRowDate(summary);
     if (date !== undefined) out.date = date;
     // `Nordrhein-Westfalen - Antwort 5343. MKJFGFI - Drucksache 18/14035, …`
-    const ministry = /\bAntwort\s+\d*\.?\s*([^-]+?)\s+-\s+Drucksache/.exec(summary);
+    const ministry = /\bAntw(?:ort)?\.?\s+\d*\.?\s*([^-]+?)\s+-\s+Drucksache/.exec(summary);
     if (ministry !== null) {
       const name = (ministry[1] as string).trim();
       if (name !== "") out.ministry = name;

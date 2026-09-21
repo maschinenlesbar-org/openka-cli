@@ -35,6 +35,12 @@ export interface SegmentationRules {
    */
   subQuestion?: RegExp;
   /**
+   * Matches an answer heading that refers to a letter sub-item (`Zu a)`), resolved
+   * against the numbered question it sits under. Mecklenburg-Vorpommern asks
+   * `1.` then `a)`, `b)`, `c)` and answers `Zu a)`, `Zu b)`.
+   */
+  subAnswer?: RegExp;
+  /**
    * Matches an answer heading that carries no number (`Antwort:`), which answers
    * the question most recently seen. Schleswig-Holstein writes its answers this
    * way, under numbered questions.
@@ -86,6 +92,24 @@ const SEPARATOR = String.raw`(?:,|und|bis|sowie|-|–|—)`;
 const MONTH = String.raw`(?:Januar|Februar|M(?:ä|ae)rz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)`;
 const NUMBER_LIST = `(${NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${NUMBER})*)`;
 const SHORT_NUMBER_LIST = `(${SHORT_NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${SHORT_NUMBER})*)`;
+const SHORT_NUMBER_LIST_INNER = `${SHORT_NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${SHORT_NUMBER})*`;
+
+/**
+ * Hierarchical numbering — `1.1`, `2.3`, `10.2` — which Bayern uses and which
+ * carries no trailing dot or bracket. The dot inside the number is what
+ * distinguishes such a heading from a sentence that merely opens with a figure, so
+ * the trailing separator is optional only for this form; a bare "14 Personen sind
+ * betroffen" stays prose.
+ *
+ * Each level is one or two digits, and there are at most two of them. Anything
+ * looser matches the two things that actually appear at the start of a line in
+ * these documents: a date (`02.08.2024`) and a thousands-separated figure
+ * (`1.154.000`). Both were read as question numbers before this was tightened.
+ */
+const HIERARCHICAL_NUMBER = String.raw`[0-9]{1,3}(?:\.[0-9]{1,2}){1,2}(?![0-9.])`;
+
+/** A bare numbered item: `1.`, `2)`, or the hierarchical `1.1`. */
+const BARE_ITEM = `(${SHORT_NUMBER_LIST_INNER}[.)]|${HIERARCHICAL_NUMBER})`;
 
 /**
  * The heading style with an explicit `Frage N:` above each question. Its answer
@@ -98,7 +122,7 @@ export const FRAGE_ANTWORT: SegmentationRules = {
   description: "Frage N: / Antwort zu N: headings",
   question: new RegExp(`^[ \\t]*Frage[n]?[ \\t]+${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`, "i"),
   answer: new RegExp(
-    `^[ \\t]*Antwort(?:en)?[ \\t]*(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
+    `^[ \\t]*Antwort(?:en)?[ \\t]*(?:(?:zu|auf)[ \\t]+)?(?:Frage[n]?[ \\t]+)?${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
     "i",
   ),
 };
@@ -116,6 +140,7 @@ export const NUMMERIERT: SegmentationRules = {
   // Bundestag's cover page carries a bare "Antwort" on its own line, and treating
   // that as a heading would attach the whole document to question one.
   unnumberedAnswer: /^[ \t]*Antwort(?:[ \t]+der[ \t]+Landesregierung)?[ \t]*:[ \t]*/i,
+  subAnswer: /^[ \t]*(?:Antwort[ \t]+)?[Zz]u[ \t]+([a-z])[.)][ \t]*:?[ \t]*/,
   subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
   bareNumbering: true,
 };
@@ -130,7 +155,7 @@ export const NUMMERIERT: SegmentationRules = {
 export const ANTWORT_FOLGT: SegmentationRules = {
   key: "antwort_folgt",
   description: "numbered questions whose answer follows directly (Bundestag answer Drucksachen)",
-  question: new RegExp(`^[ \\t]*${SHORT_NUMBER_LIST}[.)][ \\t]+(?!${MONTH}\\b)(?=\\S)`),
+  question: new RegExp(`^[ \\t]*${BARE_ITEM}[ \\t]+(?!${MONTH}\\b)(?=\\S)`),
   subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
   bareNumbering: true,
   answerFollowsQuestion: true,
@@ -369,6 +394,18 @@ function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
         const numbers = [`${lastInteger}${(sub[1] as string).toLowerCase()}`];
         lastQuestion = numbers;
         markers.push({ kind: "question", numbers, line: index, inline: line.slice(sub[0].length).trim() });
+        return;
+      }
+    }
+    if (rules.subAnswer !== undefined && lastInteger !== undefined) {
+      const sub = rules.subAnswer.exec(line);
+      if (sub) {
+        markers.push({
+          kind: "answer",
+          numbers: [`${lastInteger}${(sub[1] as string).toLowerCase()}`],
+          line: index,
+          inline: line.slice(sub[0].length).trim(),
+        });
         return;
       }
     }

@@ -112,8 +112,10 @@ bytes of every record produced through this tier, and is an extractor-version bu
 `src/core/extract/segment.ts` holds the rules that turn text into question/answer
 pairs. Three families, and a Land can use more than one heading style within a family. The
 first two are both present in Berlin's own corpus; the third is how the Bundestag
-prints its answer Drucksachen. Schleswig-Holstein uses the numbered family with a
-bare `Antwort:` heading, which carries no number and answers the question above it.
+prints its answer Drucksachen. Several Länder use the numbered family with their own
+answer heading: Schleswig-Holstein writes a bare `Antwort:`, Sachsen-Anhalt writes
+`Antwort auf Frage N:`, and Mecklenburg-Vorpommern answers letter sub-items with
+`Zu a)`. Bayern numbers its questions hierarchically (`1.1`, `2.3`).
 
 ```
 frage_antwort                 nummeriert                    antwort_folgt
@@ -148,6 +150,9 @@ The consistency checks are where the "abstain, never guess" rule becomes code:
 - a bare numbered item may not jump more than `MAX_NUMBER_SKIP` ahead of the list:
   "101. Arbeits- und Sozialministerkonferenz", wrapped from the sentence above it in
   a Schleswig-Holstein answer, is prose, not question 101;
+- a hierarchical number (`1.1`, Bayern's style) needs no trailing dot, but each of
+  its levels is one or two digits: looser, and a date (`02.08.2024`) or a
+  thousands-separated figure (`1.154.000`) at the start of a line becomes a question;
 - a list of `LARGE_QUESTION_LIST` or more items must have `MIN_ANSWER_RATE_LARGE` of
   them answered. Numbered tables are the hazard here: one SH answer asks six
   questions and then lists 160-odd numbered rows of schools and swimming pools, and
@@ -230,6 +235,25 @@ document is given decides which one the extractor reads.
 follows from it: for a combined paper the one printed date is when the combined
 paper appeared, so it is the *answer's* date, and the question's own date is simply
 not in the row. Leaving `submitted` unset is the honest reading.
+
+### Why each Land gets its answers, or does not
+
+The sixteen were classified one by one against the aggregator's markup and their
+own documents. The result is worth keeping, because "no answers found" turned out
+to mean four different things:
+
+| Land | shape | state |
+|------|-------|-------|
+| BW, MV, Sachsen-Anhalt, SH | one Drucksache holding question *and* answer | read as `combined_pdf` |
+| Brandenburg, Hessen, NRW, RLP, Saarland | answer linked as a follow-up document | read as `answer_pdf` |
+| Sachsen | follow-up present, labelled `Antw` rather than `Antwort` | label accepted; documents are **scans**, so the `ocr` tier is what it needs |
+| Bayern, Niedersachsen, Thüringen | the Vorgang exposes only the question | the answer is not reachable through the aggregator |
+
+Three of those were our own defects and are fixed: two Länder whose combined papers
+were mis-roled as questions, and one whose follow-up label we did not recognise.
+Bayern, Niedersachsen and Thüringen are not: the answer exists upstream but the
+Parlamentsspiegel does not render it in the result row, which is the concrete
+argument for giving those three a dedicated adapter.
 
 ## Adding a source
 
