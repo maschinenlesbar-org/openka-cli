@@ -86,15 +86,15 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 | `bund` | Deutscher Bundestag | structured JSON API | DIP; needs `--api-key` / `DIP_API_KEY` |
 | `nordrhein-westfalen` | Landtag NRW | dedicated adapter | discovery via the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer |
 | `saarland` | Landtag des Saarlandes | dedicated adapter | unwraps the iframe page the aggregator links to |
-| `sachsen` | Sächsischer Landtag | dedicated adapter | resolves documents through the EDAS viewer's navigation frame |
+| `sachsen` | Sächsischer Landtag | dedicated adapter | walks every document position of the EDAS viewer |
 | `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
 | the other 12 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
 
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.
 
-Coverage is honest, not complete. Across 88 records from five sources, 61 extract
-completely and 77 yield at least one question/answer pair; the rest abstain and land
+Coverage is honest, not complete. Across 88 records from six sources, 64 extract
+completely and 81 yield at least one question/answer pair; the rest abstain and land
 in `ka review` rather than in the corpus as half-read records. A record's documents
 are all read, not just one — a Land that publishes the question and the answer as
 separate papers would otherwise yield every answer and no question.

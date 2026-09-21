@@ -37,6 +37,32 @@ export function sachsenNavigationUrl(viewerUrl: string): string | undefined {
   return `https://${EDAS_HOST}/viewer/viewer_navigation.aspx${url.search}`;
 }
 
+/**
+ * The document positions a Vorgang holds, read from the navigation frame's buttons
+ * (`anzeigeButton_3284_0_Drs_8_no`, `anzeigeButton_3284_1_Drs_8_no`). EDAS answers
+ * an unrefined query with "Mehrere Dokumente gefunden, bitte verfeinern" and shows
+ * only the first; these ids are how it enumerates the rest.
+ */
+export function sachsenPositions(html: string): number[] {
+  const positions = new Set<number>();
+  const pattern = /anzeigeButton_\d+_(\d+)_[A-Za-z]+_\d+_no/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) !== null) positions.add(Number(match[1]));
+  return [...positions].sort((a, b) => a - b);
+}
+
+/**
+ * Refine the navigation URL to one document position. The parameter names are the
+ * ones EDAS's own `DokumentAnzeige.js` uses when it opens a document:
+ * `viewer.aspx?dok_nr=…&dok_art=…&leg_per=…&pos_dok=<position>&dok_id=<id>`.
+ */
+export function sachsenPositionUrl(navigationUrl: string, position: number): string {
+  const url = new URL(navigationUrl);
+  url.searchParams.set("pos_dok", String(position));
+  url.searchParams.set("dok_id", "0");
+  return url.toString();
+}
+
 /** Pull the document link out of the navigation frame's markup. */
 export function sachsenPdfUrlFrom(html: string): string | undefined {
   // The link is embedded inside a JavaScript call with HTML-escaped quotes.
@@ -63,21 +89,27 @@ export class SachsenSource implements Source {
     const discovered = await this.aggregator.discover(options);
     const warnings = [...discovered.warnings];
     const refs: DocRef[] = [];
+    const cache = new Map<string, string[]>();
 
     for (const ref of discovered.refs) {
-      const documents: DocRefDocument[] = [];
-      const resolved = new Map<string, string | undefined>();
-
-      for (const document of ref.documents) {
-        if (!resolved.has(document.url)) {
-          resolved.set(document.url, await this.resolve(document.url, options, warnings));
-        }
-        const direct = resolved.get(document.url);
-        documents.push(
-          direct === undefined ? document : { ...document, url: direct, urlStable: true },
-        );
+      const viewer = ref.documents[0]?.url;
+      if (viewer === undefined) {
+        refs.push(ref);
+        continue;
       }
+      if (!cache.has(viewer)) cache.set(viewer, await this.resolveAll(viewer, options, warnings));
+      const urls = cache.get(viewer) as string[];
 
+      if (urls.length === 0) {
+        refs.push(ref);
+        continue;
+      }
+      // EDAS lists the Kleine Anfrage first and the reply after it.
+      const documents: DocRefDocument[] = urls.map((url, index) => ({
+        role: index === 0 ? ("question_pdf" as const) : ("answer_pdf" as const),
+        url,
+        urlStable: true,
+      }));
       refs.push({ ...ref, documents: mergeDuplicates(documents) });
     }
 
@@ -87,27 +119,63 @@ export class SachsenSource implements Source {
     return result;
   }
 
-  private async resolve(
+  /**
+   * Resolve one viewer link to every document behind it.
+   *
+   * The first position is the Kleine Anfrage and the later ones are the
+   * government's reply, in the order EDAS lists them. Each position costs one
+   * request, which is the price of reading the links the Landtag publishes instead
+   * of assembling file names: the obvious guess — substituting the position into
+   * `8_Drs_3284_0_1_1_.pdf` — happens to be right here, but nothing documents the
+   * other two slots, and a wrong guess is a 404 that looks like a missing document.
+   */
+  private async resolveAll(
     viewerUrl: string,
     options: DiscoverOptions,
     warnings: string[],
-  ): Promise<string | undefined> {
+  ): Promise<string[]> {
     const navigation = sachsenNavigationUrl(viewerUrl);
-    if (navigation === undefined) return undefined;
+    if (navigation === undefined) return [];
+    let first: string;
+    let positions: number[];
     try {
       const response = await options.engine.get(navigation, { headers: { accept: "text/html" } });
-      const direct = sachsenPdfUrlFrom(response.body.toString("latin1"));
+      const html = response.body.toString("latin1");
+      positions = sachsenPositions(html);
+      const direct = sachsenPdfUrlFrom(html);
       if (direct === undefined) {
         warnings.push(`${viewerUrl}: the EDAS viewer page named no document; kept as discovered`);
+        return [];
       }
-      return direct;
+      first = direct;
     } catch (err) {
       const reason = err instanceof OpenKaApiError ? `HTTP ${err.status}` : (err as Error).message;
       warnings.push(`${viewerUrl}: could not read the EDAS viewer page (${reason})`);
-      return undefined;
+      return [];
     }
+
+    const urls = [first];
+    for (const position of positions.slice(1)) {
+      if (urls.length >= MAX_POSITIONS) {
+        warnings.push(`${viewerUrl}: stopped after ${MAX_POSITIONS} document positions`);
+        break;
+      }
+      try {
+        const response = await options.engine.get(sachsenPositionUrl(navigation, position), {
+          headers: { accept: "text/html" },
+        });
+        const direct = sachsenPdfUrlFrom(response.body.toString("latin1"));
+        if (direct !== undefined && !urls.includes(direct)) urls.push(direct);
+      } catch {
+        warnings.push(`${viewerUrl}: could not read document position ${position}`);
+      }
+    }
+    return urls;
   }
 }
+
+/** A Vorgang with more positions than this is not a Kleine Anfrage with an answer. */
+const MAX_POSITIONS = 6;
 
 /**
  * Sachsen's Vorgang lists the question and the answer under one viewer link, so

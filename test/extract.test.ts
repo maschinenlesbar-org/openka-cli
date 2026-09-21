@@ -293,6 +293,27 @@ describe("numbered items that are not questions", () => {
   });
 });
 
+describe("`Frage N:` questions whose answer follows directly", () => {
+  it("reads a ministry letter that restates each question and answers beneath it", () => {
+    const text = [
+      "Frage 1: Wie schlüsseln sich die Eigentumsverhältnisse auf?",
+      "Der Freistaat hält 77 Prozent.",
+      "Frage 2: Welche Gespräche finden statt?",
+      "Laufende Gespräche mit den Gesellschaftern.",
+    ].join("\n");
+    const result = segmentQa(text);
+    strictEqual(result.rules, "frage_antwort_folgt");
+    strictEqual(result.segments[0]?.answer, "Der Freistaat hält 77 Prozent.");
+    strictEqual(result.segments[1]?.answer, "Laufende Gespräche mit den Gesellschaftern.");
+  });
+
+  it("stands aside when the document does mark its answers", () => {
+    // `frage_antwort` can read this one, and reading a heading beats inferring one.
+    const marked = "Frage 1: Eine Frage?\nAntwort zu 1:\nEine Antwort.";
+    strictEqual(segmentQa(marked).rules, FRAGE_ANTWORT.key);
+  });
+});
+
 describe("the heading styles of the remaining Länder", () => {
   it("reads Bayern's hierarchical numbering, which has no trailing dot", () => {
     const text = [

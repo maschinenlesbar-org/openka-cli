@@ -9,7 +9,14 @@
 import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SaarlandSource, saarlandDocumentUrl } from "../src/sources/saarland.js";
-import { SachsenSource, mergeDuplicates, sachsenNavigationUrl, sachsenPdfUrlFrom } from "../src/sources/sachsen.js";
+import {
+  SachsenSource,
+  mergeDuplicates,
+  sachsenNavigationUrl,
+  sachsenPdfUrlFrom,
+  sachsenPositionUrl,
+  sachsenPositions,
+} from "../src/sources/sachsen.js";
 import { sourceEntry } from "../src/sources/registry.js";
 import type { DocRefDocument } from "../src/sources/base.js";
 import { readFixtureText, scriptedTransport, testEngine } from "./helpers.js";
@@ -73,6 +80,39 @@ describe("Sachsen document resolution", () => {
 
   it("reports rather than invents when the page names no document", () => {
     strictEqual(sachsenPdfUrlFrom("<html><body>nichts</body></html>"), undefined);
+  });
+
+  it("enumerates the document positions the viewer lists", () => {
+    // EDAS answers an unrefined query with "Mehrere Dokumente gefunden, bitte
+    // verfeinern" and shows only the first; the buttons are how it names the rest.
+    deepStrictEqual(sachsenPositions(NAV), [0, 1]);
+    deepStrictEqual(sachsenPositions("<html>no buttons</html>"), []);
+  });
+
+  it("refines the navigation URL to one position", () => {
+    const refined = sachsenPositionUrl(
+      "https://edas.landtag.sachsen.de/viewer/viewer_navigation.aspx?dok_art=Drs&dok_nr=3284&leg_per=8",
+      1,
+    );
+    match(refined, /pos_dok=1/);
+    match(refined, /dok_id=0/);
+    match(refined, /dok_nr=3284/);
+  });
+
+  it("resolves both positions and gives them their roles", async () => {
+    const { transport } = scriptedTransport([
+      { match: "/suche", body: readFixtureText("payloads", "parlamentsspiegel-sachsen.html") },
+      { match: "pos_dok=1", body: readFixtureText("payloads", "edas-viewer-navigation-pos1.html") },
+      { match: "viewer_navigation.aspx", body: NAV },
+    ]);
+    const result = await new SachsenSource().discover({
+      engine: testEngine(transport),
+      state: { source: "sachsen", http_cache: {} },
+    });
+    const ref = result.refs[0];
+    deepStrictEqual(ref?.documents.map((document) => document.role), ["question_pdf", "answer_pdf"]);
+    match(ref?.documents[0]?.url ?? "", /_0_1_1_\.pdf$/);
+    match(ref?.documents[1]?.url ?? "", /_1_1_1_\.pdf$/);
   });
 
   it("resolves discovered documents to the static file", async () => {

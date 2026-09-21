@@ -162,8 +162,29 @@ export const ANTWORT_FOLGT: SegmentationRules = {
   onlyWhenUnmarked: true,
 };
 
+/**
+ * `Frage N:` headings whose answer follows directly, with no answer heading of its
+ * own. Sachsen's ministries write their replies this way: the letter restates each
+ * question under a `Frage N:` heading and answers it in the paragraphs beneath.
+ *
+ * Like `antwort_folgt`, it infers the boundary rather than reading one, so it only
+ * applies when the document marks no answers anywhere.
+ */
+export const FRAGE_ANTWORT_FOLGT: SegmentationRules = {
+  key: "frage_antwort_folgt",
+  description: "`Frage N:` questions whose answer follows directly",
+  question: new RegExp(`^[ \\t]*Frage[n]?[ \\t]+${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`, "i"),
+  answerFollowsQuestion: true,
+  onlyWhenUnmarked: true,
+};
+
 /** Rule sets are tried in this fixed order, so the choice is reproducible. */
-export const RULE_SETS: readonly SegmentationRules[] = [FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT];
+export const RULE_SETS: readonly SegmentationRules[] = [
+  FRAGE_ANTWORT,
+  NUMMERIERT,
+  ANTWORT_FOLGT,
+  FRAGE_ANTWORT_FOLGT,
+];
 
 /**
  * A government answering several questions at once, in the sentence every German

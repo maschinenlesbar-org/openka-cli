@@ -112,8 +112,9 @@ bytes of every record produced through this tier, and is an extractor-version bu
 `src/core/extract/segment.ts` holds the rules that turn text into question/answer
 pairs. Three families, and a Land can use more than one heading style within a family. The
 first two are both present in Berlin's own corpus; the third is how the Bundestag
-prints its answer Drucksachen. Several Länder use the numbered family with their own
-answer heading: Schleswig-Holstein writes a bare `Antwort:`, Sachsen-Anhalt writes
+prints its answer Drucksachen; a fourth reads `Frage N:` questions whose answer
+follows directly, which is how Sachsen's ministries write their replies. Several
+Länder use the numbered family with their own answer heading: Schleswig-Holstein writes a bare `Antwort:`, Sachsen-Anhalt writes
 `Antwort auf Frage N:`, and Mecklenburg-Vorpommern answers letter sub-items with
 `Zu a)`. Bayern numbers its questions hierarchically (`1.1`, `2.3`).
 
@@ -246,7 +247,7 @@ to mean four different things:
 |------|-------|-------|
 | BW, MV, Sachsen-Anhalt, SH | one Drucksache holding question *and* answer | read as `combined_pdf` |
 | Brandenburg, Hessen, NRW, RLP, Saarland | answer linked as a follow-up document | read as `answer_pdf` |
-| Sachsen | follow-up labelled `Antw`; the link is a frameset viewer, not a file | resolved through the viewer's navigation frame |
+| Sachsen | the link is a frameset viewer holding several documents | each position resolved through the viewer's navigation frame |
 | Saarland | the link is an HTML page whose iframe holds the file | rewritten to the endpoint the wrapper names |
 | Bayern, Niedersachsen, Thüringen | the Vorgang exposes only the question | the answer is not reachable through the aggregator |
 
