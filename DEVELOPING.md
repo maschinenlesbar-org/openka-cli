@@ -110,8 +110,10 @@ bytes of every record produced through this tier, and is an extractor-version bu
 ## The segmentation rules
 
 `src/core/extract/segment.ts` holds the rules that turn text into question/answer
-pairs. Three families. The first two are both present in Berlin's own corpus; the third is
-how the Bundestag prints its answer Drucksachen.
+pairs. Three families, and a Land can use more than one heading style within a family. The
+first two are both present in Berlin's own corpus; the third is how the Bundestag
+prints its answer Drucksachen. Schleswig-Holstein uses the numbered family with a
+bare `Antwort:` heading, which carries no number and answers the question above it.
 
 ```
 frage_antwort                 nummeriert                    antwort_folgt
@@ -143,6 +145,13 @@ The consistency checks are where the "abstain, never guess" rule becomes code:
   tolerates an asker who skipped a number, and refuses eleven "questions" spread
   over the range 1..115;
 - a bare numbered item may not be a date (`12. November 2021 …` is a sentence);
+- a bare numbered item may not jump more than `MAX_NUMBER_SKIP` ahead of the list:
+  "101. Arbeits- und Sozialministerkonferenz", wrapped from the sentence above it in
+  a Schleswig-Holstein answer, is prose, not question 101;
+- a list of `LARGE_QUESTION_LIST` or more items must have `MIN_ANSWER_RATE_LARGE` of
+  them answered. Numbered tables are the hazard here: one SH answer asks six
+  questions and then lists 160-odd numbered rows of schools and swimming pools, and
+  every check but this one is satisfied by them;
 - at least one answer must have been found, and an *inferred* split must have
   worked for most of the questions.
 
@@ -157,10 +166,11 @@ already showed us** — a grouped sentence naming a question that has no heading
 anywhere is a misread of the sentence, not the discovery of a question.
 
 **Measured coverage.** On a 60-document Berlin window (2021-11 to 2021-12):
-46 parse-complete, 56 with at least one Q/A pair, 4 abstaining on `qa` entirely —
+47 parse-complete, 57 with at least one Q/A pair, 2 abstaining on `qa` entirely —
 documents dominated by tables, which land in `ka review` rather than in the corpus
 as half-read records. On an 8-document NRW window (2025-03 to 2025-04): 6
-parse-complete, 7 with Q/A pairs.
+parse-complete, 7 with Q/A pairs. On a 6-document Schleswig-Holstein window
+(2025-01 to 2025-06): 2 parse-complete, 4 with Q/A pairs, up from none at all.
 
 ## Nordrhein-Westfalen, and what discovery is allowed to do
 
@@ -201,6 +211,25 @@ silently costing whole Länder:
 Before the fixes, four Länder discovered nothing at all. After them, 14 of 15 do —
 Bremen genuinely has no Kleine Anfragen in the Parlamentsspiegel for the windows
 tried, and Thüringen's rows carry no Drucksachennummer, which is still open.
+
+## Document roles, and why they are read rather than assumed
+
+A Vorgang's documents are not always what their position suggests, and the role a
+document is given decides which one the extractor reads.
+
+- **Nordrhein-Westfalen** lists the question and links the answer as a follow-up:
+  `question_pdf` + `answer_pdf`.
+- **Schleswig-Holstein** files the Vorgang under "Antwort" and publishes the Kleine
+  Anfrage *and* the reply as a single Drucksache. Its Fundstelle says so — "Kleine
+  Anfrage Birte Pauls (SPD) und Antwort MSJFSIG" — so the row is read, not assumed,
+  and the document is a `combined_pdf`. **Baden-Württemberg** is the same shape,
+  which is why it scores well while having no separate answer document at all.
+- **Brandenburg**'s follow-up row is the answer alone: `answer_pdf`.
+
+`documentRole()` makes that decision from the row and the Fundstelle. The date
+follows from it: for a combined paper the one printed date is when the combined
+paper appeared, so it is the *answer's* date, and the question's own date is simply
+not in the row. Leaving `submitted` unset is the honest reading.
 
 ## Adding a source
 

@@ -91,11 +91,12 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.
 
-Coverage is honest, not complete. On a 60-document Berlin window, 46 records extract
-completely, 56 yield at least one question/answer pair, and 4 abstain on `qa`
+Coverage is honest, not complete. On a 60-document Berlin window, 47 records extract
+completely, 57 yield at least one question/answer pair, and 2 abstain on `qa`
 entirely — those are documents dominated by tables, and they land in `ka review`
 rather than in the corpus as half-read records. On an 8-document NRW window, 6 of 8
-extract completely.
+extract completely; on a 6-document Schleswig-Holstein window, 4 of 6 yield Q/A
+pairs, up from none.
 
 A record is dated by **when the Anfrage was asked**, not when it was answered — so
 `--since`/`--until`, `--year` and `--from`/`--to` all mean the question's date.

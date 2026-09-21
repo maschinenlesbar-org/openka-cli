@@ -35,6 +35,19 @@ export interface SegmentationRules {
    */
   subQuestion?: RegExp;
   /**
+   * Matches an answer heading that carries no number (`Antwort:`), which answers
+   * the question most recently seen. Schleswig-Holstein writes its answers this
+   * way, under numbered questions.
+   */
+  unnumberedAnswer?: RegExp;
+  /**
+   * True when this family's question headings are bare numbers (`1.`) rather than
+   * a keyword. Those need the sentence-continuation guard: a line beginning "101.
+   * Arbeits- und Sozialministerkonferenz" in the middle of a sentence is prose, not
+   * question 101, and reading it as one makes the whole document look misnumbered.
+   */
+  bareNumbering?: boolean;
+  /**
    * This family has no answer heading at all: the answer simply follows the
    * question. The split is made at the last line of the block that ends in a
    * question mark — see `splitAtQuestionMark`.
@@ -99,7 +112,12 @@ export const NUMMERIERT: SegmentationRules = {
     `^[ \\t]*(?:Antwort(?:en)?[ \\t]+(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
     "i",
   ),
+  // A bare "Antwort:" answers the question above it. The colon is required: the
+  // Bundestag's cover page carries a bare "Antwort" on its own line, and treating
+  // that as a heading would attach the whole document to question one.
+  unnumberedAnswer: /^[ \t]*Antwort(?:[ \t]+der[ \t]+Landesregierung)?[ \t]*:[ \t]*/i,
   subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
+  bareNumbering: true,
 };
 
 /**
@@ -114,6 +132,7 @@ export const ANTWORT_FOLGT: SegmentationRules = {
   description: "numbered questions whose answer follows directly (Bundestag answer Drucksachen)",
   question: new RegExp(`^[ \\t]*${SHORT_NUMBER_LIST}[.)][ \\t]+(?!${MONTH}\\b)(?=\\S)`),
   subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
+  bareNumbering: true,
   answerFollowsQuestion: true,
   onlyWhenUnmarked: true,
 };
@@ -207,6 +226,21 @@ export const MIN_NUMBER_DENSITY = 0.66;
  */
 export const MIN_INFERRED_ANSWER_RATE = 0.6;
 
+/** A question list this long is checked against `MIN_ANSWER_RATE_LARGE`. */
+export const LARGE_QUESTION_LIST = 20;
+
+/**
+ * How many of a long question list must have an answer before the reading is
+ * believed.
+ *
+ * Numbered tables are the hazard. A Schleswig-Holstein answer about swimming
+ * lessons asks six questions and then lists 160-odd numbered rows of schools and
+ * pools; every one of those rows matches a numbered-item pattern, the numbering is
+ * perfectly dense, and one answer is enough to satisfy every other check. What
+ * gives it away is that almost none of the "questions" have an answer.
+ */
+export const MIN_ANSWER_RATE_LARGE = 0.5;
+
 export interface QaSegment {
   number: string;
   question?: string;
@@ -281,10 +315,27 @@ interface Marker {
   inline: string;
 }
 
+/**
+ * How far a bare numbered item may jump ahead of the highest question number seen
+ * before it is treated as prose rather than as the next question.
+ *
+ * Question lists advance by one. They do occasionally skip — a Berlin answer heads
+ * a section "Zu 2. und 5. (siehe Ihre Nummerierung)" because the asker's own
+ * numbering skipped — so a small gap is allowed. A large one is not a question at
+ * all: a Schleswig-Holstein answer contains the line "101. Arbeits- und
+ * Sozialministerkonferenz", wrapped from the sentence above it, and reading that as
+ * question 101 makes a four-question document look like a misnumbered hundred-question one.
+ */
+export const MAX_NUMBER_SKIP = 5;
+
 function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
   const markers: Marker[] = [];
   /** The last plain integer seen, so `a.` can be resolved to `3a`. */
   let lastInteger: string | undefined;
+  /** The numbers of the most recent question heading, for an unnumbered answer. */
+  let lastQuestion: string[] | undefined;
+  /** Highest question number accepted so far, for the skip guard. */
+  let highest = 0;
 
   lines.forEach((line, index) => {
     const answer = rules.answer?.exec(line);
@@ -301,18 +352,36 @@ function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
     if (question?.[1] !== undefined) {
       const numbers = expandNumbers(question[1]);
       const plain = numbers.find((number) => /^[0-9]+$/.test(number));
-      if (plain !== undefined) lastInteger = plain;
-      markers.push({ kind: "question", numbers, line: index, inline: line.slice(question[0].length).trim() });
-      return;
+      const value = plain === undefined ? undefined : Number.parseInt(plain, 10);
+      const jumpsTooFar =
+        rules.bareNumbering === true && value !== undefined && value > highest + MAX_NUMBER_SKIP;
+      if (!jumpsTooFar) {
+        if (plain !== undefined) lastInteger = plain;
+        if (value !== undefined && value > highest) highest = value;
+        lastQuestion = numbers;
+        markers.push({ kind: "question", numbers, line: index, inline: line.slice(question[0].length).trim() });
+        return;
+      }
     }
     if (rules.subQuestion !== undefined && lastInteger !== undefined) {
       const sub = rules.subQuestion.exec(line);
       if (sub) {
+        const numbers = [`${lastInteger}${(sub[1] as string).toLowerCase()}`];
+        lastQuestion = numbers;
+        markers.push({ kind: "question", numbers, line: index, inline: line.slice(sub[0].length).trim() });
+        return;
+      }
+    }
+    // An answer heading with no number belongs to the question above it. Before any
+    // question there is nothing for it to answer, so it is ignored.
+    if (rules.unnumberedAnswer !== undefined && lastQuestion !== undefined) {
+      const bare = rules.unnumberedAnswer.exec(line);
+      if (bare) {
         markers.push({
-          kind: "question",
-          numbers: [`${lastInteger}${(sub[1] as string).toLowerCase()}`],
+          kind: "answer",
+          numbers: [...lastQuestion],
           line: index,
-          inline: line.slice(sub[0].length).trim(),
+          inline: line.slice(bare[0].length).trim(),
         });
       }
     }
@@ -437,6 +506,12 @@ function consistencyProblem(segments: QaSegment[], key: string, inferredAnswers 
 
   const withAnswer = segments.filter((segment) => segment.answer !== undefined).length;
   if (withAnswer === 0) return `${key}: no answers found for ${segments.length} question(s)`;
+  if (segments.length >= LARGE_QUESTION_LIST && withAnswer < segments.length * MIN_ANSWER_RATE_LARGE) {
+    return (
+      `${key}: ${segments.length} numbered items but only ${withAnswer} of them are answered — ` +
+      "this reads as a numbered table, not a question list"
+    );
+  }
   if (inferredAnswers && withAnswer < segments.length * MIN_INFERRED_ANSWER_RATE) {
     return (
       `${key}: only ${withAnswer} of ${segments.length} questions are followed by an answer, ` +

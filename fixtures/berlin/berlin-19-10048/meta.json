@@ -2,7 +2,7 @@
   "extractor_version": "pkg:0.0.1",
   "human_verified": false,
   "id": "berlin-19-10048",
-  "note": "heavy tables: no rule set reaches its consistency checks, so qa abstains entirely",
+  "note": "numbered questions with Zu N. answers, recovered once the numbered-table guard stopped the rule set overreaching",
   "source": "berlin",
   "tier": "text_layer"
 }

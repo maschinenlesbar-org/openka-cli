@@ -9,7 +9,7 @@ import { blocksWithClass, decodeHtml, firstHref, regionWithClass, spanTexts, tex
 import { pardokVorgangToRef, parsePardokExport } from "../src/sources/pardok.js";
 import { BerlinSource, berlinFeedUrl, BERLIN_LATEST_PERIOD } from "../src/sources/berlin.js";
 import { BundDipSource, askersOf, parseDipAuthor, toRef } from "../src/sources/bund.js";
-import { ParlamentsspiegelSource, parseVorgangBlock, toGermanDate } from "../src/sources/parlamentsspiegel.js";
+import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate } from "../src/sources/parlamentsspiegel.js";
 import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeys } from "../src/sources/registry.js";
 import { applyWindow } from "../src/sources/base.js";
 import { PARLIAMENTS } from "../src/core/models/parliaments.js";
@@ -264,6 +264,46 @@ describe("Parlamentsspiegel source", () => {
       limit: 1,
     });
     match(requests[0]?.url ?? "", /qyHerk=HH/);
+  });
+});
+
+describe("document roles in a result row", () => {
+  it("reads a combined paper from the Fundstelle", () => {
+    // Schleswig-Holstein files the Vorgang under "Antwort" but publishes the Kleine
+    // Anfrage and the reply as one Drucksache; the Fundstelle is what says so.
+    strictEqual(
+      documentRole(
+        "Drucksache 20/3331 : Schleswig-Holstein - Antwort; Abgeordnete/r: SPD, Landesregierung; 26.06.2025",
+        "Schleswig-Holstein - Kleine Anfrage Birte Pauls (SPD) und Antwort MSJFSIG 26.06.2025 Drucksache 20/3331",
+      ),
+      "combined_pdf",
+    );
+  });
+
+  it("reads a question row as a question", () => {
+    strictEqual(
+      documentRole("Nordrhein-Westfalen - Kleine Anfrage; Abgeordnete/r: FDP; 17.09.2026", "… Kleine Anfrage 8783 …"),
+      "question_pdf",
+    );
+  });
+
+  it("reads an answer-only row as an answer", () => {
+    strictEqual(documentRole("Brandenburg - Antwort (Ministerium des Innern) 18.07.2025", "Brandenburg - Antwort …"), "answer_pdf");
+  });
+
+  it("parses Schleswig-Holstein rows as combined documents dated by the answer", () => {
+    const html = readFixtureText("payloads", "parlamentsspiegel-sh.html");
+    const blocks = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/);
+    ok(blocks.length >= 1);
+    for (const block of blocks) {
+      const ref = parseVorgangBlock(block, []);
+      strictEqual(ref?.parliament, "schleswig-holstein");
+      deepStrictEqual(ref?.documents.map((document) => document.role), ["combined_pdf"]);
+      // The one printed date is when the combined paper appeared. The question's own
+      // date is not in the row, and a guessed one would be worse than none.
+      ok(ref?.dates.answered !== undefined);
+      strictEqual(ref?.dates.submitted, undefined);
+    }
   });
 });
 

@@ -231,7 +231,7 @@ describe("ka verify", () => {
     ok(golden !== undefined);
     for (const document of golden.record.source_documents) {
       if (document.sha256 === undefined) continue;
-      store.putBlob(readFixture("berlin", golden.meta.id, `${document.sha256}.bin`));
+      store.putBlob(readFixture(golden.meta.source, golden.meta.id, `${document.sha256}.bin`));
     }
     store.putRecord({ ...golden.record, extraction: { ...golden.record.extraction, review_status: "human_verified" } });
     const result = await verifyRecord(golden.meta.id, { store, env: {} });

@@ -220,6 +220,79 @@ describe("the Bundestag heading family", () => {
   });
 });
 
+describe("Schleswig-Holstein's heading style", () => {
+  const SH_STYLE = [
+    "Kleine Anfrage",
+    "der Abgeordneten Birte Pauls (SPD)",
+    "und Antwort",
+    "der Landesregierung",
+    "1. Welche Maßnahmen werden aktuell vorbereitet?",
+    "Antwort:",
+    "Die Landesregierung setzt sich auf Bundesebene ein.",
+    "2. Welche neuen Initiativen gibt es?",
+    "Antwort:",
+    "Siehe Antwort zu Frage 1.",
+  ].join("\n");
+
+  it("attaches a bare `Antwort:` to the question above it", () => {
+    const result = segmentQa(SH_STYLE);
+    strictEqual(result.rules, NUMMERIERT.key);
+    strictEqual(result.segments.length, 2);
+    strictEqual(result.segments[0]?.answer, "Die Landesregierung setzt sich auf Bundesebene ein.");
+    strictEqual(result.segments[1]?.answer, "Siehe Antwort zu Frage 1.");
+  });
+
+  it("ignores a bare `Antwort` with no colon, which is a cover-page word", () => {
+    // The Bundestag's cover page carries "Antwort" on its own line above "der
+    // Bundesregierung"; treating that as a heading would swallow the document.
+    const withCover = "Antwort\nder Bundesregierung\n1. Eine Frage?\nAntwort:\nEine Antwort.";
+    const result = segmentQa(withCover);
+    strictEqual(result.segments.length, 1);
+    strictEqual(result.segments[0]?.answer, "Eine Antwort.");
+  });
+
+  it("ignores an unnumbered answer that appears before any question", () => {
+    strictEqual(segmentQa("Antwort:\nIrgendwas.").rules, undefined);
+  });
+});
+
+describe("numbered items that are not questions", () => {
+  it("refuses a number that jumps far ahead of the list", () => {
+    // "101. Arbeits- und Sozialministerkonferenz" wrapped from the sentence above
+    // is prose, not question 101.
+    const text = [
+      "1. Erste Frage?", "Antwort:", "Eins.",
+      "2. Zweite Frage?", "Antwort:", "Zwei, beschlossen auf der",
+      "101. Arbeits- und Sozialministerkonferenz.",
+    ].join("\n");
+    const result = segmentQa(text);
+    deepStrictEqual(result.segments.map((segment) => segment.number), ["1", "2"]);
+  });
+
+  it("still allows an asker who skipped a number or two", () => {
+    // The real Berlin shape: numbered 1, 2, 5, 6. The skip guard lets 5 through, and
+    // the density check then accepts 4 of 1..6.
+    const text = [
+      "1. Erste?", "Antwort:", "Eins.",
+      "2. Zweite?", "Antwort:", "Zwei.",
+      "5. Fünfte?", "Antwort:", "Fünf.",
+      "6. Sechste?", "Antwort:", "Sechs.",
+    ].join("\n");
+    deepStrictEqual(segmentQa(text).segments.map((segment) => segment.number), ["1", "2", "5", "6"]);
+  });
+
+  it("refuses a long numbered list that is almost entirely unanswered", () => {
+    // Six real questions followed by a numbered table of schools and pools: every
+    // row matches, the numbering is perfectly dense, and one answer would otherwise
+    // be enough to make the whole thing look like a question list.
+    const rows = Array.from({ length: 40 }, (_, i) => `${i + 2}. Schwimmhalle Nummer ${i + 2} Hallenbad Ja`);
+    const text = ["1. Wie viel Schwimmunterricht gab es?", "Antwort:", "Viel.", ...rows].join("\n");
+    const result = segmentQa(text);
+    strictEqual(result.rules, undefined);
+    ok(result.rejections.some((reason) => reason.includes("numbered table")));
+  });
+});
+
 describe("grouped answers", () => {
   it("reads the numbers a government says it is answering together", () => {
     deepStrictEqual(

@@ -24,7 +24,7 @@
 
 import { OpenKaError } from "../core/errors.js";
 import { PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "../core/models/parliaments.js";
-import type { AnsweredBy, DocumentType } from "../core/models/schema.js";
+import type { AnsweredBy, DocumentType, SourceDocumentRole } from "../core/models/schema.js";
 import { parseGermanDate, parseUrheber } from "../core/extract/metadata.js";
 import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "./html.js";
 import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
@@ -146,6 +146,25 @@ const ID_PATTERN = /ps-detail-([A-Z]+)_V([A-Za-z0-9]+)_D([A-Za-z0-9]+)/;
  */
 const DRUCKSACHE = /(?:Drucksache|Dokument)\s+(\d{1,2}\s*\/\s*[\d\s]+\d|\d{1,2}\/\d+)/;
 
+/**
+ * What kind of document a result row's primary entry is.
+ *
+ * The row reads "<Land> - <Typ>; …", and the type is not always the question.
+ * Schleswig-Holstein files the Vorgang under "Antwort", because it publishes the
+ * Kleine Anfrage and the government's reply as a *single* Drucksache — its
+ * Fundstelle says so: "Kleine Anfrage Birte Pauls (SPD) und Antwort MSJFSIG".
+ * Labelling that document `question_pdf` is not a cosmetic error: the extractor
+ * picks which document to read by role, and a combined paper filed as a question
+ * looks like an Anfrage nobody answered.
+ */
+export function documentRole(rowSummary: string, fundstelle: string): SourceDocumentRole {
+  const combined = /\bAnfrage\b[\s\S]{0,120}?\bund\s+Antwort\b/i.test(fundstelle);
+  if (combined) return "combined_pdf";
+  // "<Land> - Antwort; …" with no question named anywhere: the answer alone.
+  if (/-\s*Antwort\b/i.test(rowSummary) && !/\bAnfrage\b/i.test(rowSummary)) return "answer_pdf";
+  return "question_pdf";
+}
+
 /** Parse one `ps-vorgang` result block into a DocRef. */
 export function parseVorgangBlock(block: string, warnings: string[]): DocRef | undefined {
   const id = ID_PATTERN.exec(block);
@@ -182,9 +201,13 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
   const period = Number(reference.split("/")[0]);
   if (!Number.isInteger(period) || period < 1) return undefined;
 
+  const fundstelleRegion = regionWithClass(head, "ps-fundstelle");
+  const fundstelle = fundstelleRegion === undefined ? "" : visibleTextOf(fundstelleRegion);
+  const role = documentRole(summary, fundstelle);
+
   const documents: DocRefDocument[] = [];
   if (url !== undefined && /^https?:/i.test(url)) {
-    documents.push({ role: "question_pdf", url, urlStable: urlIsStable(url) });
+    documents.push({ role, url, urlStable: urlIsStable(url) });
   }
 
   const urheberRegion = regionWithClass(head, "ps-urheber");
@@ -209,8 +232,15 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     dates: {},
     documents,
   };
-  const submitted = findRowDate(summary);
-  if (submitted !== undefined) ref.dates.submitted = submitted;
+  // Which date the row carries depends on what the row's document is. For a paper
+  // that holds question and answer together, the one printed date is the date the
+  // combined paper appeared — the answer's. The question's own date is not in the
+  // row, and guessing one would be worse than leaving it out.
+  const rowDate = findRowDate(summary);
+  if (rowDate !== undefined) {
+    if (role === "question_pdf") ref.dates.submitted = rowDate;
+    else ref.dates.answered = rowDate;
+  }
   if (answer?.date !== undefined) ref.dates.answered = answer.date;
   return ref;
 }
