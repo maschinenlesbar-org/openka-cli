@@ -87,14 +87,15 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 | `nordrhein-westfalen` | Landtag NRW | dedicated adapter | discovery via the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer |
 | `saarland` | Landtag des Saarlandes | dedicated adapter | unwraps the iframe page the aggregator links to |
 | `sachsen` | Sächsischer Landtag | dedicated adapter | walks every document position of the EDAS viewer |
+| `thueringen` | Thüringer Landtag | dedicated adapter | looks the answer Drucksache up through Parldok's JSON API |
 | `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
-| the other 12 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
+| the other 11 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
 
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.
 
-Coverage is honest, not complete. Across 92 records from seven parliaments, 65
-extract completely and 85 yield at least one question/answer pair; the rest abstain and land
+Coverage is honest, not complete. Across 96 records from eight parliaments, 68
+extract completely and 89 yield at least one question/answer pair; the rest abstain and land
 in `ka review` rather than in the corpus as half-read records. A record's documents
 are all read, not just one — a Land that publishes the question and the answer as
 separate papers would otherwise yield every answer and no question.

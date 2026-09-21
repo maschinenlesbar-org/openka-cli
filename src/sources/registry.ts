@@ -13,6 +13,7 @@ import { BundDipSource } from "./bund.js";
 import { NordrheinWestfalenSource } from "./nordrhein-westfalen.js";
 import { SaarlandSource } from "./saarland.js";
 import { SachsenSource } from "./sachsen.js";
+import { ThueringenSource } from "./thueringen.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export type SourceStatus = "implemented" | "via_aggregator" | "planned";
@@ -86,6 +87,14 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     factory: () => new SachsenSource(),
   },
   {
+    key: "thueringen",
+    parliament: "thueringen",
+    label: "Thüringer Landtag (Parldok)",
+    status: "implemented",
+    note: "aggregator discovery, with the answer Drucksache looked up through Parldok's own JSON API",
+    factory: () => new ThueringenSource(),
+  },
+  {
     key: "parlamentsspiegel",
     parliament: "nordrhein-westfalen",
     label: "Parlamentsspiegel (all 16 Länder)",
@@ -100,6 +109,7 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
       parliament.key !== "nordrhein-westfalen" &&
       parliament.key !== "saarland" &&
       parliament.key !== "sachsen" &&
+      parliament.key !== "thueringen" &&
       parliament.herkunft !== undefined,
   ).map((parliament) => aggregatorEntry(parliament.key, parliament.label)),
 ];

@@ -59,4 +59,5 @@ export * from "./sources/parlamentsspiegel.js";
 export * from "./sources/nordrhein-westfalen.js";
 export * from "./sources/saarland.js";
 export * from "./sources/sachsen.js";
+export * from "./sources/thueringen.js";
 export * from "./sources/xml.js";

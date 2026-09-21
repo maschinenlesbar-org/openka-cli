@@ -250,7 +250,8 @@ to mean four different things:
 | Sachsen | the link is a frameset viewer holding several documents | each position resolved through the viewer's navigation frame |
 | Saarland | the link is an HTML page whose iframe holds the file | rewritten to the endpoint the wrapper names |
 | Bayern | one document holding the question list, an `Antwort` divider, then the replies | split at the divider |
-| Niedersachsen, Thüringen | the Vorgang exposes only the question | **open** — see below |
+| Thüringen | the answer is an unrelated Drucksache | looked up through Parldok's JSON API |
+| Niedersachsen | the Vorgang exposes only the question | **open** — see below |
 
 Most of those were our own defects and are fixed: two Länder whose combined papers
 were mis-roled as questions, one whose follow-up label we did not recognise, and two
@@ -262,30 +263,47 @@ Saarland, a 1.7 kB frameset from Sachsen's EDAS viewer. Their real PDFs have cle
 text layers with no unmapped characters at all. The `ocr` tier was not what either
 needed, and no Land has yet been shown to need it.
 
-### Niedersachsen and Thüringen: the two that are still open
+### Thüringen, and using an undocumented API
 
-Both publish their answer as a separate document that the Parlamentsspiegel knows
-about — the row says "1 weiteres Dokument" — and will not render. That is not a
-parsing gap on our side; it was checked against the portal's own parameters
+Thüringen's answer is a Drucksache with **no relation to the Kleine Anfrage's
+number** — 8/979 is answered by 8/1715 — and the Parlamentsspiegel will not render
+it. Nothing in the question document names it either; it is published weeks later.
+
+Parldok is a single-page application whose search runs over a JSON API, and the
+adapter uses two of its endpoints exactly as the application does:
+
+    Fulltext/Search    find the Kleine Anfrage by kind, number and Wahlperiode
+    Process/Document   list the Vorgang's positions, one of which is the answer
+
+Both wrap their payload as a JSON *string* inside a JSON envelope, and both answer
+`500` if the request omits defaults the application always sends (`sort`, `topk`).
+The facet ids (`kind: 7`, `lp: 10`, `number: 14`) come from the application's own
+`pd.facet_*` constants, and the Kleine-Anfrage kind id from its search form.
+
+**This API is undocumented.** It is the site's own public endpoint serving public
+documents, and asking it for JSON is gentler than scraping the rendered page — but
+nothing promises it keeps its shape. So every unexpected response becomes "no answer
+found" with a warning, never a failed sync, and `unwrap()` refuses anything that is
+not the exact success shape. A Landtag publishing a documented interface would let
+all of this be deleted, which is the point of the project.
+
+### Niedersachsen: the one that is still open
+
+Niedersachsen publishes its answer as a separate document that the Parlamentsspiegel
+knows about — the row says "1 weiteres Dokument" — and will not render. That is not
+a parsing gap on our side; it was checked against the portal's own parameters
 (`detail`, `alles`, `weitern`, and dropping the document-type filter), and none of
 them produces the follow-up block. Neither question document names its answer, which
 is expected: the answer is published weeks later.
 
-So each needs a lookup against its own Landtag, and each is a different kind of job:
+Niedersachsen serves documents from a static archive
+(`…/Drucksachen_19_10000/07501-08000/19-07605.pdf`), so the URL is trivial *once the
+answer's Drucksachennummer is known*. Finding that number is the whole problem, and
+no route to it has been found yet: the Landtag's own search would have to be used.
 
-- **Niedersachsen** serves documents from a static archive
-  (`…/Drucksachen_19_10000/07501-08000/19-07605.pdf`), so the URL is trivial *once
-  the answer's Drucksachennummer is known*. The number is what has to be looked up.
-- **Thüringen** runs Parldok, the same software as Mecklenburg-Vorpommern and
-  Hamburg, but its search is a JavaScript application (`pd.doLLM()`,
-  `pd.docnumber()`) rather than a GET form, so there is probably an XHR endpoint
-  behind it worth finding. Note that Thüringen has no `Antwort` document type at
-  all: its document kinds are Drucksache, Kleine Anfrage, and the protocol types, so
-  an answer is a *Drucksache* whose title refers to the Kleine Anfrage number.
-
-Everything else about these two already works — discovery, the question document,
-and its text. They yield question-only records that abstain on `qa`, which is the
-honest state of a question nobody has published an answer to us for.
+Everything else about it already works — discovery, the question document,
+and its text. It yields question-only records that abstain on `qa`, which is the honest state of a
+question nobody has published an answer to us for.
 
 ## Reading more than one document
 

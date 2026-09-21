@@ -143,16 +143,39 @@ export class FetchEngine {
     return this.request("GET", target, headers);
   }
 
+  /**
+   * POST a body. Only one source needs this — Thüringen's Parlamentsdatenbank
+   * drives its search from a JSON API rather than a GET form — and it goes through
+   * the same retry, redirect and rate-limiting path as everything else, so being a
+   * good citizen is not something that adapter has to remember.
+   */
+  async post(
+    pathOrUrl: string,
+    options: { body: string; contentType?: string; params?: QueryParams; headers?: Record<string, string> } = {
+      body: "",
+    },
+  ): Promise<FetchResult> {
+    const target = this.url(pathOrUrl, options.params ?? {});
+    const headers: Record<string, string> = {
+      "user-agent": this.userAgent,
+      "accept-encoding": "identity",
+      "content-type": options.contentType ?? "application/x-www-form-urlencoded; charset=UTF-8",
+      ...(options.headers ?? {}),
+    };
+    return this.request("POST", target, headers, options.body);
+  }
+
   private async request(
     method: string,
     startUrl: string,
     headers: Record<string, string>,
+    body?: string,
   ): Promise<FetchResult> {
     let url = startUrl;
     let currentHeaders = headers;
 
     for (let hop = 0; ; hop++) {
-      const response = await this.attempt(method, url, currentHeaders);
+      const response = await this.attempt(method, url, currentHeaders, body);
       const status = response.status;
 
       if (status >= 300 && status < 400 && status !== 304) {
@@ -205,6 +228,7 @@ export class FetchEngine {
     method: string,
     url: string,
     headers: Record<string, string>,
+    body?: string,
   ): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -214,6 +238,7 @@ export class FetchEngine {
           method,
           url,
           headers,
+          ...(body === undefined ? {} : { body }),
           timeoutMs: this.timeoutMs,
           maxResponseBytes: this.maxResponseBytes,
         });
