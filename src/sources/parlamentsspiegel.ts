@@ -139,7 +139,12 @@ export function toGermanDate(iso: string): string {
 }
 
 const ID_PATTERN = /ps-detail-([A-Z]+)_V([A-Za-z0-9]+)_D([A-Za-z0-9]+)/;
-const DRUCKSACHE = /Drucksache\s+(\d{1,2}\s*\/\s*[\d\s]+\d|\d{1,2}\/\d+)/;
+/**
+ * The paper's number in a result row. Most Länder label it "Drucksache"; Thüringen
+ * labels the same thing "Dokument", and requiring the commoner word cost that Land
+ * every one of its records.
+ */
+const DRUCKSACHE = /(?:Drucksache|Dokument)\s+(\d{1,2}\s*\/\s*[\d\s]+\d|\d{1,2}\/\d+)/;
 
 /** Parse one `ps-vorgang` result block into a DocRef. */
 export function parseVorgangBlock(block: string, warnings: string[]): DocRef | undefined {

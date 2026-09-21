@@ -235,6 +235,17 @@ describe("Parlamentsspiegel source", () => {
     ok(answered?.answered_by.ministry !== undefined);
   });
 
+  it("accepts the word Thüringen uses for a paper", () => {
+    // Most Länder label it "Drucksache"; Thüringen labels the same thing
+    // "Dokument", and requiring the commoner word cost that Land every record.
+    const row = (label: string): string =>
+      `<div class="ps-vorgang"><p class="ps-titel"><a class="ps-details" href=".ps-detail-THUE_V1_D2"><span>T</span></a></p>` +
+      `<p class="ps-dokument"><div><a href="https://example.invalid/a.pdf"><span>${label} 08/3102</span></a>` +
+      `<span>Thüringen - Kleine Anfrage; AfD; 09.09.2026; (2 S.)</span></div></p></div>`;
+    strictEqual(parseVorgangBlock(row("Drucksache"), [])?.reference, "08/3102");
+    strictEqual(parseVorgangBlock(row("Dokument"), [])?.reference, "08/3102");
+  });
+
   it("reports rather than guesses when the markup yields nothing", async () => {
     const { transport } = scriptedTransport([{ match: "/suche", body: "<html><body>redesigned</body></html>" }]);
     const result = await new ParlamentsspiegelSource().discover({
