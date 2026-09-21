@@ -93,8 +93,8 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 All 17 parliaments are registered. The ones without a dedicated adapter say so
 rather than quietly returning nothing — run `ka sources list`.
 
-Coverage is honest, not complete. Across 88 records from six sources, 64 extract
-completely and 81 yield at least one question/answer pair; the rest abstain and land
+Coverage is honest, not complete. Across 92 records from seven parliaments, 65
+extract completely and 85 yield at least one question/answer pair; the rest abstain and land
 in `ka review` rather than in the corpus as half-read records. A record's documents
 are all read, not just one — a Land that publishes the question and the answer as
 separate papers would otherwise yield every answer and no question.

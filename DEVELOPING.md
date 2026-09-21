@@ -249,7 +249,8 @@ to mean four different things:
 | Brandenburg, Hessen, NRW, RLP, Saarland | answer linked as a follow-up document | read as `answer_pdf` |
 | Sachsen | the link is a frameset viewer holding several documents | each position resolved through the viewer's navigation frame |
 | Saarland | the link is an HTML page whose iframe holds the file | rewritten to the endpoint the wrapper names |
-| Bayern, Niedersachsen, Thüringen | the Vorgang exposes only the question | the answer is not reachable through the aggregator |
+| Bayern | one document holding the question list, an `Antwort` divider, then the replies | split at the divider |
+| Niedersachsen, Thüringen | the Vorgang exposes only the question | the answer is not reachable through the aggregator |
 
 Most of those were our own defects and are fixed: two Länder whose combined papers
 were mis-roled as questions, one whose follow-up label we did not recognise, and two
@@ -282,6 +283,16 @@ That last point is what makes it safe to segment a question paper permissively.
 A paper with no answers cannot pass the answer-shaped checks, so those are deferred
 (`requireAnswers: false`) and run once on the merged result instead of being
 skipped. A numbered table in a question paper is still caught, just later.
+
+**A document can be two halves.** Bayern publishes the question list, then the
+single word `Antwort`, then the questions again with the government's reply under
+each. Read as one text that is every question asked twice and half of them
+answered. When a single document will not read as one text, `splitAtAnswerDivider`
+looks for that divider and hands the two halves to the same merge. It is a fallback,
+not a first move: a document that reads cleanly as one text is left alone, and the
+divider is ignored when nothing above it asks a question — which is what stops the
+Bundestag's cover-page `Antwort` (over "der Bundesregierung") from splitting a
+document in the wrong place.
 
 Two consequences worth knowing:
 

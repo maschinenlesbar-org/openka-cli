@@ -469,6 +469,37 @@ function bodyBetween(lines: string[], marker: Marker, next: Marker | undefined):
   return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * A line that divides a document into its question part and its answer part.
+ *
+ * Bayern prints the whole question list, then the single word "Antwort", then the
+ * questions again with the government's reply under each. Read as one text that
+ * looks like every question asked twice and only some of them answered; read as two
+ * parts it is exactly the shape the multi-document merge already handles.
+ */
+const ANSWER_DIVIDER = /^[ \t]*Antwort(?:en)?(?:[ \t]+(?:der|des)[ \t]+[^\n]{0,60})?[ \t]*:?[ \t]*$/i;
+
+/**
+ * Split a document at its answer divider. Returns `undefined` when there is no
+ * divider, when nothing precedes it, or when the part before it contains no
+ * question heading — in which case the divider is a cover-page word ("Antwort" over
+ * "der Bundesregierung"), not a structural break.
+ */
+export function splitAtAnswerDivider(
+  text: string,
+  ruleSets: readonly SegmentationRules[] = RULE_SETS,
+): { questions: string; answers: string } | undefined {
+  const lines = text.split("\n");
+  for (let i = 1; i < lines.length - 1; i++) {
+    if (!ANSWER_DIVIDER.test(lines[i] as string)) continue;
+    const questions = lines.slice(0, i).join("\n");
+    const answers = lines.slice(i + 1).join("\n");
+    const asks = ruleSets.some((rules) => rules.question.test(questions));
+    if (asks && answers.trim() !== "") return { questions, answers };
+  }
+  return undefined;
+}
+
 export interface SegmentOptions {
   /**
    * Whether a reading must include answers to be believed. True for a document

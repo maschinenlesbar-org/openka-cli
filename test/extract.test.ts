@@ -12,6 +12,7 @@ import {
   normaliseNumber,
   segmentQa,
   groupedAnswerNumbers,
+  splitAtAnswerDivider,
   splitAtQuestionMark,
 } from "../src/core/extract/segment.js";
 import {
@@ -290,6 +291,35 @@ describe("numbered items that are not questions", () => {
     const result = segmentQa(text);
     strictEqual(result.rules, undefined);
     ok(result.rejections.some((reason) => reason.includes("numbered table")));
+  });
+});
+
+describe("a document that is really two halves", () => {
+  it("splits at a standalone Antwort divider when the whole will not read", () => {
+    // Bayern's shape: the question list, the word "Antwort", then the questions
+    // again with the replies. Read as one text it is every question asked twice.
+    const text = [
+      "1.1 Wie hat sich die Zahl entwickelt?",
+      "1.2 Welche Erkenntnisse gibt es?",
+      "Antwort",
+      "1.1 Wie hat sich die Zahl entwickelt?",
+      "Sie ist gestiegen.",
+      "1.2 Welche Erkenntnisse gibt es?",
+      "Keine.",
+    ].join("\n");
+    const divided = splitAtAnswerDivider(text);
+    ok(divided !== undefined);
+    match(divided.questions, /^1\.1 /);
+    match(divided.answers, /Sie ist gestiegen/);
+  });
+
+  it("does not split at a cover-page Antwort with no questions above it", () => {
+    // The Bundestag's cover has "Antwort" over "der Bundesregierung".
+    strictEqual(splitAtAnswerDivider("Antwort\nder Bundesregierung\n1. Eine Frage?\nJa."), undefined);
+  });
+
+  it("does not split a document with nothing after the divider", () => {
+    strictEqual(splitAtAnswerDivider("1. Eine Frage?\nAntwort\n"), undefined);
   });
 });
 

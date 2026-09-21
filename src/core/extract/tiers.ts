@@ -26,7 +26,14 @@ import { sha256 } from "../repro/hash.js";
 import { extractorVersion } from "../repro/version.js";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "../pdf/index.js";
 import { findMarkers, findMinistry } from "./metadata.js";
-import { RULE_SETS, checkSegments, segmentQa, type QaSegment, type SegmentationRules } from "./segment.js";
+import {
+  RULE_SETS,
+  checkSegments,
+  segmentQa,
+  splitAtAnswerDivider,
+  type QaSegment,
+  type SegmentationRules,
+} from "./segment.js";
 import { validateExtractedRecord } from "./validators.js";
 import { abstainingPerceiver, type Perceiver } from "../perceive/perceiver.js";
 
@@ -385,17 +392,48 @@ function segmentDocuments(
 
   if (parsed.length === 1) {
     const only = parsed[0] as ParsedDocument;
-    const segmented = segmentQa(flatten(only.text), ruleSets);
-    if (segmented.rules === undefined) {
+    const whole = flatten(only.text);
+    const segmented = segmentQa(whole, ruleSets);
+    if (segmented.rules !== undefined) {
+      return collect(segmented.segments, segmented.rules, abstentions);
+    }
+    // A document that will not read as one text may still be two: Bayern prints the
+    // question list, the word "Antwort", and then the questions again with the
+    // replies. Splitting there turns it into the shape the merge already handles.
+    const divided = splitAtAnswerDivider(whole, ruleSets);
+    if (divided === undefined) {
       abstentions.add("qa", `no segmentation rule set matched (${segmented.rejections.join("; ")})`);
       return [];
     }
-    return collect(segmented.segments, segmented.rules, abstentions);
+    return mergeReadings(
+      [
+        { role: "question_pdf", text: divided.questions },
+        { role: "answer_pdf", text: divided.answers },
+      ],
+      ruleSets,
+      abstentions,
+      "the two halves of one document",
+    );
   }
 
-  const readings = parsed.map((document) => ({
-    role: document.role,
-    result: segmentQa(flatten(document.text), ruleSets, { requireAnswers: false }),
+  return mergeReadings(
+    parsed.map((document) => ({ role: document.role, text: flatten(document.text) })),
+    ruleSets,
+    abstentions,
+    `${parsed.length} documents`,
+  );
+}
+
+/** Segment several texts permissively and merge them by question number. */
+function mergeReadings(
+  parts: { role: SourceDocumentRole; text: string }[],
+  ruleSets: readonly SegmentationRules[],
+  abstentions: Abstentions,
+  what: string,
+): QaPair[] {
+  const readings = parts.map((part) => ({
+    role: part.role,
+    result: segmentQa(part.text, ruleSets, { requireAnswers: false }),
   }));
 
   const order: string[] = [];
@@ -421,7 +459,7 @@ function segmentDocuments(
 
   if (used.length === 0) {
     const reasons = readings.flatMap((reading) => reading.result.rejections);
-    abstentions.add("qa", `no segmentation rule set matched any document (${reasons.join("; ")})`);
+    abstentions.add("qa", `no segmentation rule set matched (${reasons.join("; ")})`);
     return [];
   }
 
@@ -437,7 +475,7 @@ function segmentDocuments(
 
   const problem = checkSegments(merged, used.join(" + "));
   if (problem !== undefined) {
-    abstentions.add("qa", `the merged reading of ${parsed.length} documents is not believable (${problem})`);
+    abstentions.add("qa", `the merged reading of ${what} is not believable (${problem})`);
     return [];
   }
   return collect(merged, used.join(" + "), abstentions);
