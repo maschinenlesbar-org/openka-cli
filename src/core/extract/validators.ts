@@ -27,12 +27,21 @@ export function latestPlausibleYear(now: Date = new Date()): number {
 }
 
 /**
- * Run every validator. `now` is injectable so the "not in the future" check is
- * testable and so a verification run can reproduce an old decision exactly.
+ * Run every validator.
+ *
+ * `now` is the instant "not dated in advance" is judged against. It is a parameter
+ * rather than a call to the clock because the decision has to be reproducible: a
+ * record re-extracted years later must abstain on exactly the fields it abstained
+ * on the first time, or `ka verify` reports a mismatch that says nothing about the
+ * data. Callers pass the instant the bytes were archived, which the record carries.
+ *
+ * When `now` is undefined the upper bound is simply not asserted. Without a known
+ * instant there is nothing to call "the future", and inventing one from the wall
+ * clock is what made this non-reproducible in the first place.
  */
 export function validateExtractedRecord(record: KaRecord, now?: Date): ValidatorProblem[] {
   const problems: ValidatorProblem[] = [];
-  const latest = latestPlausibleYear(now);
+  const latest = now === undefined ? undefined : latestPlausibleYear(now);
 
   for (const key of ["submitted", "answered"] as const) {
     const value = record.dates[key];
@@ -42,10 +51,10 @@ export function validateExtractedRecord(record: KaRecord, now?: Date): Validator
       continue;
     }
     const year = Number(value.slice(0, 4));
-    if (year < EARLIEST_PLAUSIBLE_YEAR || year > latest) {
+    if (year < EARLIEST_PLAUSIBLE_YEAR || (latest !== undefined && year > latest)) {
       problems.push({
         path: `dates.${key}`,
-        message: `year ${year} is outside the plausible range ${EARLIEST_PLAUSIBLE_YEAR}..${latest}`,
+        message: `year ${year} is outside the plausible range ${EARLIEST_PLAUSIBLE_YEAR}..${latest ?? "?"}`,
       });
     }
   }

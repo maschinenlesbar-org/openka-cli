@@ -231,7 +231,7 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
 
   // Validators are the last gate: a record that fails one abstains on the field
   // that failed rather than being published as if it were sound.
-  const problems = validateExtractedRecord(record);
+  const problems = validateExtractedRecord(record, archivedAt(request.documents));
   for (const problem of problems) {
     abstentions.add(problem.path, problem.message);
   }
@@ -336,6 +336,32 @@ async function runOcr(
     .sort((a, b) => a - b)
     .map((page) => (pages.get(page) as string[]).join("\n"))
     .join(PAGE_SEPARATOR);
+}
+
+/**
+ * The instant the date validators judge "not dated in advance" against.
+ *
+ * It is the latest `retrieved_at` of the documents — the moment the bytes were
+ * fetched, stamped by the pipeline and stored in the record. Reading the clock here
+ * instead would make the decision depend on *when the extraction ran*: a Drucksache
+ * dated two years out abstains today and passes in two years' time, so a record
+ * would change without its input changing and `ka verify` would report a mismatch
+ * that says nothing about the data. Anchoring to the archive keeps the decision
+ * reproducible for as long as the bytes exist, which is the point of the tier stack
+ * being a pure function of its inputs.
+ *
+ * Undefined when nothing was retrieved; the validator then leaves the upper bound
+ * unasserted rather than inventing one.
+ */
+function archivedAt(documents: FetchedDocument[]): Date | undefined {
+  const stamps = documents
+    .map((document) => document.retrievedAt)
+    .filter((value): value is string => value !== undefined)
+    .sort();
+  const latest = stamps[stamps.length - 1];
+  if (latest === undefined) return undefined;
+  const parsed = new Date(latest);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 /**

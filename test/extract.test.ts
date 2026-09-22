@@ -499,6 +499,30 @@ describe("validators", () => {
     ok(validateExtractedRecord(record).some((problem) => problem.path === "dates.submitted"));
   });
 
+  it("judges a future date against the archive, not against the clock", () => {
+    const record = sampleRecord({ dates: { submitted: "2028-05-01" } });
+    // Retrieved in 2026, a 2028 date is dated in advance...
+    ok(
+      validateExtractedRecord(record, new Date("2026-09-22T00:00:00Z")).some(
+        (problem) => problem.path === "dates.submitted",
+      ),
+    );
+    // ...and the same bytes retrieved in 2028 are not. The decision follows the
+    // archive, so re-extracting an old record never changes its abstentions.
+    deepStrictEqual(validateExtractedRecord(record, new Date("2028-09-22T00:00:00Z")), []);
+  });
+
+  it("leaves the upper bound unasserted when no instant is known", () => {
+    const record = sampleRecord({ dates: { submitted: "2999-01-01" } });
+    deepStrictEqual(validateExtractedRecord(record), []);
+    // The lower bound needs no clock, so it still holds.
+    ok(
+      validateExtractedRecord(sampleRecord({ dates: { submitted: "1823-01-01" } })).some(
+        (problem) => problem.path === "dates.submitted",
+      ),
+    );
+  });
+
   it("rejects a question that swallowed the rest of the document", () => {
     const record = sampleRecord({ qa: [{ number: "1", question: "x".repeat(20_001) }] });
     ok(validateExtractedRecord(record).some((problem) => problem.path === "qa[0].question"));
