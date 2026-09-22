@@ -65,7 +65,7 @@ Every record carries an `extraction` block that says exactly how to reproduce it
 ```jsonc
 "extraction": {
   "tier": "text_layer",
-  "extractor_version": "pkg:0.0.1",
+  "extractor_version": "pkg:0.0.1+extract:0c6b4abc448b",
   "model_artifacts": [],
   "input_sha256": "7d0515afe6e5…",
   "reproducible": true,
@@ -74,6 +74,9 @@ Every record carries an `extraction` block that says exactly how to reproduce it
   "review_status": "needs_review"
 }
 ```
+
+The `+extract:` suffix is a digest of the extraction sources, so a rule change moves
+the version even when the package version does not.
 
 There is no confidence score, because there is no model guessing. There is
 `abstained_fields`, which names the holes. `ka verify` re-runs the extraction from

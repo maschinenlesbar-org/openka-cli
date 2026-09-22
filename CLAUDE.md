@@ -66,7 +66,7 @@ with `fixturesOf(...)` rather than keeping a second copy of the bytes.
 ## Commands
 
 ```bash
-npm run build && npm test     # 467 tests across the workspace, node:test, no network
+npm run build && npm test     # ~600 tests across the workspace, node:test, no network
 npm run typecheck
 npm run coverage              # the suite with an enforced 80% line/function floor
 npm run lint:line             # the guardrail
@@ -94,7 +94,8 @@ You may **not** without asking:
 - **Zero required runtime dependencies** beyond `commander`. HTTP is
   `node:http`/`https`; the PDF reader is ours; the corpus is plain files. OCR is an
   *optional peer* dependency, loaded dynamically.
-- **Strict TypeScript, ESM, Node ≥ 20.** `noUncheckedIndexedAccess` is on.
+- **Strict TypeScript, ESM, Node ≥ 22.** `noUncheckedIndexedAccess` is on; the
+  coverage gate needs Node 22's `--test-coverage-*` flags, which is the floor.
 - **Every CLI option that takes a value gets a parser.** A blank filter is a usage
   error, never a silently dropped constraint.
 - **Nothing on the line reads the clock** except the pipeline, which stamps
