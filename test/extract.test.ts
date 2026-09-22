@@ -560,6 +560,22 @@ describe("a question number that appears twice", () => {
   });
 });
 
+describe("an answer number that appears twice", () => {
+  it("keeps the first body, deliberately — a recurring heading is not a second answer", () => {
+    // Not symmetric with the question case, and the corpus is why. An answer
+    // heading recurs mid-answer: the Saarland reply to 17/1331 heads number 4
+    // again and continues "…dargelegt, sind Konzeptvergaben grundsätzlich…",
+    // which shares no prefix with the first body and is still the same answer.
+    // Treating a differing repeat as a contradiction there abstained on three
+    // goldens' worth of correct text, so the first body wins and stays whole.
+    const result = segmentQa(
+      ["Frage 1:", "A?", "Antwort zu 1:", "ERSTE ANTWORT.", "Antwort zu 1:", "ZWEITE ANTWORT."].join("\n"),
+      RULE_SETS,
+    );
+    strictEqual(result.segments[0]?.answer, "ERSTE ANTWORT.");
+  });
+});
+
 describe("two papers that ask the same number differently", () => {
   const page = (lines: string[]) => questionPaper(lines);
   const meta = { reference: "19/1", legislative_period: 19, title: "T", askers: [], answered_by: {}, dates: {} };
