@@ -5,7 +5,7 @@
 import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { childText, decodeEntities, parseXml, parseXmlFragment, streamElements } from "../src/sources/xml.js";
-import { blocksWithClass, decodeHtml, firstHref, regionWithClass, spanTexts, textOf } from "../src/sources/html.js";
+import { blocksWithClass, decodeHtml, firstHref, regionWithClass, spanTexts, textOf, visibleTextOf } from "../src/sources/html.js";
 import { pardokVorgangToRef, parsePardokExport } from "../src/sources/pardok.js";
 import { BerlinSource, berlinFeedUrl, BERLIN_LATEST_PERIOD } from "../src/sources/berlin.js";
 import { BundDipSource, askersOf, parseDipAuthor, toRef } from "../src/sources/bund.js";
@@ -345,6 +345,15 @@ describe("HTML helpers", () => {
     strictEqual(decodeHtml("&#8211;"), "–");
     // A surrogate code point is not a character; the reference is left as written.
     strictEqual(decodeHtml("&#xD800;"), "&#xD800;");
+  });
+
+  it("strips every hidden element, not just the first hundred", () => {
+    // The guard used to stop at 100 and return half-stripped markup, leaking the
+    // hidden "Neuestes Dokument" date this function exists to remove.
+    const row = (i: number) =>
+      `<div class="ps-folge"><span>S ${i}</span><span class="d-none"><span>Neuestes Dokument: 2025-01-01</span></span></div>`;
+    const text = visibleTextOf(Array.from({ length: 150 }, (_, i) => row(i)).join(""));
+    strictEqual(text.includes("Neuestes Dokument"), false);
   });
 
   it("matches a class as a whole word", () => {

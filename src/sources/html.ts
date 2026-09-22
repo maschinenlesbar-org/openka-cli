@@ -73,7 +73,12 @@ export function visibleTextOf(html: string): string {
 export function stripHidden(html: string): string {
   const opener = /<(span|div|p)\b[^>]*\sclass="(?:[^"]*\s)?d-none(?:\s[^"]*)?"[^>]*>/i;
   let out = html;
-  for (let guard = 0; guard < 100; guard++) {
+  // Each pass replaces an element with a single space, so the string strictly
+  // shrinks and the loop cannot run away; the bound is a sanity rail, not a
+  // policy. It used to be 100, which silently stopped stripping on a fragment
+  // with more hidden elements than that and returned half-stripped markup — the
+  // exact defect this function exists to prevent, with no signal that it happened.
+  for (let guard = 0; guard <= html.length; guard++) {
     const match = opener.exec(out);
     if (match === null) break;
     const tag = (match[1] as string).toLowerCase();
