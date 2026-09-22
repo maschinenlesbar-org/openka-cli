@@ -141,7 +141,8 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         const io = ctx.deps.io;
         io.out(sanitizeForTerminal(record.title || "(no title)"));
         io.out(
-          `${parliament?.label ?? record.parliament} · Drucksache ${record.reference} · WP ${record.legislative_period}`,
+          `${parliament?.label ?? record.parliament} · Drucksache ${sanitizeForTerminal(record.reference)} · ` +
+            `WP ${record.legislative_period}`,
         );
         const askers = record.askers
           .map((asker) => (asker.party === undefined ? asker.name : `${asker.name} (${asker.party})`))
@@ -161,27 +162,30 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         io.out("");
         if (record.markers.classified) io.out("[ als Verschlusssache gekennzeichnet ]");
         if (record.markers.attachments_referenced.length > 0) {
-          io.out(`[ Anlagen: ${record.markers.attachments_referenced.join(", ")} ]`);
+          io.out(`[ Anlagen: ${sanitizeForTerminal(record.markers.attachments_referenced.join(", "))} ]`);
         }
         if (record.qa.length === 0) io.out("(no question/answer pairs were extracted)");
         for (const pair of record.qa) {
-          io.out(`Frage ${pair.number}:`);
+          io.out(`Frage ${sanitizeForTerminal(pair.number)}:`);
           io.out(sanitizeForTerminal(pair.question ?? "  — abstained: no question text recognised —"));
           io.out("");
-          io.out(`Antwort zu ${pair.number}:`);
+          io.out(`Antwort zu ${sanitizeForTerminal(pair.number)}:`);
           io.out(sanitizeForTerminal(pair.answer ?? "  — abstained: no answer text recognised —"));
           io.out("");
         }
         io.out("—");
         io.out(
-          `tier ${record.extraction.tier} · extractor ${record.extraction.extractor_version} · ` +
+          `tier ${record.extraction.tier} · extractor ${sanitizeForTerminal(record.extraction.extractor_version)} · ` +
             `${record.extraction.review_status}`,
         );
         if (record.extraction.abstained_fields.length > 0) {
-          io.out(`abstained: ${record.extraction.abstained_fields.join(", ")}`);
+          io.out(`abstained: ${sanitizeForTerminal(record.extraction.abstained_fields.join(", "))}`);
         }
         for (const source of record.source_documents) {
-          io.out(`${source.role}: ${source.url}${source.url_stable ? "" : " (link expires upstream)"}`);
+          // A URL is scraped out of upstream HTML, which makes it among the most
+          // attacker-influenced strings in the record — it goes through the same
+          // sanitiser as the title, which is what its docstring already promised.
+          io.out(`${source.role}: ${sanitizeForTerminal(source.url)}${source.url_stable ? "" : " (link expires upstream)"}`);
         }
       }),
     );
@@ -214,7 +218,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         // The path is printed rather than handed to an opener: the CLI does not
         // launch other programs, and `open "$(ka open <id>)"` is one keystroke more.
         ctx.deps.io.out(store.blobPath(document.sha256));
-        ctx.deps.io.err(`${document.role} · ${document.url}`);
+        ctx.deps.io.err(`${document.role} · ${sanitizeForTerminal(document.url)}`);
       }),
     );
 }
