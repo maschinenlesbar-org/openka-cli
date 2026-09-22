@@ -132,6 +132,30 @@ export function parseQuery(query: string): ParsedQuery {
   return parsed;
 }
 
+/**
+ * Normalise `text` the way index terms are normalised, keeping a map back to the
+ * original.
+ *
+ * Needed because normalisation is not length-preserving — `ü` becomes `ue`, a
+ * combining mark disappears, and `İ` lowercases to two code units — so an offset
+ * found in the normalised string does not point at the same character in the
+ * original. `offsets[i]` is the index in `text` of the character that produced
+ * `normalized[i]`, which is what lets a caller search normalised and then slice
+ * the text the reader actually sees.
+ */
+export function normalizeWithOffsets(text: string): { normalized: string; offsets: number[] } {
+  let normalized = "";
+  const offsets: number[] = [];
+  let at = 0;
+  for (const character of text) {
+    const mapped = normalizeTerm(character);
+    for (let i = 0; i < mapped.length; i++) offsets.push(at);
+    normalized += mapped;
+    at += character.length;
+  }
+  return { normalized, offsets };
+}
+
 /** True when `tokens` occurs as a contiguous run in `haystack`'s token stream. */
 export function containsPhrase(haystack: string, tokens: string[]): boolean {
   if (tokens.length === 0) return true;

@@ -3,7 +3,7 @@
 // catalog rows. No record is loaded from disk unless a phrase has to be confirmed
 // or a snippet is requested.
 
-import { containsPhrase, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "../store/fts.js";
+import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "../store/fts.js";
 import type { CatalogEntry, Store } from "../store/store.js";
 
 export interface SearchFilters {
@@ -160,13 +160,19 @@ export function makeSnippet(store: Store, id: string, terms: string[]): string |
   const text = record.qa.length
     ? record.qa.map((pair) => [pair.question, pair.answer].filter(Boolean).join(" ")).join("\n")
     : (record.full_text ?? record.title);
-  const haystack = text.toLowerCase();
-  let at = -1;
+  // Search in the same normalised space the terms came from — they arrive with
+  // umlauts already expanded (`brücken` -> `bruecken`), so matching them against
+  // merely lowercased text never finds anything, and in a German corpus that is
+  // the common case rather than the edge case. The offsets map the hit back onto
+  // the untouched text so the snippet reads as the document does.
+  const { normalized, offsets } = normalizeWithOffsets(text);
+  let found = -1;
   for (const term of terms) {
-    const found = haystack.indexOf(term);
-    if (found >= 0 && (at < 0 || found < at)) at = found;
+    const hit = normalized.indexOf(term);
+    if (hit >= 0 && (found < 0 || hit < found)) found = hit;
   }
-  if (at < 0) return text.slice(0, SNIPPET_RADIUS * 2).replace(/\s+/g, " ").trim() || undefined;
+  if (found < 0) return text.slice(0, SNIPPET_RADIUS * 2).replace(/\s+/g, " ").trim() || undefined;
+  const at = offsets[found] ?? 0;
   const start = Math.max(0, at - SNIPPET_RADIUS);
   const end = Math.min(text.length, at + SNIPPET_RADIUS);
   const prefix = start > 0 ? "…" : "";

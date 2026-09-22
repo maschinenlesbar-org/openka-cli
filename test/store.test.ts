@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FileStore } from "../src/core/store/file-store.js";
-import { containsPhrase, normalizeTerm, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "../src/core/store/fts.js";
+import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "../src/core/store/fts.js";
 import { indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "../src/core/store/indexer.js";
-import { matchesFilters, search } from "../src/core/search/search.js";
+import { makeSnippet, matchesFilters, search } from "../src/core/search/search.js";
 import { cosine, searchLike } from "../src/core/search/semantic.js";
 import { canonicalJsonLine } from "../src/core/repro/canonical.js";
 import { sha256 } from "../src/core/repro/hash.js";
@@ -18,6 +18,15 @@ describe("tokenizer", () => {
   it("folds German umlauts the way a searcher expects", () => {
     strictEqual(normalizeTerm("Brücken"), "bruecken");
     deepStrictEqual(tokenize("Brücken-Zustand 2024"), ["bruecken", "zustand", "2024"]);
+  });
+
+  it("maps a normalised offset back onto the original text", () => {
+    const { normalized, offsets } = normalizeWithOffsets("Brücken");
+    strictEqual(normalized, "bruecken");
+    // "ue" both come from the single source character at index 2.
+    strictEqual(offsets[2], 2);
+    strictEqual(offsets[3], 2);
+    strictEqual(offsets[4], 3);
   });
 
   it("drops single characters, which carry no selectivity", () => {
@@ -154,6 +163,14 @@ describe("indexing and search", () => {
   it("honours an excluded term", () => {
     const result = search(corpus(), "brücken -bund");
     deepStrictEqual(result.hits.map((hit) => hit.entry.id), ["berlin-19-12345"]);
+  });
+
+  it("centres a snippet on a term whose umlaut was expanded", () => {
+    // The term reaches `makeSnippet` as "bruecken"; the text says "Brücken".
+    // Before the offsets were tracked this fell back to the first 240 characters.
+    const snippet = makeSnippet(corpus(), "berlin-19-12345", ["bruecken"]);
+    ok(snippet !== undefined);
+    ok(/[Bb]rücken/.test(snippet));
   });
 
   it("answers a query that is only exclusions with everything else", () => {
