@@ -122,6 +122,26 @@ describe("record validation", () => {
     );
   });
 
+  it("refuses a control character anywhere in a record", () => {
+    // Extraction strips them, but the store is where the guarantee has to hold:
+    // if no record can carry one, every rendering is safe without escaping on the
+    // way out, and `ka get --format json` keeps printing the bytes on disk.
+    const withEscape = sampleRecord({ title: "Titel\u009b31m" });
+    deepStrictEqual(
+      validateRecord(withEscape).map((issue) => issue.path),
+      ["title"],
+    );
+    const inUrl = sampleRecord({
+      source_documents: [{ role: "answer_pdf", url: "https://x.invalid/a.pdf\u009b31m", url_stable: true }],
+    });
+    ok(validateRecord(inUrl).some((issue) => issue.path === "source_documents[0].url"));
+  });
+
+  it("allows the whitespace a record legitimately carries", () => {
+    // \f is the pipeline's own page separator.
+    deepStrictEqual(validateRecord(sampleRecord({ full_text: "Seite 1\fSeite 2\nZeile\tSpalte" })), []);
+  });
+
   it("accepts a well-formed record", () => {
     deepStrictEqual(validateRecord(sampleRecord()), []);
   });

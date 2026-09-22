@@ -219,7 +219,47 @@ export function validateRecord(value: unknown): ValidationIssue[] {
 
   validateExtraction(issues, record);
   checkNoUnknownProperties(issues, value, RECORD_JSON_SCHEMA as unknown, "");
+  checkNoControlCharacters(issues, value, "");
   return issues;
+}
+
+/**
+ * Control characters a record may legally contain: tab, newline, carriage return,
+ * and the form feed the pipeline uses as its page separator.
+ */
+const ALLOWED_CONTROLS = new Set([0x09, 0x0a, 0x0d, 0x0c]);
+
+/**
+ * Refuse a control character anywhere in a record's text.
+ *
+ * Extraction strips them at the boundary, but the store is where the guarantee has
+ * to hold: if no record can carry one, every rendering is safe without escaping on
+ * the way out — and `ka get --format json` keeps printing the same bytes that are
+ * on disk, which is what `ka verify` compares.
+ */
+function checkNoControlCharacters(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (typeof value === "string") {
+    for (const character of value) {
+      const code = character.codePointAt(0) ?? 0;
+      if ((code < 0x20 || (code >= 0x7f && code <= 0x9f)) && !ALLOWED_CONTROLS.has(code)) {
+        issues.push({
+          path: path === "" ? "<root>" : path,
+          message: `contains the control character U+${code.toString(16).toUpperCase().padStart(4, "0")}`,
+        });
+        return;
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => checkNoControlCharacters(issues, item, `${path}[${i}]`));
+    return;
+  }
+  if (isObject(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      checkNoControlCharacters(issues, child, path === "" ? key : `${path}.${key}`);
+    }
+  }
 }
 
 /**
