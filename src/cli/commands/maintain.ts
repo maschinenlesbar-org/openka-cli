@@ -145,7 +145,11 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             parliament: entry.parliament,
             label: entry.label,
             status: entry.status,
-            records: counts.get(entry.parliament) ?? 0,
+            // The all-Länder aggregator has no parliament of its own — its
+            // `parliament` is a typing default — so counting records under it
+            // reported NRW's total twice, once under a row it has nothing to do
+            // with. `undefined` says "not a number that means anything here".
+            records: entry.spansEveryLand === true ? undefined : (counts.get(entry.parliament) ?? 0),
             last_sync: state.last_sync,
             last_success: state.last_success,
             last_error: state.last_error,
@@ -160,7 +164,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         for (const row of rows) {
           const health = row.last_error !== undefined ? "degraded" : row.status;
           ctx.deps.io.out(
-            `${pad(row.key, 26)} ${pad(health, 15)} ${pad(String(row.records), 8)} ${row.last_sync ?? "never"}`,
+            `${pad(row.key, 26)} ${pad(health, 15)} ${pad(row.records === undefined ? "—" : String(row.records), 8)} ${row.last_sync ?? "never"}`,
           );
           if (row.last_error !== undefined) ctx.deps.io.out(`    error: ${truncate(row.last_error, 120)}`);
         }

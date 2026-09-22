@@ -28,6 +28,12 @@ export interface SourceEntry {
   note: string;
   /** Present only for `implemented` entries. */
   factory?: () => Source;
+  /**
+   * True for an adapter that is not tied to one parliament. Its `parliament` is
+   * only a typing default, so counting records under it would report some other
+   * Land's total as if it were this source's.
+   */
+  spansEveryLand?: boolean;
 }
 
 /**
@@ -110,6 +116,7 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
     status: "implemented",
     note: "HTML search of the Länder's shared portal; metadata and PDF links for every Land",
     factory: () => new ParlamentsspiegelSource(),
+    spansEveryLand: true,
   },
   ...PARLIAMENTS.filter(
     (parliament) =>
