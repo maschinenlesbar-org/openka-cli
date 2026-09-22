@@ -7,6 +7,7 @@
 // does not know is left in the text verbatim rather than being replaced by a guess.
 
 import { ParseError } from "../core/errors.js";
+import { stripControlCharacters } from "../core/text.js";
 
 export interface XmlNode {
   name: string;
@@ -166,7 +167,7 @@ export function child(node: XmlNode, name: string): XmlNode | undefined {
 export function childText(node: XmlNode, name: string): string | undefined {
   const found = child(node, name);
   if (found === undefined) return undefined;
-  const text = found.text.replace(/\s+/g, " ").trim();
+  const text = stripControlCharacters(found.text).replace(/\s+/g, " ").trim();
   return text === "" ? undefined : text;
 }
 

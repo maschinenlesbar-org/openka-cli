@@ -5,6 +5,8 @@
 // when it breaks, discovery yields zero refs, which is exactly the drift signal
 // `ka-factory drift` watches for, and repairing the selectors is a factory job.
 
+import { stripControlCharacters } from "../core/text.js";
+
 const NAMED = new Map<string, string>([
   ["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["apos", "'"],
   ["nbsp", " "], ["shy", ""], ["ndash", "–"], ["mdash", "—"], ["hellip", "…"],
@@ -32,7 +34,7 @@ export function decodeHtml(text: string): string {
 
 /** Strip tags and collapse whitespace — the text a reader would see. */
 export function textOf(html: string): string {
-  return decodeHtml(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+  return stripControlCharacters(decodeHtml(html.replace(/<[^>]*>/g, " "))).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -134,7 +136,9 @@ export function spanTexts(html: string): string[] {
 /** The `href` of the first anchor in a fragment. */
 export function firstHref(html: string): string | undefined {
   const match = /<a\b[^>]*\bhref="([^"]+)"/.exec(html);
-  return match === null ? undefined : decodeHtml(match[1] as string);
+  // A URL becomes `source_documents[].url` and is printed back to a terminal, so
+  // it is held to the same hygiene as the text around it.
+  return match === null ? undefined : stripControlCharacters(decodeHtml(match[1] as string));
 }
 
 function escapeRegExp(value: string): string {

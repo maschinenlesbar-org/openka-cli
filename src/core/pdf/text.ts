@@ -21,6 +21,7 @@
 // is an extractor-version bump.
 
 import { decodeStream } from "./filters.js";
+import { stripControlCharacters } from "../text.js";
 import { Lexer, isKeyword, type LexValue } from "./lexer.js";
 import { FontCache, GLYPH_SPACE, type Font } from "./fonts.js";
 import type { PdfDocument } from "./document.js";
@@ -392,7 +393,7 @@ export function assemble(runs: Run[]): string {
       text += run.text;
       cursor = run.x + run.width;
     }
-    return normalizeSpaces(text).replace(/[ \t]+/g, " ").trimEnd();
+    return stripControlCharacters(normalizeSpaces(text)).replace(/[ \t]+/g, " ").trimEnd();
   });
 
   return rendered

@@ -3,6 +3,7 @@
 // `fixtures/`, which is where the awkward cases actually live.
 
 import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
+import { stripControlCharacters } from "../src/core/text.js";
 import { deflateSync } from "node:zlib";
 import { describe, it } from "node:test";
 import { Lexer, isKeyword } from "../src/core/pdf/lexer.js";
@@ -258,5 +259,26 @@ describe("PDF reader on real documents", () => {
     const { text } = extractPdfText(other);
     match(text, /Zu 5\. a\.:/);
     ok(text.split("\n").some((line) => line.split(" ").length > 8), "expected real sentences, not one word per line");
+  });
+});
+
+describe("control characters in extracted text", () => {
+  it("replaces them with a space rather than deleting them", () => {
+    // The Bayern Drucksache 19/6524 prints "Drucksache\b19 / 6524" and
+    // "Seite\b2\b/\b4" in its text layer — the WinAnsi table maps five byte values
+    // straight onto C1 code points, so a control character arrives where a space
+    // belongs. Deleting it would weld the words together.
+    strictEqual(stripControlCharacters("Drucksache\u000819 / 6524"), "Drucksache 19 / 6524");
+    strictEqual(stripControlCharacters("Seite\u00082\u0008/\u00084"), "Seite 2 / 4");
+    strictEqual(stripControlCharacters("Titel\u009b31m"), "Titel 31m");
+    strictEqual(stripControlCharacters("a\u007fb"), "a b");
+  });
+
+  it("keeps the whitespace that carries structure", () => {
+    strictEqual(stripControlCharacters("a\tb\nc\rd"), "a\tb\nc\rd");
+  });
+
+  it("leaves ordinary German text untouched", () => {
+    strictEqual(stripControlCharacters("Brücken & Wege, §3 — 100 %"), "Brücken & Wege, §3 — 100 %");
   });
 });
