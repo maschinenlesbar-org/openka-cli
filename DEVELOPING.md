@@ -581,6 +581,21 @@ private — reading it would put the wrong name and version on every page.
 Only `ka` gets a command reference. `ka-factory` is build-time tooling and is not
 what the site is about.
 
+### Before the first tag: the Pages deployment-branch policy
+
+**`docs.yml` will be rejected at the deploy step until the `github-pages`
+environment has a `v*` tag deployment-branch policy.** That is a repository setting,
+not a file, so a new repository does not inherit it and nothing in this tree can
+create it:
+
+> Settings → Environments → `github-pages` → Deployment branches and tags →
+> add a rule of type **tag** with the pattern `v*`
+
+Every sibling repository in this workspace hit this, and it is worth doing before
+the first tag rather than after: **the Pages artifact expires after a day**, so an
+old failed run cannot simply be re-run. Once the policy exists, dispatch `docs.yml`
+afresh at the tag.
+
 ## Deliberate omissions
 
 Stated plainly so they are not mistaken for oversights:
