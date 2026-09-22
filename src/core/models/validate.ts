@@ -17,6 +17,7 @@ import {
   type KaRecord,
 } from "./schema.js";
 import { isParliamentKey } from "./parliaments.js";
+import { RECORD_JSON_SCHEMA } from "./json-schema.js";
 import { isSha256 } from "../repro/hash.js";
 
 export interface ValidationIssue {
@@ -217,7 +218,45 @@ export function validateRecord(value: unknown): ValidationIssue[] {
   }
 
   validateExtraction(issues, record);
+  checkNoUnknownProperties(issues, value, RECORD_JSON_SCHEMA as unknown, "");
   return issues;
+}
+
+/**
+ * Reject a property the published JSON Schema does not declare.
+ *
+ * The schema says `additionalProperties: false` at every level; the hand-written
+ * validator checked no such thing, so the store accepted — and wrote to disk —
+ * records that fail the contract `ka schema` publishes. The sharpest case was
+ * `extraction.confidence`: a confidence score is the one field CONCEPT.md rules
+ * out by name, because abstention replaces it, and nothing stopped one being
+ * stored.
+ *
+ * The allowed keys are read out of the schema rather than restated here, so the
+ * two cannot drift apart.
+ */
+function checkNoUnknownProperties(issues: ValidationIssue[], value: unknown, schema: unknown, path: string): void {
+  if (!isObject(schema)) return;
+  const properties = schema["properties"];
+  if (schema["type"] === "object" && isObject(properties)) {
+    if (!isObject(value)) return;
+    if (schema["additionalProperties"] === false) {
+      for (const key of Object.keys(value)) {
+        if (key in properties) continue;
+        issues.push({
+          path: path === "" ? key : `${path}.${key}`,
+          message: "unknown property — the published JSON Schema does not declare it",
+        });
+      }
+    }
+    for (const [key, child] of Object.entries(properties)) {
+      if (value[key] !== undefined) checkNoUnknownProperties(issues, value[key], child, path === "" ? key : `${path}.${key}`);
+    }
+    return;
+  }
+  if (schema["type"] === "array" && Array.isArray(value)) {
+    for (const [i, item] of value.entries()) checkNoUnknownProperties(issues, item, schema["items"], `${path}[${i}]`);
+  }
 }
 
 function validateExtraction(issues: ValidationIssue[], record: KaRecord): void {

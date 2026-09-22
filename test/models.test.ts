@@ -101,6 +101,27 @@ describe("calendar dates", () => {
 });
 
 describe("record validation", () => {
+  it("rejects a property the published schema does not declare", () => {
+    // The schema says additionalProperties:false at every level; the validator
+    // checked no such thing, so the store wrote records that fail the contract
+    // `ka schema` publishes.
+    const record = sampleRecord() as unknown as Record<string, unknown>;
+    record["totally_unknown_field"] = true;
+    deepStrictEqual(
+      validateRecord(record).map((issue) => issue.path),
+      ["totally_unknown_field"],
+    );
+  });
+
+  it("rejects a confidence score, the one field the concept rules out", () => {
+    const record = sampleRecord();
+    (record.extraction as unknown as Record<string, unknown>)["confidence"] = 0.97;
+    deepStrictEqual(
+      validateRecord(record).map((issue) => issue.path),
+      ["extraction.confidence"],
+    );
+  });
+
   it("accepts a well-formed record", () => {
     deepStrictEqual(validateRecord(sampleRecord()), []);
   });
