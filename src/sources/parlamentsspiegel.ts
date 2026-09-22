@@ -262,10 +262,15 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
 
   const urheberRegion = regionWithClass(head, "ps-urheber");
   const urheber = urheberRegion === undefined ? "" : (spanTexts(urheberRegion).pop() ?? "");
+  const { askers, bodies } = parseUrheber(urheber);
 
   const answer = parseFollowUps(tail);
   const answeredBy: AnsweredBy = {};
   if (answer?.ministry !== undefined) answeredBy.ministry = answer.ministry;
+  // Schleswig-Holstein publishes question and answer as one document, so there is
+  // no follow-up row to read: the minister who answered is named in the same
+  // Urheber field as the asker.
+  else if (bodies[0] !== undefined) answeredBy.ministry = bodies[0];
   if (answer?.url !== undefined) {
     documents.push({ role: "answer_pdf", url: answer.url, urlStable: urlIsStable(answer.url) });
   }
@@ -277,7 +282,7 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     legislative_period: period,
     title,
     documentType: documentTypeFor(parliament.key),
-    askers: parseUrheber(urheber),
+    askers,
     answered_by: answeredBy,
     dates: {},
     documents,

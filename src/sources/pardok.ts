@@ -106,7 +106,7 @@ export function pardokVorgangToRef(vorgang: XmlNode, options: PardokOptions = {}
     legislative_period: period,
     title: childText(question, "Titel") ?? "",
     documentType,
-    askers: parseUrheber(childText(question, "Urheber") ?? ""),
+    askers: parseUrheber(childText(question, "Urheber") ?? "").askers,
     answered_by: answeredBy,
     dates: {},
     documents: refDocuments,

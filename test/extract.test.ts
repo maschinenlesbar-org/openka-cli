@@ -508,14 +508,43 @@ describe("metadata rules", () => {
   });
 
   it("splits a PARDOK Urheber field into askers", () => {
-    deepStrictEqual(parseUrheber("Otto, Andreas (Grüne)"), [{ name: "Andreas Otto", party: "Grüne" }]);
-    deepStrictEqual(parseUrheber("Goldner, Antonia-Katharina, Dr., CDU; CDU"), [
+    deepStrictEqual(parseUrheber("Otto, Andreas (Grüne)").askers, [{ name: "Andreas Otto", party: "Grüne" }]);
+    deepStrictEqual(parseUrheber("Goldner, Antonia-Katharina, Dr., CDU; CDU").askers, [
       { name: "Dr. Antonia-Katharina Goldner", party: "CDU" },
     ]);
   });
 
   it("does not turn a bare Fraktion into a person", () => {
-    deepStrictEqual(parseUrheber("CDU"), []);
+    deepStrictEqual(parseUrheber("CDU").askers, []);
+  });
+
+  it("does not turn a Fraktion spelled out beside its abbreviation into a person", () => {
+    // Schleswig-Holstein repeats the Fraktion in full. Every real person in this
+    // field is written surname-first, so the missing comma is what gives it away.
+    deepStrictEqual(parseUrheber("Sozialdemokratische Partei Deutschlands (SPD)").askers, []);
+    deepStrictEqual(parseUrheber("Freie Demokratische Partei (FDP)").askers, []);
+  });
+
+  it("keeps an office out of the askers and reports it as a body", () => {
+    // Schleswig-Holstein files question and answer as one document, so the
+    // minister who answered is in the same field as the asker. Read as a person,
+    // the trailing-party rule split the ministry's name in half and made
+    // "Forschung und Kultur" somebody's political party.
+    const field =
+      "Krämer, Annabell (FDP); Freie Demokratische Partei (FDP); " +
+      "Minister/in für Allgemeine und Berufliche Bildung, Wissenschaft, Forschung und Kultur";
+    const parsed = parseUrheber(field);
+    deepStrictEqual(parsed.askers, [{ name: "Annabell Krämer", party: "FDP" }]);
+    deepStrictEqual(parsed.bodies, ["Minister/in für Allgemeine und Berufliche Bildung, Wissenschaft, Forschung und Kultur"]);
+  });
+
+  it("recognises the other shapes a Land writes an office in", () => {
+    deepStrictEqual(parseUrheber("Senatsverwaltung für Inneres und Sport").bodies.length, 1);
+    deepStrictEqual(parseUrheber("Niedersächsisches Ministerium für Umwelt, Energie und Klimaschutz").bodies.length, 1);
+    deepStrictEqual(parseUrheber("Niedersächsische Staatskanzlei").bodies.length, 1);
+    deepStrictEqual(parseUrheber("Landesregierung").bodies.length, 1);
+    // A person is still a person.
+    deepStrictEqual(parseUrheber("Ministerowitsch, Anna (CDU)").bodies, []);
   });
 
   it("finds the answering ministry", () => {

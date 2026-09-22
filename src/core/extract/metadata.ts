@@ -115,11 +115,42 @@ export interface ParsedAsker {
  * The name is normalised from `Surname, Given` to `Given Surname`, which is how a
  * person is actually named; the printed form stays recoverable from the source PDF.
  */
-export function parseUrheber(value: string): ParsedAsker[] {
+/**
+ * The offices this field names instead of a person. Schleswig-Holstein files the
+ * question and the answer as one document, so its `Urheber` reads
+ * "Dürbrook, Niclas (SPD); Sozialdemokratische Partei Deutschlands (SPD);
+ * Minister/in für Wirtschaft, Verkehr, Arbeit, Technologie und Tourismus" — the
+ * asker, their Fraktion, and the minister who answered, in one list.
+ *
+ * Read as people, the last of those became "Wissenschaft Minister/in für Allgemeine
+ * und Berufliche Bildung" of the party "Forschung und Kultur": the comma rule for a
+ * trailing party split a ministry's name in half and invented a party out of the
+ * second half. An office is not a person and does not go in `askers`.
+ */
+// The lookahead matters: without it "Ministerowitsch, Anna (CDU)" is an office.
+const OFFICE =
+  /^(Ministerium|Ministerin|Minister|Senatsverwaltung|Senatorin|Senator|Staatssekretärin|Staatssekretär|Staatskanzlei|Landesregierung|Regierungspräsidium|Regierungspräsidentin|Regierungspräsident|Präsidentin|Präsident|Bürgermeisterin|Bürgermeister)(?![\p{L}])/u;
+
+/** A Land's ministry spelled out with its Land in front, as Niedersachsen writes it. */
+const LAND_OFFICE = /^\p{Lu}[\p{L}-]+(es|e|er)\s+(Ministerium|Staatskanzlei|Landesamt)/u;
+
+export interface ParsedUrheber {
+  /** The people who asked. */
+  askers: ParsedAsker[];
+  /** Offices named in the same field — on a combined row, the answering body. */
+  bodies: string[];
+}
+
+export function parseUrheber(value: string): ParsedUrheber {
   const askers: ParsedAsker[] = [];
+  const bodies: string[] = [];
   for (const chunk of value.split(";")) {
     const entry = chunk.trim();
     if (entry === "") continue;
+    if (OFFICE.test(entry) || LAND_OFFICE.test(entry)) {
+      bodies.push(entry);
+      continue;
+    }
     let party: string | undefined;
     let name = entry;
 
@@ -127,6 +158,11 @@ export function parseUrheber(value: string): ParsedAsker[] {
     if (parenthesised) {
       name = (parenthesised[1] as string).trim();
       party = (parenthesised[2] as string).trim();
+      // In this form the portal always writes a person surname-first — every
+      // "Name (Partei)" entry in the recorded payloads has the comma. Without one
+      // it is the Fraktion spelled out beside its abbreviation, as Schleswig-
+      // Holstein repeats it: "Sozialdemokratische Partei Deutschlands (SPD)".
+      if (!name.includes(",")) continue;
     } else {
       // `Surname, Given, Dr., CDU` — a trailing comma-separated party.
       const parts = entry.split(",").map((part) => part.trim());
@@ -150,7 +186,7 @@ export function parseUrheber(value: string): ParsedAsker[] {
     if (party !== undefined && party !== "") asker.party = party;
     askers.push(asker);
   }
-  return askers;
+  return { askers, bodies };
 }
 
 /** Academic and parliamentary titles, which German records print after the name. */
