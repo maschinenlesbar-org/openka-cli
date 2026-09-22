@@ -188,8 +188,11 @@ export class FetchEngine {
         }
         const next = new URL(location, url);
         assertHttpScheme(next.toString());
-        // Credentials never cross a host boundary, whatever the upstream asks for.
-        if (next.host !== new URL(url).host) currentHeaders = withoutSensitiveHeaders(currentHeaders);
+        // Credentials never cross an *origin* boundary, whatever the upstream asks
+        // for. Comparing origins rather than hosts matters because a same-host
+        // redirect from https: to http: is still a credential leak — the API key
+        // would go out in clear text to anyone on the path.
+        if (next.origin !== new URL(url).origin) currentHeaders = withoutSensitiveHeaders(currentHeaders);
         url = next.toString();
         continue;
       }

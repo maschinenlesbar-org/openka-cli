@@ -150,6 +150,21 @@ describe("fetch engine", () => {
     ok(forwarded["user-agent"] !== undefined);
   });
 
+  it("strips credentials when a redirect downgrades https to http on the same host", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "https://example.invalid/from", status: 302, headers: { location: "http://example.invalid/to" } },
+      { match: "http://example.invalid/to", body: "arrived" },
+    ]);
+    await testEngine(transport).get("https://example.invalid/from", {
+      headers: { authorization: "ApiKey secret", cookie: "session=1", "x-api-key": "k" },
+    });
+    const forwarded = requests[1]?.headers ?? {};
+    strictEqual(forwarded["authorization"], undefined);
+    strictEqual(forwarded["cookie"], undefined);
+    strictEqual(forwarded["x-api-key"], undefined);
+    ok(forwarded["user-agent"] !== undefined);
+  });
+
   it("refuses to follow a redirect to a non-http scheme", async () => {
     const { transport } = scriptedTransport([
       { match: "/evil", status: 302, headers: { location: "file:///etc/passwd" } },
