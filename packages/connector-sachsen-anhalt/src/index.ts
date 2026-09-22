@@ -31,7 +31,6 @@
 // be hit at the usual rate.
 
 import {
-  FallbackSource,
   robotsGate,
   type DiscoverOptions,
   type DiscoverResult,
@@ -86,9 +85,17 @@ export class SachsenAnhaltSource implements Source {
   }
 }
 
-/** The Land's own documents, with the aggregator behind them as ever. */
+/**
+ * What `createSource()` returns: the gated source itself, with no fallback wrapper.
+ *
+ * The other connectors wrap the Land's own interface with the aggregator behind it.
+ * Here the Land's own interface *is* the aggregator — discovery already runs through
+ * the Parlamentsspiegel, behind the robots.txt gate — so a fallback would retry the
+ * same host with the same request, and its composed `notes` would tell
+ * `ka sources show` that this source falls back to itself.
+ */
 export function createSource(): Source {
-  return new FallbackSource(new SachsenAnhaltSource(), new ParlamentsspiegelSource(PARLIAMENT));
+  return new SachsenAnhaltSource();
 }
 
 /** How this connector announces itself to the registry and `ka sources list`. */

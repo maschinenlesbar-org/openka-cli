@@ -74,6 +74,15 @@ describe("brandenburg source", () => {
 });
 
 describe("what createSource returns", () => {
+  it("is the gated source itself, not a fallback to the same aggregator", () => {
+    // Discovery already runs through the Parlamentsspiegel here, so a FallbackSource
+    // around it would retry the same request on failure and describe the source as
+    // falling back to itself.
+    const source = createSource();
+    ok(!source.notes.includes("Falls back"));
+    strictEqual(source.minHostIntervalMs, POLITE_INTERVAL_MS);
+  });
+
   it("still honours the default without the flag", async () => {
     const { transport } = landtag(DISALLOW_ALL);
     const result = await createSource().discover({ engine: testEngine(transport), state });
