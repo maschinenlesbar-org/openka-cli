@@ -155,9 +155,10 @@ function parseStartTag(body: string): XmlNode {
   const match = /^([A-Za-z_:][-A-Za-z0-9_:.]*)/.exec(body.trim());
   const name = match?.[1] ?? "";
   const attributes: Record<string, string> = {};
-  ATTRIBUTE.lastIndex = 0;
-  let attribute: RegExpExecArray | null;
-  while ((attribute = ATTRIBUTE.exec(body)) !== null) {
+  // `matchAll` rather than `exec` in a loop: the module-level pattern carries a
+  // shared `lastIndex`, and resetting it by hand is a discipline rather than a
+  // guarantee.
+  for (const attribute of body.matchAll(ATTRIBUTE)) {
     const value = attribute[3] ?? attribute[4] ?? "";
     attributes[attribute[1] as string] = decodeEntities(value);
   }

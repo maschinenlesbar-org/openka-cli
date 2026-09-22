@@ -63,9 +63,10 @@ export class PdfDocument {
 
   private scanObjects(): void {
     const text = this.buf.toString("latin1");
-    OBJ_HEADER.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = OBJ_HEADER.exec(text)) !== null) {
+    // `matchAll` takes its own copy of the regex, so the shared `lastIndex` of a
+    // module-level /g pattern cannot be carried between calls — a reset by hand is
+    // a discipline, and a nested or re-entrant scan would silently skip input.
+    for (const match of text.matchAll(OBJ_HEADER)) {
       const num = Number(match[1]);
       // A later definition of the same object number wins: that is what an
       // incremental update means, and scanning forward sees the update last.

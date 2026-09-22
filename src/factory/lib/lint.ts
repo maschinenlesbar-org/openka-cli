@@ -120,9 +120,9 @@ export function lintSource(file: string, source: string): LintViolation[] {
 
   // Imports are matched over the whole file, because a static import may be
   // spread across several lines; the offset is mapped back to a line for the report.
-  IMPORT_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = IMPORT_PATTERN.exec(stripped)) !== null) {
+  // `matchAll` copies the pattern, so the module-level /g regex cannot carry a
+  // `lastIndex` from one file's scan into the next.
+  for (const match of stripped.matchAll(IMPORT_PATTERN)) {
     const specifier = match[1] ?? match[2] ?? match[3] ?? match[4];
     if (specifier === undefined) continue;
     const line = lineAt(stripped, match.index);
