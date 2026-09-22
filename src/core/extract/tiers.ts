@@ -22,6 +22,7 @@ import {
   type SourceDocumentRole,
   type Tier,
 } from "../models/schema.js";
+import { canonicalJsonLine } from "../repro/canonical.js";
 import { sha256 } from "../repro/hash.js";
 import { extractorVersion } from "../repro/version.js";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "../pdf/index.js";
@@ -337,10 +338,20 @@ async function runOcr(
     .join(PAGE_SEPARATOR);
 }
 
-/** Bytes hashed as `input_sha256` when a record came from metadata alone. */
+/**
+ * Bytes hashed as `input_sha256` when a record came from metadata alone.
+ *
+ * Canonical JSON, not `JSON.stringify`: `askers`, `answered_by` and `dates` are
+ * objects, and `JSON.stringify` emits their keys in insertion order. Two adapters
+ * that build `dates` in a different order would then produce different digests for
+ * identical data, which would make `input_sha256` — the field that says *these
+ * exact bytes were parsed* — depend on how the value happened to be constructed.
+ * This is the one place a digest is taken over a value rather than over bytes, so
+ * it is the one place that has to go through the canonical form.
+ */
 function canonicalMetadataBytes(metadata: SourceMetadata): Buffer {
   return Buffer.from(
-    JSON.stringify([
+    canonicalJsonLine([
       metadata.reference,
       metadata.legislative_period,
       metadata.title,

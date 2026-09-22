@@ -689,6 +689,30 @@ describe("the tier stack", () => {
     ok(record.extraction.abstained_fields.includes("full_text"));
   });
 
+  it("hashes metadata-only input independently of how the object was built", async () => {
+    // `input_sha256` must identify the data, not the insertion order an adapter
+    // happened to use. JSON.stringify would have given these two different digests.
+    const run = async (dates: Record<string, string>) => {
+      const ordered = { ...metadata, dates } as typeof metadata;
+      const { record } = await extract({
+        parliament: "berlin",
+        documentType: "schriftliche_anfrage",
+        tier: "structured",
+        metadata: ordered,
+        documents: [],
+        env: {},
+      });
+      return record.extraction.input_sha256;
+    };
+    const submittedFirst: Record<string, string> = {};
+    submittedFirst["submitted"] = "2024-03-01";
+    submittedFirst["answered"] = "2024-03-28";
+    const answeredFirst: Record<string, string> = {};
+    answeredFirst["answered"] = "2024-03-28";
+    answeredFirst["submitted"] = "2024-03-01";
+    strictEqual(await run(submittedFirst), await run(answeredFirst));
+  });
+
   it("abstains on every page in strict mode rather than running a model", async () => {
     const { record, notes } = await extract({
       parliament: "berlin",
