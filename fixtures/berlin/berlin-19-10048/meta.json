@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.0.1",
+  "extractor_version": "pkg:0.0.1+rules:06de62e130d6",
   "human_verified": false,
   "id": "berlin-19-10048",
   "note": "numbered questions with Zu N. answers, recovered once the numbered-table guard stopped the rule set overreaching",

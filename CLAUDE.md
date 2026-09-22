@@ -61,8 +61,10 @@ You may **not** without asking:
   `retrieved_at` at fetch time and injects its clock through `CliDeps.now`.
 - **Frozen rules are named.** `WORD_GAP_EM`, `LINE_TOLERANCE_EM`,
   `MIN_NUMBER_DENSITY` and the regexes in `segment.ts` change the bytes of every
-  record produced through their tier. Changing one is an extractor-version bump and
-  a golden re-freeze, not a tweak.
+  record produced through their tier. Changing one bumps the extractor version by
+  itself — `extractionRulesFingerprint()` hashes the rule families, the guards and
+  the layout constants into `extractor_version` — but it still needs a golden
+  re-freeze, and it is a decision, not a tweak.
 - **Comments explain judgement, not syntax.** The interesting comments in this
   repository say why a threshold is where it is, or what real document forced a
   decision. Keep that.

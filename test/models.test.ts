@@ -1,7 +1,7 @@
 // The schema, its canonical form and its validators — the trust guarantee's
 // foundation, so these are the tests that must never be relaxed.
 
-import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { canonicalJson, canonicalJsonLine } from "../src/core/repro/canonical.js";
 import { isSha256, sha256, sha256Canonical } from "../src/core/repro/hash.js";
@@ -9,7 +9,17 @@ import { makeRecordId, SCHEMA_VERSION } from "../src/core/models/schema.js";
 import { isCalendarDate, validateRecord } from "../src/core/models/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/core/models/json-schema.js";
 import { isParliamentKey, parliamentByHerkunft, parliamentByKey, PARLIAMENTS } from "../src/core/models/parliaments.js";
-import { extractorVersion, VERSION_ENV } from "../src/core/repro/version.js";
+import { readFileSync } from "node:fs";
+import { extractorVersion, PACKAGE_VERSION, VERSION_ENV } from "../src/core/repro/version.js";
+import { extractionRuleDescription, extractionRulesFingerprint } from "../src/core/extract/fingerprint.js";
+import {
+
+  MAX_NUMBER_SKIP,
+  MIN_INFERRED_ANSWER_RATE,
+  MIN_NUMBER_DENSITY,
+  RULE_SETS,
+} from "../src/core/extract/segment.js";
+import { WORD_GAP_EM } from "../src/core/pdf/text.js";
 import { sampleRecord } from "./helpers.js";
 
 describe("canonical JSON", () => {
@@ -162,5 +172,27 @@ describe("extractor version", () => {
 
   it("ignores a blank stamp rather than recording an empty provenance", () => {
     ok(extractorVersion({ [VERSION_ENV]: "   " }).startsWith("pkg:"));
+  });
+
+  it("carries a fingerprint of the extraction rules, not the package version alone", () => {
+    // The package version does not move when a segmentation rule does, so on its
+    // own it cannot back the claim "same version + same input => same bytes".
+    match(extractorVersion({}), /^pkg:\d+\.\d+\.\d+\+rules:[0-9a-f]{12}$/);
+    strictEqual(extractionRulesFingerprint(), extractionRulesFingerprint());
+  });
+
+  it("describes every rule family and guard, so changing one moves the fingerprint", () => {
+    const description = extractionRuleDescription();
+    for (const rules of RULE_SETS) ok(description.includes(rules.key));
+    for (const guard of [MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, MAX_NUMBER_SKIP, WORD_GAP_EM]) {
+      ok(description.includes(String(guard)));
+    }
+    // The question pattern of each family is part of it, verbatim.
+    for (const rules of RULE_SETS) ok(description.includes(JSON.stringify(rules.question.source).slice(1, -1)));
+  });
+
+  it("keeps PACKAGE_VERSION in step with package.json", () => {
+    const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+    strictEqual(PACKAGE_VERSION, manifest.version);
   });
 });
