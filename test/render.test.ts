@@ -132,6 +132,19 @@ describe("Atom feed", () => {
     match(feed, /<updated>2024-03-28T00:00:00Z<\/updated>/);
   });
 
+  it("gives every entry an author, naming the parliament when the askers are unknown", () => {
+    // `askers` is a field the extractor can abstain on, and an entry with no
+    // author makes the whole feed invalid under RFC 4287 §4.1.2.
+    const anonymous = renderAtom([sampleRecord({ askers: [] })], {
+      title: "OpenKA",
+      id: "urn:openka:test",
+      updated: "2026-01-02T03:04:05Z",
+    });
+    strictEqual(anonymous.match(/<entry>/g)?.length, 1);
+    strictEqual(anonymous.match(/<author>/g)?.length, 1);
+    match(anonymous, /<author><name>Abgeordnetenhaus von Berlin<\/name><\/author>/);
+  });
+
   it("says in the summary when a record is incomplete", () => {
     match(feed, /Unvollständig extrahiert: qa\[0\]\.answer\./);
   });

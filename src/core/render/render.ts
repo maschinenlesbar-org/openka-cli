@@ -239,6 +239,24 @@ export interface FeedOptions {
   siteUrl?: string;
 }
 
+/**
+ * The `<author>` elements of one entry.
+ *
+ * RFC 4287 §4.1.2 requires every entry to carry an author unless the feed does,
+ * and this feed spans parliaments so it has no single one. The askers are the
+ * authors when we know them — but `askers` is a field the extractor can abstain
+ * on, and an entry with no author is not merely untidy, it makes the whole feed
+ * invalid. So an entry with no known asker names the body that published the
+ * paper, which is a fact we hold rather than a person we invented.
+ */
+function atomAuthors(record: KaRecord): string[] {
+  if (record.askers.length > 0) {
+    return record.askers.map((asker) => `    <author><name>${escapeXml(asker.name)}</name></author>`);
+  }
+  const publisher = parliamentByKey(record.parliament)?.label ?? record.parliament;
+  return [`    <author><name>${escapeXml(publisher)}</name></author>`];
+}
+
 /** An Atom 1.0 feed of records, newest first. */
 export function renderAtom(records: KaRecord[], options: FeedOptions): string {
   const entries = records.map((record) => {
@@ -259,7 +277,7 @@ export function renderAtom(records: KaRecord[], options: FeedOptions): string {
       `    <title>${escapeXml(record.title || record.reference)}</title>`,
       `    <link rel="alternate" href="${escapeXml(link)}"/>`,
       `    <updated>${escapeXml(updated === undefined ? options.updated : `${updated}T00:00:00Z`)}</updated>`,
-      ...record.askers.map((asker) => `    <author><name>${escapeXml(asker.name)}</name></author>`),
+      ...atomAuthors(record),
       `    <category term="${escapeXml(record.parliament)}"/>`,
       `    <summary>${escapeXml(summary)}</summary>`,
       "  </entry>",
