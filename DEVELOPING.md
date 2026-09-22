@@ -547,6 +547,40 @@ as **degraded** in `ka sources list`, with its last error.
 
 An extractor may not be promoted while a golden is red. That is the gate.
 
+## The website
+
+`site/` is the same bilingual Jekyll kit every repo in this workspace uses — banira
+web components, Fylgja CSS, English at the root and German under `/de/`. `docs.yml`
+builds it on a `v*` tag or a manual dispatch and deploys it to Pages with the TypeDoc
+reference mounted under `/api/`.
+
+```bash
+cd site && npm ci && bundle install
+npm run build:assets     # Fylgja CSS, banira components, the command reference
+bundle exec jekyll build # or: npm run serve
+```
+
+**Nothing on the site is written twice.** The English intro and quick start come from
+`README.md`, the command reference from the built CLI's own commander tree, and
+`Usage.md` and `GLOSSARY.md` become pages. Only two files are repo-specific:
+`_config.yml` and `_data/project.yml` (the access note and the German intro). When
+the README's intro changes, change `project.yml` with it.
+
+**This repository is a workspace, and the kit was written for a single package.**
+Two facts that used to be hard-coded are now named in `_config.yml`, defaulting to
+the old layout so the kit is still copyable to the other repos unchanged:
+
+```yaml
+manifest: packages/openka-cli/package.json   # the published manifest, not the private root
+program:  packages/cli-ka/dist/src/program.js
+```
+
+The manifest matters because the root `package.json` is `openka-workspace` and
+private — reading it would put the wrong name and version on every page.
+
+Only `ka` gets a command reference. `ka-factory` is build-time tooling and is not
+what the site is about.
+
 ## Deliberate omissions
 
 Stated plainly so they are not mistaken for oversights:
@@ -558,8 +592,9 @@ Stated plainly so they are not mistaken for oversights:
   can read, diff and archive with ordinary tools. The store is plain files with a
   sharded inverted index, behind a `Store` interface a SQLite implementation can
   slot into if either of those changes.
-- **No site, no skills, no plugin packaging.** The other repos in this workspace
-  ship a bilingual Jekyll site and Claude Code skills; this one does not yet.
+- **No skills, no plugin packaging.** The other repos in this workspace ship Claude
+  Code skills through the central marketplace; this one does not yet. The website is
+  now here (see below).
 - **No real semantic embeddings on the line.** `ka-factory embed` builds hashed
   TF-IDF projections and says so. Language-model vectors can be imported with
   `--from`; the line still only ever compares numbers.

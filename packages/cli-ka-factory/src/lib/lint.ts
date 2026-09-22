@@ -250,6 +250,14 @@ export interface WorkflowCommand {
   /** `script` for `npm run <name>`, `path` for `node <file>`. */
   kind: "script" | "path";
   value: string;
+  /**
+   * The step's `working-directory`, relative to the repository root, or `""`.
+   *
+   * It decides which `package.json` a script has to be in: the website's build
+   * steps run in `site/`, where the scripts are the site's own, not the
+   * workspace's.
+   */
+  directory: string;
 }
 
 /**
@@ -272,15 +280,28 @@ export function workflowCommands(projectRoot: string): WorkflowCommand[] {
   const found: WorkflowCommand[] = [];
   for (const name of names.sort()) {
     const lines = readFileSync(join(directory, name), "utf8").split(/\r?\n/);
+    // `working-directory` applies to the step it is written in, so it is tracked
+    // by indentation: a key at or below the step's indent ends its scope.
+    let cwd = "";
+    let cwdIndent = Number.POSITIVE_INFINITY;
     lines.forEach((text, index) => {
+      const indent = text.length - text.trimStart().length;
+      const here = /^\s*working-directory:\s*(\S+)\s*$/.exec(text);
+      if (here !== null) {
+        cwd = (here[1] as string).replace(/^\.\//, "");
+        cwdIndent = indent;
+      } else if (/^\s*- /.test(text) && indent <= cwdIndent) {
+        cwd = "";
+        cwdIndent = Number.POSITIVE_INFINITY;
+      }
       const script = /\bnpm run ([a-z][\w:-]*)/.exec(text);
       if (script !== null) {
-        found.push({ workflow: name, line: index + 1, kind: "script", value: script[1] as string });
+        found.push({ workflow: name, line: index + 1, kind: "script", value: script[1] as string, directory: cwd });
       }
       // `node <path>`, but not `node -p`, `node -e` or a `node-version:` key.
       const path = /\bnode\s+((?:packages|dist|tools|scripts)\/[\w./-]+)/.exec(text);
       if (path !== null) {
-        found.push({ workflow: name, line: index + 1, kind: "path", value: path[1] as string });
+        found.push({ workflow: name, line: index + 1, kind: "path", value: path[1] as string, directory: cwd });
       }
     });
   }

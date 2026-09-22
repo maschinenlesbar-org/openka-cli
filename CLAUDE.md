@@ -111,6 +111,15 @@ You may **not** without asking:
   repository say why a threshold is where it is, or what real document forced a
   decision. Keep that.
 
+## The website
+
+`site/` is the shared bilingual Jekyll kit, built by `docs.yml` on a `v*` tag. Its
+content is generated from the repository — README intro, the built CLI's command
+tree, `Usage.md`, `GLOSSARY.md` — so the only files to edit by hand are
+`site/_config.yml` and `site/_data/project.yml`. **When the README's intro changes,
+update the German one in `project.yml` in the same commit.** DEVELOPING.md explains
+the two workspace-specific keys.
+
 ## Exit codes
 
 `0` success · `1` error · `2` usage error · `3` corpus problem · `4` not found.

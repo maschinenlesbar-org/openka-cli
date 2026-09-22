@@ -1,8 +1,10 @@
 # openka-cli — `ka`
 
-> German parliamentary *Kleine Anfragen* from 17 incompatible documentation
-> systems, in one standardized, reproducible, machine-readable format.
->
+German parliamentary *Kleine Anfragen* from 17 incompatible documentation systems,
+in one standardized, reproducible, machine-readable format — fetched from the
+parliament that published them, read deterministically, and stored as a record you
+can re-derive from the archived bytes.
+
 > **The runtime is deterministic. No generative model runs in this program.**
 > When an extractor cannot read a document it *abstains* and queues it for review.
 > A missing fact is recoverable; a fabricated one poisons the corpus.

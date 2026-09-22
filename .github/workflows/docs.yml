@@ -1,0 +1,114 @@
+name: Docs
+
+# Builds the project website and deploys it to GitHub Pages: the Jekyll site in
+# site/ (English at the root, German under /de/ — banira web components, Fylgja
+# CSS) with the TypeDoc API reference mounted under /api/. The command reference
+# is read from the built CLI. Publishes on every new version tag so the site
+# reflects the latest release; also runnable manually.
+#
+# One-time repo setting: Settings -> Pages -> Build and deployment -> Source ->
+# "GitHub Actions".
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Least privilege at the workflow level: only read. The Pages/OIDC write scopes
+# are granted per-job, to the deploy job that actually needs them.
+permissions:
+  contents: read
+
+# Allow one in-flight Pages deployment at a time; don't cancel a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22.x
+          # No cache restoration on tag-triggered runs (cache-poisoning hardening).
+          package-manager-cache: false
+
+      - name: Use Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: '3.4'
+          working-directory: site
+          bundler-cache: false
+
+      - name: Install
+        run: npm ci
+
+      # TypeDoc runs from its own lockfile-pinned toolchain: it needs the
+      # TypeScript 6 compiler API, which TypeScript 7 (used for the build) no
+      # longer ships.
+      - name: Install docs toolchain
+        run: npm ci --prefix tools/docs
+
+      # The website's command reference is read from the compiled CLI.
+      - name: Build
+        run: npm run build
+
+      - name: Build API docs
+        run: npm run docs
+
+      - name: Install site toolchain
+        working-directory: site
+        run: |
+          npm ci
+          bundle install
+
+      - name: Test site components (banira test + lint)
+        working-directory: site
+        run: npm test
+
+      - name: Build site assets (Fylgja CSS, banira components, command reference)
+        working-directory: site
+        run: npm run build:assets
+
+      - name: Build site
+        working-directory: site
+        run: bundle exec jekyll build
+        env:
+          JEKYLL_ENV: production
+          # Links to repository files point at the released tag.
+          SITE_REF: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
+
+      - name: Mount API reference under /api/
+        run: |
+          mkdir -p site/_site/api
+          cp -R out/. site/_site/api/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ./site/_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # Scopes the Pages deploy needs, granted only to this job.
+    permissions:
+      pages: write # publish the uploaded artifact as the Pages site
+      id-token: write # OIDC token deploy-pages exchanges for the Pages deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

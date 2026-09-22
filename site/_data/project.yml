@@ -1,0 +1,24 @@
+# The only repo-specific texts of the website. Everything else comes from the
+# repository: the English intro from README.md, the commands from the built CLI.
+
+# How the API is accessed: open | key (env: VAR) | account (token, user, password: VARs)
+#
+# Most of the seventeen parliaments are open. The Bundestag's DIP API needs a key,
+# which is the one exception and is stated on the page rather than hidden in a flag.
+access:
+  type: open
+
+de:
+  # German version of the README's intro paragraph. Keep it in step with README.md.
+  intro: >-
+    **Kleine Anfragen** aus siebzehn deutschen Parlamenten – Bundestag und alle
+    sechzehn Landtage – in einem einheitlichen, reproduzierbaren Format. `ka` ist ein
+    Kommandozeilen-Werkzeug, das die Drucksachen dort abholt, wo das Parlament sie
+    selbst veröffentlicht, Frage und Antwort deterministisch aus dem PDF liest und
+    beides als geprüften Datensatz ablegt.
+
+    Entscheidend ist, was das Werkzeug **nicht** tut: Es rät nicht. Wenn ein Extraktor
+    eine Stelle nicht sicher lesen kann, erfindet er nichts, sondern enthält sich –
+    das Feld bleibt leer, wird in `abstained_fields` benannt und der Datensatz zur
+    Prüfung vorgemerkt. Kein Sprachmodell läuft auf diesem Weg; `ka verify` rechnet
+    jeden Datensatz aus den archivierten Bytes nach und vergleicht ihn Byte für Byte.

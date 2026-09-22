@@ -309,12 +309,22 @@ describe("the CI workflows", () => {
     ok(commands.some((command) => command.kind === "script"));
   });
 
-  it("runs only npm scripts this repository defines", () => {
-    const defined = new Set(
-      Object.keys(JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")).scripts ?? {}),
-    );
+  it("runs only npm scripts the manifest of its working directory defines", () => {
+    // The website's steps run in `site/`, where the scripts are the site's own.
+    const scriptsIn = (directory: string): Set<string> =>
+      new Set(
+        Object.keys(
+          (JSON.parse(readFileSync(join(PROJECT_ROOT, directory, "package.json"), "utf8")) as {
+            scripts?: Record<string, string>;
+          }).scripts ?? {},
+        ),
+      );
     for (const command of commands.filter((entry) => entry.kind === "script")) {
-      ok(defined.has(command.value), `${command.workflow}:${command.line} runs missing script "${command.value}"`);
+      ok(
+        scriptsIn(command.directory).has(command.value),
+        `${command.workflow}:${command.line} runs "${command.value}", which ` +
+          `${command.directory === "" ? "the workspace" : command.directory} does not define`,
+      );
     }
   });
 
@@ -322,7 +332,7 @@ describe("the CI workflows", () => {
     for (const command of commands.filter((entry) => entry.kind === "path")) {
       // `dist/` is built, so only its source counterpart can be checked here; a
       // path under `dist/` that no package owns is the exact bug this caught.
-      const target = join(PROJECT_ROOT, command.value);
+      const target = join(PROJECT_ROOT, command.directory, command.value);
       ok(
         existsSync(target) || existsSync(target.replace("/dist/src/", "/src/")),
         `${command.workflow}:${command.line} references missing path "${command.value}"`,
