@@ -4,7 +4,7 @@
 // bodies, the two-level JSON wrapping its answers use, and the way an unexpected
 // shape becomes "no answer found" rather than a failed sync.
 
-import { match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   FACET_KIND,
@@ -12,18 +12,18 @@ import {
   FACET_NUMBER,
   KIND_KLEINE_ANFRAGE,
   PARLDOK_WEB,
-  ThueringenSource,
+  ThueringenParldokSource,
+  createSource,
+  parseAuthors,
   answerPosition,
   firstHit,
   processBody,
   searchBody,
   successPayload,
 } from "../src/index.js";
-import { scriptedTransport, testEngine, fixtures, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
+import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixtures(import.meta.url);
-// The result row that starts discovery is the aggregator's document, not Parldok's.
-const ps = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url);
 
 const SEARCH = readFixtureText("payloads", "parldok-search.json");
 const PROCESS = readFixtureText("payloads", "parldok-process.json");
@@ -87,6 +87,17 @@ describe("Parldok responses", () => {
     strictEqual(firstHit('{"success":true,"data":"{\\"docs\\":[]}"}').kind, "absent");
   });
 
+  it("calls an answer that has not been published yet absent, not unrecognised", () => {
+    // A Vorgang nobody has answered carries a position *about* the answer:
+    // "Gedruckte Antwort liegt noch nicht vor/wird noch erfasst". It matches
+    // "Antwort" and has no document, and reading it as an answer we failed to
+    // follow reported every open Kleine Anfrage as an API we no longer understand.
+    const pending =
+      '{"success":true,"data":"{\\"process\\":{\\"positions\\":[' +
+      '{\\"text\\":\\"Gedruckte Antwort liegt noch nicht vor/wird noch erfasst\\",\\"doc\\":null}]}}"}';
+    strictEqual(answerPosition(pending, PARLDOK_WEB).kind, "absent");
+  });
+
   it("separates a response it does not understand from one that holds nothing", () => {
     // Both end the lookup with no answer, but only one of them means the API
     // changed under us, and a sync that cannot say which reports the wrong fact.
@@ -101,50 +112,108 @@ describe("Parldok responses", () => {
 });
 
 describe("Thüringen source", () => {
+  const LISTING = readFixtureText("payloads", "parldok-listing.json");
+
   function transport(): ReturnType<typeof scriptedTransport> {
     return scriptedTransport([
-      { match: "/suche", body: ps.readFixtureText("payloads", "parlamentsspiegel-thueringen.html") },
-      { match: "Fulltext/Search", body: SEARCH },
+      { match: "Fulltext/Search", body: LISTING },
       { match: "Process/Document", body: PROCESS },
     ]);
   }
 
+  it("discovers the Kleine Anfragen from the Landtag's own API", async () => {
+    const { transport: scripted } = transport();
+    const result = await new ThueringenParldokSource().discover({
+      engine: testEngine(scripted),
+      state: { source: "thueringen", http_cache: {} },
+    });
+    strictEqual(result.refs.length, 13);
+    for (const ref of result.refs) {
+      match(ref.reference, /^8\/\d+$/);
+      ok(ref.askers.length >= 1, `${ref.reference} has no asker`);
+      ok(ref.dates.submitted !== undefined);
+      ok(ref.documents.some((document) => document.role === "question_pdf"));
+    }
+  });
 
   it("attaches the answer Drucksache as a combined document", async () => {
     const { transport: scripted } = transport();
-    const result = await new ThueringenSource().discover({
+    const result = await new ThueringenParldokSource().discover({
       engine: testEngine(scripted),
       state: { source: "thueringen", http_cache: {} },
     });
-    ok(result.refs.length >= 1);
-    const roles = result.refs[0]?.documents.map((document) => document.role) ?? [];
-    ok(roles.includes("question_pdf"));
     // The answer Drucksache reprints the question above the reply.
-    ok(roles.includes("combined_pdf"));
+    ok(result.refs.some((ref) => ref.documents.some((document) => document.role === "combined_pdf")));
   });
 
-  it("posts to the API rather than fetching a page", async () => {
+  it("costs one request per answer, not two", async () => {
+    // The listing already carries the document id and the query id, so the
+    // per-ref search the aggregator path needed is gone.
     const { transport: scripted, requests } = transport();
-    await new ThueringenSource().discover({
+    await new ThueringenParldokSource().discover({
       engine: testEngine(scripted),
       state: { source: "thueringen", http_cache: {} },
+      limit: 200,
     });
-    const search = requests.find((request) => request.url.includes("Fulltext/Search"));
-    strictEqual(search?.method, "POST");
-    match(String(search?.body ?? ""), /^data=%7B/);
-    match(search?.headers?.["content-type"] ?? "", /application\/x-www-form-urlencoded/);
+    strictEqual(requests.filter((request) => request.url.includes("Fulltext/Search")).length, 1);
+    strictEqual(requests.filter((request) => request.url.includes("Process/Document")).length, 13);
   });
 
-  it("keeps the record when the API answers something unexpected", async () => {
+  it("asks for the Kleine Anfrage Dokumentart, the Wahlperiode and the window", async () => {
+    const { transport: scripted, requests } = transport();
+    await new ThueringenParldokSource().discover({
+      engine: testEngine(scripted),
+      state: { source: "thueringen", http_cache: {} },
+      period: 8,
+      since: "2026-09-01",
+      until: "2026-09-07",
+    });
+    const sent = requests.find((request) => request.url.includes("Fulltext/Search"));
+    strictEqual(sent?.method, "POST");
+    match(sent?.headers?.["content-type"] ?? "", /application\/x-www-form-urlencoded/);
+    const body = JSON.parse(decodeURIComponent(String(sent?.body ?? "").replace(/^data=/, "")));
+    const tags = body.tags as { type: number; id: string | number; field?: string }[];
+    // Thüringen files the question type under Dokumentart (facet 7), not Dokumenttyp.
+    ok(tags.some((tag) => tag.type === 7 && tag.id === "5"));
+    ok(tags.some((tag) => tag.type === 10 && tag.id === 8));
+    ok(tags.some((tag) => tag.type === 9 && tag.field === "datefrom" && tag.id === "01.09.2026"));
+  });
+
+  it("reports an unfamiliar response as unreadable, not as an empty Land", async () => {
     const { transport: scripted } = scriptedTransport([
-      { match: "/suche", body: ps.readFixtureText("payloads", "parlamentsspiegel-thueringen.html") },
-      { match: "Fulltext/Search", body: "<html>error</html>" },
+      { match: "Fulltext/Search", body: "<html>Wartungsarbeiten</html>" },
     ]);
-    const result = await new ThueringenSource().discover({
+    const result = await new ThueringenParldokSource().discover({
       engine: testEngine(scripted),
       state: { source: "thueringen", http_cache: {} },
     });
-    ok(result.refs.length >= 1);
-    ok(result.warnings.some((warning) => warning.includes("a form this adapter does not know")));
+    deepStrictEqual(result.refs, []);
+    ok(result.unreadable?.includes("does not know"));
+  });
+
+  it("reads the members who asked, and their Fraktion", () => {
+    deepStrictEqual(parseAuthors("Kerstin D&#252;ben-Schaumann (AfD)"), [
+      { name: "Kerstin Düben-Schaumann", party: "AfD" },
+    ]);
+    deepStrictEqual(parseAuthors("A B (CDU), C D (Die Linke)"), [
+      { name: "A B", party: "CDU" },
+      { name: "C D", party: "Die Linke" },
+    ]);
+  });
+});
+
+describe("what createSource returns", () => {
+  it("is the Landtag's own API, with the aggregator only behind it", async () => {
+    const { transport: scripted, requests } = scriptedTransport([
+      { match: "Fulltext/Search", body: readFixtureText("payloads", "parldok-listing.json") },
+      { match: "Process/Document", body: PROCESS },
+      { match: "/suche", body: "<html>should not be reached</html>" },
+    ]);
+    const result = await createSource().discover({
+      engine: testEngine(scripted),
+      state: { source: "thueringen", http_cache: {} },
+    });
+    strictEqual(result.refs.length, 13);
+    ok(!requests.some((request) => request.url.includes("parlamentsspiegel")));
   });
 });

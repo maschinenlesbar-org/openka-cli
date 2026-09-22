@@ -134,6 +134,9 @@ export function firstHit(body: string): ApiReading<FoundDocument> {
  * answer's reads "Antwort auf Kleine Anfrage <ministry>" — and carry the document's
  * own link, which is what gets fetched.
  */
+/** How an installation says the answer has not been published yet. */
+const PENDING_ANSWER = /(noch nicht vor|wird noch erfasst|liegt nicht vor)/i;
+
 export function answerPosition(body: string, web: string): ApiReading<{ url: string; reference?: string }> {
   const data = successPayload(body);
   if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
@@ -146,6 +149,11 @@ export function answerPosition(body: string, web: string): ApiReading<{ url: str
   for (const entry of positions as Record<string, unknown>[]) {
     const text = typeof entry["text"] === "string" ? entry["text"] : "";
     if (!/\bAntwort\b/i.test(text)) continue;
+    // A Vorgang nobody has answered yet still carries a position about the answer:
+    // "Gedruckte Antwort liegt noch nicht vor/wird noch erfasst". It matches
+    // "Antwort" and has no document, and reading that as an answer we failed to
+    // follow reported every open Anfrage as an API we no longer understand.
+    if (PENDING_ANSWER.test(text)) continue;
     const document = entry["doc"];
     // An Antwort we can see and cannot follow is not an unanswered Anfrage. Keep
     // looking — a Vorgang can list more than one — but remember that we saw it.
@@ -189,6 +197,17 @@ export function searchDocumentsBody(options: { tags: SearchTag[]; length?: numbe
   });
 }
 
+/** A page of search hits, with the query id a Vorgang lookup needs. */
+export interface SearchHits {
+  docs: Record<string, unknown>[];
+  /**
+   * `Process/Document` needs the id of the query the hit came from, so a listing
+   * search already carries everything an answer lookup needs — no second search
+   * per ref.
+   */
+  queryId: number;
+}
+
 /**
  * The hits of a listing search.
  *
@@ -196,11 +215,13 @@ export function searchDocumentsBody(options: { tags: SearchTag[]; length?: numbe
  * is an answer. `unrecognised` is a response whose shape this client does not know,
  * which is not.
  */
-export function searchResults(body: string): ApiReading<Record<string, unknown>[]> {
+export function searchResults(body: string): ApiReading<SearchHits> {
   const data = successPayload(body);
   if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
   if (!Array.isArray(data["docs"])) return { kind: "unrecognised", reason: "no docs array in the search result" };
   const docs = data["docs"] as Record<string, unknown>[];
   if (docs.length === 0) return { kind: "absent" };
-  return { kind: "found", value: docs };
+  const queryId = data["queryid"];
+  if (typeof queryId !== "number") return { kind: "unrecognised", reason: "a result with no queryid" };
+  return { kind: "found", value: { docs, queryId } };
 }

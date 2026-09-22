@@ -1,45 +1,54 @@
 # @maschinenlesbar.org/openka-connector-thueringen
 
-> Question and answer in one Vorgang, published as two unrelated Drucksachen.
+> The Landtag's own Parlamentsdokumentation, with the aggregator only behind it.
 
-The answer's Drucksachennummer has no relation to the question's — 8/979 is answered
-by 8/1715 — and nothing in the question document names it; it is published weeks
-later.
+Thüringen runs **Parldok**; the client is shared with Mecklenburg-Vorpommern in
+`lib-parldok` and only the hosts differ.
 
-Parldok is a single-page application whose search runs over a JSON API, and this
-adapter uses two of its endpoints exactly as the application does:
+Unlike MV, Thüringen publishes the question and the answer as **two** Drucksachen
+with no relation between their numbers — 8/979 is answered by 8/1715 — and nothing
+in the question document names the answer; it appears weeks later. So discovery and
+the answer lookup are two steps:
 
-```
-Fulltext/Search    find the Kleine Anfrage by kind, number and Wahlperiode
-Process/Document   list the Vorgang's positions, one of which is the answer
-```
+1. a **listing search** for the Kleine Anfragen of a window (Dokumentart facet 7,
+   id `5`, 21,738 documents), which returns each hit *and* the query id;
+2. one `Process/Document` per hit, which lists the Vorgang's positions — one of
+   which is the answer.
 
-**That API is undocumented.** It is the site's own public endpoint serving public
-documents, and asking it for JSON is gentler than scraping the rendered page, but
-nothing promises it will keep its shape. So every response is read into an
-`ApiReading`: `found`, `absent`, or `unrecognised` with a reason. All three end the
-lookup with no answer and none fails the sync — but "Parldok holds nothing" and
-"Parldok said something we do not understand" are different facts, and only the
-first used to be reported. An HTML maintenance page was being announced as a missing
-Drucksache.
+The listing already carries the document id and the query id, so an answer costs
+**one** request rather than the two the aggregator path needed (a search by number,
+then the Vorgang). `/ParlDok/dokument/<id>/<slug>` serves the PDF directly.
 
-The Parlamentsspiegel row also lists the answer, which this package's notes once
-denied; the API confirms the paper rather than being the only route to it. Keeping
-Parldok is a deliberate choice: the aggregator is a third party, and the Land's own
-interface is the better source for the Land's own documents.
+The answer Drucksache reprints the question above the reply, so it is attached as a
+`combined_pdf` beside the question's own paper.
+
+**A Vorgang nobody has answered yet still has a position about the answer**:
+"Gedruckte Antwort liegt noch nicht vor/wird noch erfasst". It matches "Antwort" and
+has no document, and reading that as an answer we failed to follow reported every
+open Kleine Anfrage as an API we no longer understand. `lib-parldok` recognises the
+phrase and calls it absent.
+
+**The API is undocumented.** A response in an unfamiliar shape is reported as
+`unreadable`, which is what sends `createSource()`'s `FallbackSource` to the
+Parlamentsspiegel — never an empty window, which is an answer.
+
+`robots.txt` on `parldok.thueringer-landtag.de` is a 404, so nothing here is
+disallowed; these are the requests the site's own search page makes.
 
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-PARLDOK_API, PARLDOK_WEB, FACET_KIND, FACET_LP, FACET_NUMBER, KIND_KLEINE_ANFRAGE, searchBody, processBody, ApiReading, successPayload, FoundDocument, firstHit, answerPosition, ThueringenSource, ENTRY
+PARLDOK_API, PARLDOK_WEB, THUERINGEN_LATEST_PERIOD, KIND_KLEINE_ANFRAGE_TH, ThueringenParldokSource, toRef, parseAuthors, createSource, ENTRY
 ```
 
 ## Depends on
 
+- `lib-extract` — the deterministic tier stack
 - `lib-models` — the canonical record schema, validators and the parliament table
 - `lib-parlamentsspiegel` — the shared aggregator adapter
+- `lib-parldok` — 
 - `lib-source` — the `Source` protocol and the scraping helpers
 
 ## Tests
@@ -58,5 +67,6 @@ npm test -w @maschinenlesbar.org/openka-connector-thueringen
 
 **Recorded upstream payloads**, so tests never touch a live parliament:
 
+- `fixtures/payloads/parldok-listing.json`
 - `fixtures/payloads/parldok-process.json`
 - `fixtures/payloads/parldok-search.json`

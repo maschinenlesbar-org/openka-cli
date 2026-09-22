@@ -26,11 +26,22 @@
 // sync — and the Landtag publishing a documented interface would let all of this
 // be deleted.
 
-import { parseReference } from "@maschinenlesbar.org/openka-lib-models";
-import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
+import { parseGermanDate } from "@maschinenlesbar.org/openka-lib-extract";
+import { decodeEntities } from "@maschinenlesbar.org/openka-lib-source";
+import { FallbackSource, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
-import { answerPosition, firstHit, processBody, searchBody } from "@maschinenlesbar.org/openka-lib-parldok";
+import {
+  FACET_KIND,
+  FACET_LP,
+  FACET_TIME,
+  KIND_KLEINE_ANFRAGE,
+  answerPosition,
+  processBody,
+  searchDocumentsBody,
+  searchResults,
+} from "@maschinenlesbar.org/openka-lib-parldok";
 export * from "@maschinenlesbar.org/openka-lib-parldok";
 
 /** The API host the Parldok application talks to. */
@@ -39,91 +50,188 @@ export const PARLDOK_API = "https://parldok.thltcloud.de/parldok";
 /** The public host documents are served from. */
 export const PARLDOK_WEB = "https://parldok.thueringer-landtag.de/ParlDok";
 
-export class ThueringenSource implements Source {
+/** The Wahlperiode currently sitting; the default window when none is given. */
+export const THUERINGEN_LATEST_PERIOD = 8;
+
+/**
+ * The Dokumentart id for a Kleine Anfrage, read from this installation's own facet
+ * listing: `5`, with 21,738 documents. Thüringen files the question type under
+ * `Dokumentart` (facet 7); Mecklenburg-Vorpommern files it under `Dokumenttyp`
+ * (facet 8). The facet *ids* are software constants; the values are not.
+ */
+export const KIND_KLEINE_ANFRAGE_TH = KIND_KLEINE_ANFRAGE;
+
+/** The Landtag's own Parlamentsdokumentation. */
+export class ThueringenParldokSource implements Source {
   readonly key = "thueringen";
   readonly parliament = "thueringen" as const;
   readonly tier = "structured" as const;
   readonly label = "Thüringer Landtag (Parldok)";
   readonly homepage = "https://parldok.thueringer-landtag.de/ParlDok/";
   readonly notes =
-    "Discovery runs through the Parlamentsspiegel, which lists the answer as a follow-up document " +
-    "linking Parldok's viewer. The answer is a Drucksache with no relation to the Kleine Anfrage's number (8/979 is " +
-    "answered by 8/1715), so it is looked up through Parldok's own JSON API — undocumented, so an " +
-    "unexpected response means 'no answer found' rather than a failed sync. The answer document " +
-    "holds the question and the reply together.";
-
-  private readonly aggregator = new ParlamentsspiegelSource("thueringen");
+    "Discovery and the answer lookup both run through the Landtag's own Parldok API. A listing " +
+    "search returns the Kleine Anfragen of a window with the query id a Vorgang lookup needs, so " +
+    "each answer costs one request rather than two. The answer is a Drucksache with no relation " +
+    "to the question's number (8/979 is answered by 8/1715) and reprints the question above the " +
+    "reply, so it is attached as a combined paper. The API is undocumented, so a response in an " +
+    "unfamiliar shape is reported as unreadable rather than as an empty Land.";
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
-    const discovered = await this.aggregator.discover(options);
-    const warnings = [...discovered.warnings];
-    const refs: DocRef[] = [];
+    const warnings: string[] = [];
+    const period = options.period ?? THUERINGEN_LATEST_PERIOD;
+    const body = searchDocumentsBody({
+      tags: [
+        { type: FACET_KIND, id: KIND_KLEINE_ANFRAGE, label: "Kleine Anfrage" },
+        { type: FACET_LP, id: period, label: String(period) },
+        ...timeTags(options),
+      ],
+      length: options.limit ?? 200,
+    });
 
-    for (const ref of discovered.refs) {
-      const answer = await this.findAnswer(ref, options, warnings);
+    const response = await options.engine.post(`${PARLDOK_API}/Fulltext/Search`, {
+      body: `data=${encodeURIComponent(body)}`,
+      headers: { accept: "application/json" },
+    });
+    const reading = searchResults(response.body.toString("utf8"));
+    if (reading.kind === "unrecognised") {
+      return {
+        refs: [],
+        warnings,
+        unreadable: `Parldok answered in a form this adapter does not know (${reading.reason})`,
+      };
+    }
+    if (reading.kind === "absent") return { refs: [], warnings };
+
+    const refs: DocRef[] = [];
+    for (const doc of reading.value.docs) {
+      const ref = toRef(doc, warnings);
+      if (ref === undefined) continue;
+      const answer = await this.findAnswer(doc, reading.value.queryId, ref.reference, options, warnings);
       if (answer === undefined) {
         refs.push(ref);
         continue;
       }
       // The answer Drucksache reprints the question above the reply, so it is a
-      // combined paper; the Kleine Anfrage itself stays as the question source. The
-      // API's URL replaces the result row's link to the same paper — appending both
-      // would fetch and extract it twice.
+      // combined paper; the Kleine Anfrage itself stays as the question source.
       const documents: DocRefDocument[] = [
-        ...ref.documents.filter((document) => document.role === "question_pdf"),
+        ...ref.documents,
         { role: "combined_pdf", url: answer.url, urlStable: true },
       ];
       refs.push({ ...ref, documents });
     }
-
-    return withDiscoveryState(discovered, refs, warnings);
+    return { refs, warnings };
   }
 
+  /**
+   * The answer for one hit.
+   *
+   * The listing already carried the document id and the query id, so this is a
+   * single `Process/Document` call — the per-ref search the aggregator path needed
+   * is gone.
+   */
   private async findAnswer(
-    ref: DocRef,
+    doc: Record<string, unknown>,
+    queryId: number,
+    reference: string,
     options: DiscoverOptions,
     warnings: string[],
   ): Promise<{ url: string; reference?: string } | undefined> {
-    const number = parseReference(ref.reference)?.number ?? ref.reference;
-    if (number === undefined || number === "") return undefined;
+    const id = typeof doc["id"] === "number" ? doc["id"] : undefined;
+    if (id === undefined) return undefined;
     try {
-      const search = await options.engine.post(`${PARLDOK_API}/Fulltext/Search`, {
-        body: `data=${encodeURIComponent(searchBody(String(Number(number)), ref.legislative_period))}`,
-        headers: { accept: "application/json" },
-      });
-      const hit = firstHit(search.body.toString("utf8"));
-      if (hit.kind === "unrecognised") {
-        warnings.push(
-          `${ref.reference}: Parldok's search answered in a form this adapter does not know ` +
-            `(${hit.reason}) — treated as no answer, but the API may have changed`,
-        );
-        return undefined;
-      }
-      if (hit.kind === "absent") {
-        warnings.push(`${ref.reference}: Parldok found no Kleine Anfrage with that number`);
-        return undefined;
-      }
       const process = await options.engine.post(`${PARLDOK_API}/Process/Document`, {
-        body: `data=${encodeURIComponent(processBody(hit.value.id, hit.value.queryId))}`,
+        body: `data=${encodeURIComponent(processBody(id, queryId))}`,
         headers: { accept: "application/json" },
       });
       const answer = answerPosition(process.body.toString("utf8"), PARLDOK_WEB);
       if (answer.kind === "unrecognised") {
         warnings.push(
-          `${ref.reference}: Parldok's Vorgang answered in a form this adapter does not know ` +
+          `${reference}: Parldok's Vorgang answered in a form this adapter does not know ` +
             `(${answer.reason}) — treated as no answer, but the API may have changed`,
         );
         return undefined;
       }
-      // Not an error: an Anfrage that has not been answered yet looks exactly like
-      // this, and so does one whose answer Parldok has not published.
+      // Not an error: an Anfrage nobody has answered yet looks exactly like this,
+      // and the Vorgang says so in words — "Gedruckte Antwort liegt noch nicht vor".
       if (answer.kind === "absent") return undefined;
       return answer.value;
     } catch (err) {
-      warnings.push(`${ref.reference}: could not reach Parldok (${(err as Error).message})`);
+      warnings.push(`${reference}: could not reach Parldok (${(err as Error).message})`);
       return undefined;
     }
   }
+}
+
+/** `since`/`until` become the same `datefrom`/`dateto` tags the search page sends. */
+function timeTags(options: DiscoverOptions): { type: number; id: string; label: string; field: string }[] {
+  const german = (iso: string): string => {
+    const [year, month, day] = iso.split("-");
+    return `${day}.${month}.${year}`;
+  };
+  const tags: { type: number; id: string; label: string; field: string }[] = [];
+  if (options.since !== undefined) {
+    tags.push({ type: FACET_TIME, id: german(options.since), label: german(options.since), field: "datefrom" });
+  }
+  if (options.until !== undefined) {
+    tags.push({ type: FACET_TIME, id: german(options.until), label: german(options.until), field: "dateto" });
+  }
+  return tags;
+}
+
+/** One listing hit as a DocRef — the question paper, before its answer is attached. */
+export function toRef(doc: Record<string, unknown>, warnings: string[]): DocRef | undefined {
+  const number = typeof doc["number"] === "string" ? doc["number"] : undefined;
+  const period = typeof doc["lp"] === "number" ? doc["lp"] : Number.NaN;
+  const link = typeof doc["link"] === "string" ? doc["link"] : undefined;
+  const id = typeof doc["id"] === "number" ? doc["id"] : undefined;
+  if (number === undefined || id === undefined || link === undefined || !Number.isInteger(period) || period < 1) {
+    warnings.push("Parldok returned a hit without a number, id, link or Wahlperiode; skipped");
+    return undefined;
+  }
+  const submitted = typeof doc["date"] === "string" ? parseGermanDate(doc["date"]) : undefined;
+  return {
+    key: `parldok:${id}`,
+    reference: `${period}/${number}`,
+    legislative_period: period,
+    title: typeof doc["title"] === "string" ? doc["title"] : "",
+    documentType: "kleine_anfrage",
+    askers: parseAuthors(typeof doc["authorhtml"] === "string" ? doc["authorhtml"] : ""),
+    answered_by: {},
+    // The listing's date is the question's own; the answer carries its own date.
+    dates: submitted === undefined ? {} : { submitted },
+    documents: [{ role: "question_pdf", url: `${PARLDOK_WEB}${link}`, urlStable: true }],
+  };
+}
+
+/**
+ * The askers of a question document.
+ *
+ * Thüringen's row names only the members — the government appears on the *answer*
+ * document, not here — so this is simpler than Mecklenburg-Vorpommern's, which has
+ * to keep the Landesregierung out of the asker list.
+ */
+export function parseAuthors(value: string): Asker[] {
+  const askers: Asker[] = [];
+  for (const entry of value.split(",")) {
+    const trimmed = decodeEntities(entry.trim());
+    if (trimmed === "") continue;
+    const match = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(trimmed);
+    const name = (match?.[1] ?? trimmed).trim();
+    if (name === "") continue;
+    const asker: Asker = { name };
+    const party = match?.[2]?.trim();
+    if (party !== undefined && party !== "") asker.party = party;
+    askers.push(asker);
+  }
+  return askers;
+}
+
+/**
+ * What `createSource()` returns: the Landtag's own documentation, with the
+ * Parlamentsspiegel behind it for the days the API is down or has moved.
+ */
+export function createSource(): Source {
+  return new FallbackSource(new ThueringenParldokSource(), new ParlamentsspiegelSource("thueringen"));
 }
 
 /** How this connector announces itself to the registry and `ka sources list`. */
@@ -132,6 +240,6 @@ export const ENTRY: SourceEntry = {
   parliament: "thueringen",
   label: "Thüringer Landtag (Parldok)",
   status: "implemented",
-  note: "aggregator discovery, with the answer Drucksache looked up through Parldok's own JSON API",
-  factory: () => new ThueringenSource(),
+  note: "the Landtag's own Parldok API for discovery and answers, with the Parlamentsspiegel as a fallback",
+  factory: createSource,
 };

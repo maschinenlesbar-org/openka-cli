@@ -172,7 +172,7 @@ export class MecklenburgVorpommernParldokSource implements Source {
     if (reading.kind === "absent") return withDiscoveryState({ refs: [], warnings }, [], warnings);
 
     const refs: DocRef[] = [];
-    for (const doc of reading.value) {
+    for (const doc of reading.value.docs) {
       const ref = toRef(doc, warnings);
       if (ref !== undefined) refs.push(ref);
     }

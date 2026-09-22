@@ -62,7 +62,7 @@ export { BundDipSource } from "@maschinenlesbar.org/openka-connector-bund";
 export { NordrheinWestfalenSource } from "@maschinenlesbar.org/openka-connector-nordrhein-westfalen";
 export { SaarlandSource } from "@maschinenlesbar.org/openka-connector-saarland";
 export { SachsenSource } from "@maschinenlesbar.org/openka-connector-sachsen";
-export { ThueringenSource } from "@maschinenlesbar.org/openka-connector-thueringen";
+export { ThueringenParldokSource } from "@maschinenlesbar.org/openka-connector-thueringen";
 export {
   NiedersachsenSource,
   ANSWER_INDEX,
