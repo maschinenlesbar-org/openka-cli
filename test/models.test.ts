@@ -11,16 +11,9 @@ import { RECORD_JSON_SCHEMA } from "../src/core/models/json-schema.js";
 import { isParliamentKey, parliamentByHerkunft, parliamentByKey, PARLIAMENTS } from "../src/core/models/parliaments.js";
 import { readFileSync } from "node:fs";
 import { extractorVersion, PACKAGE_VERSION, VERSION_ENV } from "../src/core/repro/version.js";
-import { extractionRuleDescription, extractionRulesFingerprint } from "../src/core/extract/fingerprint.js";
-import {
-
-  MAX_NUMBER_SKIP,
-  MIN_INFERRED_ANSWER_RATE,
-  MIN_NUMBER_DENSITY,
-  RULE_SETS,
-} from "../src/core/extract/segment.js";
-import { WORD_GAP_EM } from "../src/core/pdf/text.js";
-import { sampleRecord } from "./helpers.js";
+import { EXTRACTION_DIGEST } from "../src/core/repro/extraction-digest.js";
+import { computeExtractionDigest, extractionSourceFiles } from "../src/factory/lib/stamp.js";
+import { PROJECT_ROOT, sampleRecord } from "./helpers.js";
 
 describe("canonical JSON", () => {
   it("sorts keys at every level so equal values give equal bytes", () => {
@@ -215,21 +208,34 @@ describe("extractor version", () => {
     ok(extractorVersion({ [VERSION_ENV]: "   " }).startsWith("pkg:"));
   });
 
-  it("carries a fingerprint of the extraction rules, not the package version alone", () => {
-    // The package version does not move when a segmentation rule does, so on its
-    // own it cannot back the claim "same version + same input => same bytes".
-    match(extractorVersion({}), /^pkg:\d+\.\d+\.\d+\+rules:[0-9a-f]{12}$/);
-    strictEqual(extractionRulesFingerprint(), extractionRulesFingerprint());
+  it("carries a digest of the extraction sources, not the package version alone", () => {
+    // The package version does not move when extraction does, so on its own it
+    // cannot back the claim "same version + same input => same bytes".
+    match(extractorVersion({}), /^pkg:\d+\.\d+\.\d+\+extract:[0-9a-f]{12}$/);
   });
 
-  it("describes every rule family and guard, so changing one moves the fingerprint", () => {
-    const description = extractionRuleDescription();
-    for (const rules of RULE_SETS) ok(description.includes(rules.key));
-    for (const guard of [MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, MAX_NUMBER_SKIP, WORD_GAP_EM]) {
-      ok(description.includes(String(guard)));
+  it("has a frozen digest that still matches the extraction sources", () => {
+    // The guard that makes the stamp trustworthy: the constant on the line is
+    // frozen, and this fails the moment extraction code changes without it.
+    strictEqual(
+      EXTRACTION_DIGEST,
+      computeExtractionDigest(PROJECT_ROOT),
+      "extraction code changed without re-stamping — run `npm run stamp`, then re-freeze the goldens",
+    );
+  });
+
+  it("covers the code that decides what a document turns into", () => {
+    const files = extractionSourceFiles(PROJECT_ROOT);
+    for (const expected of [
+      "src/core/extract/segment.ts",
+      "src/core/extract/tiers.ts",
+      "src/core/pdf/text.ts",
+      "src/core/text.ts",
+    ]) {
+      ok(files.includes(expected), `${expected} is not covered by the extraction digest`);
     }
-    // The question pattern of each family is part of it, verbatim.
-    for (const rules of RULE_SETS) ok(description.includes(JSON.stringify(rules.question.source).slice(1, -1)));
+    // The generated constant must not be part of its own input.
+    ok(!files.some((file) => file.startsWith("src/core/repro/")));
   });
 
   it("keeps PACKAGE_VERSION in step with package.json", () => {

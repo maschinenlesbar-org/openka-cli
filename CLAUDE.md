@@ -59,12 +59,14 @@ You may **not** without asking:
   error, never a silently dropped constraint.
 - **Nothing on the line reads the clock** except the pipeline, which stamps
   `retrieved_at` at fetch time and injects its clock through `CliDeps.now`.
-- **Frozen rules are named.** `WORD_GAP_EM`, `LINE_TOLERANCE_EM`,
-  `MIN_NUMBER_DENSITY` and the regexes in `segment.ts` change the bytes of every
-  record produced through their tier. Changing one bumps the extractor version by
-  itself — `extractionRulesFingerprint()` hashes the rule families, the guards and
-  the layout constants into `extractor_version` — but it still needs a golden
-  re-freeze, and it is a decision, not a tweak.
+- **Changing extraction bumps the extractor version.** `extractor_version` carries
+  a digest of the extraction sources (`src/core/extract`, `src/core/pdf`,
+  `src/core/perceive`, `src/core/text.ts`), so *any* change to what a document turns
+  into moves it — not just the named constants like `WORD_GAP_EM` or
+  `MIN_NUMBER_DENSITY`. The digest is frozen in `src/core/repro/extraction-digest.ts`;
+  after changing extraction code run **`npm run stamp`** and re-freeze the goldens. A
+  test fails until you do. Comments and indentation are excluded, so improving a
+  comment does not invalidate a corpus.
 - **Comments explain judgement, not syntax.** The interesting comments in this
   repository say why a threshold is where it is, or what real document forced a
   decision. Keep that.

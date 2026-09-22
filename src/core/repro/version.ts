@@ -11,7 +11,7 @@
 // build without a code change, and so a test can pin it to a fixed value and get
 // byte-identical records across machines.
 
-import { extractionRulesFingerprint } from "../extract/fingerprint.js";
+import { EXTRACTION_DIGEST } from "./extraction-digest.js";
 
 /** Environment variable the factory sets when it freezes an extractor. */
 export const VERSION_ENV = "OPENKA_EXTRACTOR_VERSION";
@@ -24,16 +24,16 @@ export const PACKAGE_VERSION = "0.0.1";
  * call rather than caching, so a test can set it and a long-running process picks
  * up a re-stamp.
  *
- * Without a pinned version the stamp is the package version *plus a fingerprint of
- * the extraction rules*. The package version alone cannot carry the claim this
- * field makes — segmentation rules change far more often than a release, so every
- * rule family added so far shipped under the same `pkg:0.0.1`, and `ka verify`
- * ended up reporting the one thing the field exists to rule out: different bytes
- * from the same extractor version. The fingerprint moves whenever a rule, a guard
- * or a layout constant moves, with nobody having to remember.
+ * Without a pinned version the stamp is the package version *plus a digest of the
+ * extraction sources*. The package version alone cannot carry the claim this field
+ * makes — extraction changes far more often than a release, so every rule family
+ * added shipped under the same `pkg:0.0.1`, and `ka verify` ended up reporting the
+ * one thing the field exists to rule out: different bytes from the same extractor
+ * version. The digest moves whenever any code that decides what a document turns
+ * into moves, with nobody having to remember.
  */
 export function extractorVersion(env: NodeJS.ProcessEnv = process.env): string {
   const pinned = env[VERSION_ENV]?.trim();
   if (pinned !== undefined && pinned !== "") return pinned;
-  return `pkg:${PACKAGE_VERSION}+rules:${extractionRulesFingerprint()}`;
+  return `pkg:${PACKAGE_VERSION}+extract:${EXTRACTION_DIGEST}`;
 }

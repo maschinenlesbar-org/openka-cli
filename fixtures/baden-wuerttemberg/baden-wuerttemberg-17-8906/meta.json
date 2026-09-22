@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.0.1+rules:06de62e130d6",
+  "extractor_version": "pkg:0.0.1+extract:91f14a286298",
   "human_verified": false,
   "id": "baden-wuerttemberg-17-8906",
   "note": "reached through the Parlamentsspiegel aggregator; a Landtag BW PDF with Zu N. headings",

@@ -17,7 +17,7 @@
     "abstained_fields": [
       "qa[4].answer"
     ],
-    "extractor_version": "pkg:0.0.1+rules:06de62e130d6",
+    "extractor_version": "pkg:0.0.1+extract:91f14a286298",
     "input_sha256": "1b11b97d7fbfc91f18ac5b101752d8dc25e39c5c64d76858f4b838c6bccc64c0",
     "model_artifacts": [],
     "parse_complete": false,

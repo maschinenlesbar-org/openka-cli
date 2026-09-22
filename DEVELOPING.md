@@ -13,6 +13,7 @@ npm run typecheck   # tsc --noEmit
 npm test            # pretest builds, then node --test dist/test/*.test.js
 npm start           # runs `ka` from the build
 npm run lint:line   # the no-generative-model guardrail
+npm run stamp       # re-freeze the extraction digest after changing extraction code
 ```
 
 One test file: `node --test dist/test/pdf.test.js`. The CLI from source:
@@ -74,6 +75,36 @@ than aspirational:
 3. **`ka verify`** re-runs the extraction from the archived blob and compares. The
    one exception is `review_status: human_verified`, which a person sets and
    re-extraction cannot reproduce; `verify` carries it across and says so.
+4. **`extractor_version` names the code that produced the record.** Without it the
+   first three are worth little: "same version, different bytes" is the one verdict
+   `ka verify` must never have to give, and for a while it did, because the stamp was
+   the package version and the package version does not move when extraction does.
+
+### The extraction digest
+
+`extractor_version` is `pkg:<package version>+extract:<digest>` (or whatever
+`OPENKA_EXTRACTOR_VERSION` pins in a release build). The digest covers the code that
+decides what a document turns into — `src/core/extract`, `src/core/pdf`,
+`src/core/perceive` and `src/core/text.ts` — and is frozen in
+`src/core/repro/extraction-digest.ts` so the line never reads the source tree at
+runtime.
+
+Two choices about *what* is hashed matter more than the hashing:
+
+- **TypeScript sources, not `dist`.** Hashing compiled output would make a `tsc`
+  upgrade rewrite the stamp of every record in every corpus, for a change that
+  cannot alter a byte of extracted text.
+- **Comments and indentation stripped.** `ka verify` compares `extractor_version`,
+  so every stored record needs re-syncing whenever the stamp moves. This codebase is
+  deliberately comment-heavy; making a better comment invalidate a corpus would
+  teach people not to write them.
+
+After changing extraction code run `npm run stamp` and re-freeze the goldens. A test
+recomputes the digest and fails until you do — which is the point. An earlier version
+of this hashed only the *named* rules (`WORD_GAP_EM`, `MIN_NUMBER_DENSITY`, the
+`segment.ts` regexes) and was silently insufficient: keeping control characters out of
+record text changed every extraction and moved nothing, because the change was in
+ordinary code rather than in a named constant.
 
 ## The PDF reader
 
