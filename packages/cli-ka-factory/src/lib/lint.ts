@@ -33,7 +33,9 @@ export function lineRoots(projectRoot: string): string[] {
   try {
     names = readdirSync(packages).sort();
   } catch {
-    return ["src"];
+    // No `packages/` means this is not the workspace: there is no line here to
+    // lint, and the caller says so rather than passing a scan of nothing.
+    return [];
   }
   return names
     .filter((name) => name !== FACTORY_PACKAGE)

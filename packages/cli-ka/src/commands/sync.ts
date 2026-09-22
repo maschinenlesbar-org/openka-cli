@@ -4,9 +4,12 @@
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { sync } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { abstainingPerceiver, type Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
-import { TesseractCliPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
-import { TesseractJsPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
+import {
+  TesseractCliPerceiver,
+  TesseractJsPerceiver,
+  abstainingPerceiver,
+  type Perceiver,
+} from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceEntry, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, toEngineOptions } from "../shared.js";

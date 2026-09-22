@@ -9,27 +9,15 @@
 
 export * from "@maschinenlesbar.org/openka-lib-errors";
 export * from "@maschinenlesbar.org/openka-lib-models";
-export * from "@maschinenlesbar.org/openka-lib-models";
-export * from "@maschinenlesbar.org/openka-lib-models";
 export { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
 
-export * from "@maschinenlesbar.org/openka-lib-repro";
-export * from "@maschinenlesbar.org/openka-lib-repro";
 export * from "@maschinenlesbar.org/openka-lib-repro";
 export * from "@maschinenlesbar.org/openka-lib-verify";
 
 export * from "@maschinenlesbar.org/openka-lib-http";
-export * from "@maschinenlesbar.org/openka-lib-http";
-export * from "@maschinenlesbar.org/openka-lib-http";
 
 export * from "@maschinenlesbar.org/openka-lib-store";
-export * from "@maschinenlesbar.org/openka-lib-store";
-export * from "@maschinenlesbar.org/openka-lib-store";
-export * from "@maschinenlesbar.org/openka-lib-store";
 
-export * from "@maschinenlesbar.org/openka-lib-extract";
-export * from "@maschinenlesbar.org/openka-lib-extract";
-export * from "@maschinenlesbar.org/openka-lib-extract";
 export * from "@maschinenlesbar.org/openka-lib-extract";
 
 export * from "@maschinenlesbar.org/openka-lib-perceive";

@@ -69,6 +69,12 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
       action(deps, async (ctx) => {
         const root = resolve((ctx.opts["root"] as string | undefined) ?? process.cwd());
         const report = lintLine(root);
+        // A guardrail that scanned nothing has guarded nothing. The likely cause
+        // is a wrong --root or a cwd outside the workspace, and "no violations"
+        // would be the wrong answer to either.
+        if (report.filesChecked === 0) {
+          throw new OpenKaError(`nothing to lint: no packages/*/src under ${root} — is this the workspace root?`);
+        }
         if (ctx.opts["json"] === true) {
           printJson(ctx, report);
         } else {

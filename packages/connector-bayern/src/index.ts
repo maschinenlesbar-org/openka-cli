@@ -78,7 +78,6 @@ export interface FeedItem {
   published?: string;
 }
 
-const ITEM = /<item>([\s\S]*?)<\/item>/g;
 const FIELD = (block: string, tag: string): string | undefined => {
   const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(block);
   return match === null ? undefined : decodeEntities((match[1] ?? "").trim());
@@ -92,7 +91,6 @@ const FIELD = (block: string, tag: string): string | undefined => {
  */
 export function parseFeed(xml: string): FeedItem[] {
   const items: FeedItem[] = [];
-  ITEM.lastIndex = 0;
   for (const match of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const block = match[1] ?? "";
     const title = FIELD(block, "title") ?? "";

@@ -9,12 +9,9 @@
 import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
-import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { indexRecord, type SourceState, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
-import { canonicalJson } from "@maschinenlesbar.org/openka-lib-repro";
-import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
-import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
+import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 

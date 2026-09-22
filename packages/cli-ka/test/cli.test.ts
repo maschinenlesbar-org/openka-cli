@@ -337,6 +337,9 @@ describe("ka-factory", () => {
   it("passes the guardrail lint on this repository", async () => {
     const harness = cliHarness();
     strictEqual(await runFactory(["lint"], harness.deps), EXIT_OK);
+    // A root with no packages under it is an error, not a clean scan of nothing.
+    strictEqual(await runFactory(["lint", "--root", harness.corpus], harness.deps), EXIT_ERROR);
+    match(harness.stderr(), /nothing to lint/);
     match(harness.stdout(), /No generative-model dependency on the line/);
     harness.cleanup();
   });

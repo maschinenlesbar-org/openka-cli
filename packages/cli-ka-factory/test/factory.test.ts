@@ -66,6 +66,7 @@ describe("the no-LLM-on-the-line guardrail", () => {
   it("finds a connector added later without being told about it", () => {
     // The roots are discovered, not listed, so a new Land is covered the moment its
     // package exists rather than when someone remembers to add it to the lint.
+    deepStrictEqual(lineRoots("/nowhere/that/exists"), []);
     const roots = lineRoots(PROJECT_ROOT);
     ok(roots.includes("packages/connector-schleswig-holstein/src"));
     ok(!roots.includes("packages/cli-ka-factory/src"));
