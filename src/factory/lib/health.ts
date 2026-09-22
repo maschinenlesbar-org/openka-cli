@@ -9,6 +9,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { canonicalJsonLine } from "../../core/repro/canonical.js";
 import type { Store } from "../../core/store/store.js";
+import { SOURCE_REGISTRY } from "../../sources/registry.js";
 
 export interface SourceHealth {
   source: string;
@@ -30,9 +31,27 @@ export interface HealthSnapshot {
   sources: SourceHealth[];
 }
 
+/** Sources whose records are filed under other parliaments, so a zero here means nothing. */
+function spanningSources(): Set<string> {
+  return new Set(SOURCE_REGISTRY.filter((entry) => entry.spansEveryLand === true).map((entry) => entry.key));
+}
+
 /** Measure the corpus as it stands. */
 export function measureHealth(store: Store, takenAt: string): HealthSnapshot {
   const perSource = new Map<string, { records: number; complete: number; qa: number; tiers: Map<string, number> }>();
+
+  // Seed from the sources that have sync state, not only from the catalog. A
+  // source is otherwise visible only through the records it produced, so a source
+  // whose discovery returned nothing — the single symptom this report exists to
+  // classify — left no row at all, and neither `no_results` nor `source_error`
+  // could ever fire for it. The all-Länder aggregator is excluded: its records are
+  // filed under sixteen other parliaments, so a zero of its own means nothing.
+  const spanning = spanningSources();
+  for (const key of store.sourceStateKeys()) {
+    if (spanning.has(key)) continue;
+    perSource.set(key, { records: 0, complete: 0, qa: 0, tiers: new Map() });
+  }
+
   for (const entry of store.catalog()) {
     const bucket = perSource.get(entry.parliament) ?? { records: 0, complete: 0, qa: 0, tiers: new Map() };
     bucket.records++;

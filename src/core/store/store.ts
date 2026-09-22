@@ -73,6 +73,13 @@ export interface Store {
 
   getSourceState(source: string): SourceState;
   putSourceState(state: SourceState): void;
+  /**
+   * Every source that has state in this corpus, sorted — including one that
+   * synced and stored nothing. The health report needs it: a source is otherwise
+   * only visible through the records it produced, so the very case worth flagging
+   * (discovery returned nothing) is the case that leaves no trace.
+   */
+  sourceStateKeys(): string[];
 
   /**
    * A frozen artifact the factory built and the line consumes — see CONCEPT.md §0.

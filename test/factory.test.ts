@@ -134,6 +134,33 @@ function corpus(): MemoryStore {
 }
 
 describe("health metrics", () => {
+  it("shows a source that synced and stored nothing", () => {
+    // Previously the report was built only from catalog rows, so a source whose
+    // discovery returned nothing left no row — and `no_results`, one of the six
+    // documented drift signals, could never fire from the real pipeline.
+    const store = new MemoryStore();
+    store.putSourceState({ source: "hamburg", http_cache: {}, last_sync: "2026-01-02T03:04:05Z" });
+    const snapshot = measureHealth(store, "2026-01-02T03:04:05Z");
+    deepStrictEqual(snapshot.sources.map((source) => source.source), ["hamburg"]);
+    strictEqual(snapshot.sources[0]?.records, 0);
+    deepStrictEqual(detectDrift(snapshot, undefined).map((finding) => finding.kind), ["no_results"]);
+  });
+
+  it("surfaces the error of a source that stored nothing", () => {
+    const store = new MemoryStore();
+    store.putSourceState({ source: "hamburg", http_cache: {}, last_error: "the endpoint moved" });
+    const findings = detectDrift(measureHealth(store, "t1"), undefined);
+    deepStrictEqual(findings.map((finding) => finding.kind), ["no_results", "source_error"]);
+  });
+
+  it("does not report the all-Länder aggregator as empty", () => {
+    // Its records are filed under sixteen other parliaments, so a zero of its own
+    // would be a permanent false finding.
+    const store = new MemoryStore();
+    store.putSourceState({ source: "parlamentsspiegel", http_cache: {}, last_sync: "t1" });
+    deepStrictEqual(measureHealth(store, "t1").sources, []);
+  });
+
   it("measures coverage per source", () => {
     const snapshot = measureHealth(corpus(), "2026-01-02T03:04:05Z");
     strictEqual(snapshot.records, 2);

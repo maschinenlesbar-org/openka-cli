@@ -258,4 +258,13 @@ export class FileStore implements Store {
     assertSafeKey(state.source, "source key");
     this.writeJson(this.path("state", `${state.source}.json`), state);
   }
+
+  sourceStateKeys(): string[] {
+    const dir = this.path("state");
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length))
+      .sort();
+  }
 }

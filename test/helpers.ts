@@ -118,6 +118,9 @@ export class MemoryStore implements Store {
   putSourceState(state: SourceState): void {
     this.states.set(state.source, state);
   }
+  sourceStateKeys(): string[] {
+    return [...this.states.keys()].sort();
+  }
 
   private readonly artifacts = new Map<string, unknown>();
   loadArtifact<T>(name: string): T | undefined {
