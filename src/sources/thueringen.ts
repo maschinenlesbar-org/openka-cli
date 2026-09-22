@@ -20,7 +20,7 @@
 // sync — and the Landtag publishing a documented interface would let all of this
 // be deleted.
 
-import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "./base.js";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 /** The API host the Parldok application talks to. */
@@ -160,10 +160,7 @@ export class ThueringenSource implements Source {
       refs.push({ ...ref, documents });
     }
 
-    const result: DiscoverResult = { refs, warnings };
-    if (discovered.state !== undefined) result.state = discovered.state;
-    if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
-    return result;
+    return withDiscoveryState(discovered, refs, warnings);
   }
 
   private async findAnswer(

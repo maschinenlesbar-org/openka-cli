@@ -27,7 +27,7 @@
 // and let the answer follow directly, which the shared `antwort_folgt` rules read.
 
 import { OpenKaError } from "../core/errors.js";
-import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "./base.js";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export const LANDTAG_NRW_HOST = "www.landtag.nrw.de";
@@ -87,10 +87,7 @@ export class NordrheinWestfalenSource implements Source {
     const warnings = [...discovered.warnings];
     const refs = discovered.refs.map((ref) => this.canonicalise(ref, warnings));
 
-    const result: DiscoverResult = { refs, warnings };
-    if (discovered.state !== undefined) result.state = discovered.state;
-    if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
-    return result;
+    return withDiscoveryState(discovered, refs, warnings);
   }
 
   /**

@@ -14,7 +14,7 @@
 // The rewrite below is the template from the wrapper's own markup, so it is the
 // Landtag's statement of where the file is, not a guess.
 
-import type { DiscoverOptions, DiscoverResult, DocRef, Source } from "./base.js";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type Source } from "./base.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export const LANDTAG_SAAR_HOST = "www.landtag-saar.de";
@@ -53,9 +53,6 @@ export class SaarlandSource implements Source {
         return direct === undefined ? document : { ...document, url: direct, urlStable: true };
       }),
     }));
-    const result: DiscoverResult = { refs, warnings: discovered.warnings };
-    if (discovered.state !== undefined) result.state = discovered.state;
-    if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
-    return result;
+    return withDiscoveryState(discovered, refs);
   }
 }

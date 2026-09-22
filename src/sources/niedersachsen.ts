@@ -14,7 +14,7 @@
 // with server-computed cache hashes, and NILAS's STARWEB entry point is not
 // reachable from outside. DEVELOPING.md records what was tried.
 
-import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "./base.js";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export const LANDTAG_NDS = "https://www.landtag-niedersachsen.de";
@@ -140,7 +140,7 @@ export class NiedersachsenSource implements Source {
         "no answer index in this corpus — records will carry the question only. " +
           "Build one with `ka-factory answers niedersachsen --period 19 --from … --to …`.",
       );
-      return finish(discovered, discovered.refs, warnings);
+      return withDiscoveryState(discovered, discovered.refs, warnings);
     }
 
     const refs: DocRef[] = discovered.refs.map((ref) => {
@@ -153,13 +153,6 @@ export class NiedersachsenSource implements Source {
       ];
       return { ...ref, documents };
     });
-    return finish(discovered, refs, warnings);
+    return withDiscoveryState(discovered, refs, warnings);
   }
-}
-
-function finish(discovered: DiscoverResult, refs: DocRef[], warnings: string[]): DiscoverResult {
-  const result: DiscoverResult = { refs, warnings };
-  if (discovered.state !== undefined) result.state = discovered.state;
-  if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
-  return result;
 }

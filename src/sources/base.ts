@@ -107,6 +107,31 @@ export interface Source {
 }
 
 /**
+ * Rebuild a `DiscoverResult` around new refs, carrying the discovery bookkeeping
+ * across unchanged.
+ *
+ * Every adapter that wraps another one ends the same way, and five of them wrote
+ * this out by hand — Niedersachsen had already extracted it privately, which is
+ * how you can tell the abstraction was wanted. Adding one optional field to
+ * `DiscoverResult` meant five edits, and forgetting one would have dropped that
+ * field for that Land silently.
+ *
+ * Note what this does *not* do: it never re-applies `applyWindow`. The wrapped
+ * adapter has already filtered to the window, and filtering twice on a ref whose
+ * date the wrapper enriched would quietly change which records a sync returns.
+ */
+export function withDiscoveryState(
+  discovered: DiscoverResult,
+  refs: DocRef[],
+  warnings: string[] = discovered.warnings,
+): DiscoverResult {
+  const result: DiscoverResult = { refs, warnings };
+  if (discovered.state !== undefined) result.state = discovered.state;
+  if (discovered.unchanged !== undefined) result.unchanged = discovered.unchanged;
+  return result;
+}
+
+/**
  * Keep only refs inside the requested date window and period, in a stable order.
  *
  * The window is on the date the Anfrage was **asked**. That is the Anfrage's own
