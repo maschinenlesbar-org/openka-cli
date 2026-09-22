@@ -226,6 +226,12 @@ export function ascii85Decode(data: Buffer): Buffer {
     }
     if (byte < 0x21 || byte > 0x75) continue; // whitespace and noise
     tuple = tuple * 85 + (byte - 0x21);
+    // A five-character group encodes a 32-bit word, so anything above 2^32-1 is
+    // not ASCII85. `>>> 24` would quietly take it modulo 2^32 and emit four
+    // arbitrary bytes; refusing sends the document to the abstention path instead.
+    if (count === 4 && tuple > 0xffffffff) {
+      throw new ParseError("ASCII85Decode: a group encodes more than 32 bits");
+    }
     if (++count === 5) {
       out.push((tuple >>> 24) & 0xff, (tuple >>> 16) & 0xff, (tuple >>> 8) & 0xff, tuple & 0xff);
       tuple = 0;
@@ -249,6 +255,11 @@ export function runLengthDecode(data: Buffer): Buffer {
     if (length < 128) {
       for (let j = 0; j <= length && i < data.length; j++) out.push(data[i++] as number);
     } else {
+      // The byte to repeat has to be there. It was read unchecked, so a stream
+      // truncated after a repeat-run length byte pushed `undefined` up to 128
+      // times and `Buffer.from` turned every one of them into a NUL — inventing
+      // content out of a truncation, in a module that refuses to approximate.
+      if (i >= data.length) break;
       const byte = data[i++] as number;
       for (let j = 0; j < 257 - length; j++) out.push(byte);
     }

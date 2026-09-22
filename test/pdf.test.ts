@@ -313,3 +313,22 @@ describe("decompression limits", () => {
     strictEqual(inflate(deflateSync(Buffer.from("Hallo Welt"))).toString(), "Hallo Welt");
   });
 });
+
+describe("filters that meet malformed input", () => {
+  it("stops a truncated RunLength run instead of inventing NULs", () => {
+    // A repeat-run length byte with no byte after it pushed `undefined` up to 128
+    // times, and Buffer.from turned every one into a NUL.
+    strictEqual(runLengthDecode(Buffer.from([129])).length, 0);
+    strictEqual(runLengthDecode(Buffer.from([5, 65, 66])).toString(), "AB");
+    // A complete run still decodes.
+    strictEqual(runLengthDecode(Buffer.from([254, 88, 128])).toString(), "XXX");
+  });
+
+  it("refuses an ASCII85 group that encodes more than 32 bits", () => {
+    // `>>> 24` would take it modulo 2^32 and emit four arbitrary bytes.
+    throws(() => ascii85Decode(Buffer.from("<~uuuuu~>")), ParseError);
+    // The largest legal group is still accepted.
+    strictEqual(ascii85Decode(Buffer.from("<~s8W-!~>")).length, 4);
+    strictEqual(ascii85Decode(Buffer.from("<~87cURD]j7BEbo80~>")).toString(), "Hello world!");
+  });
+});
