@@ -15,25 +15,20 @@ import { SaarlandSource } from "./saarland.js";
 import { SachsenSource } from "./sachsen.js";
 import { NiedersachsenSource } from "./niedersachsen.js";
 import { ThueringenSource } from "./thueringen.js";
-import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
+import { ParlamentsspiegelAllLaender, ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export type SourceStatus = "implemented" | "via_aggregator" | "planned";
 
 export interface SourceEntry {
   key: string;
-  parliament: ParliamentKey;
+  /** Absent for an adapter that is not tied to one parliament. */
+  parliament?: ParliamentKey;
   label: string;
   status: SourceStatus;
   /** Why it is in this state, in one line. */
   note: string;
   /** Present only for `implemented` entries. */
   factory?: () => Source;
-  /**
-   * True for an adapter that is not tied to one parliament. Its `parliament` is
-   * only a typing default, so counting records under it would report some other
-   * Land's total as if it were this source's.
-   */
-  spansEveryLand?: boolean;
 }
 
 /**
@@ -111,12 +106,10 @@ export const SOURCE_REGISTRY: readonly SourceEntry[] = [
   },
   {
     key: "parlamentsspiegel",
-    parliament: "nordrhein-westfalen",
     label: "Parlamentsspiegel (all 16 Länder)",
     status: "implemented",
     note: "HTML search of the Länder's shared portal; metadata and PDF links for every Land",
-    factory: () => new ParlamentsspiegelSource(),
-    spansEveryLand: true,
+    factory: () => new ParlamentsspiegelAllLaender(),
   },
   ...PARLIAMENTS.filter(
     (parliament) =>

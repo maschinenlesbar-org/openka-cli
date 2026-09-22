@@ -165,11 +165,9 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             parliament: entry.parliament,
             label: entry.label,
             status: entry.status,
-            // The all-Länder aggregator has no parliament of its own — its
-            // `parliament` is a typing default — so counting records under it
-            // reported NRW's total twice, once under a row it has nothing to do
-            // with. `undefined` says "not a number that means anything here".
-            records: entry.spansEveryLand === true ? undefined : (counts.get(entry.parliament) ?? 0),
+            // An adapter with no parliament of its own has no record count of its
+            // own either: its records are filed under the Länder they came from.
+            records: entry.parliament === undefined ? undefined : (counts.get(entry.parliament) ?? 0),
             last_sync: state.last_sync,
             last_success: state.last_success,
             last_error: state.last_error,
@@ -206,7 +204,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         if (entry === undefined) throw new OpenKaError(`Unknown source "${key}".`);
         const io = ctx.deps.io;
         io.out(`${entry.key} — ${entry.label}`);
-        io.out(`parliament: ${entry.parliament}`);
+        io.out(`parliament: ${entry.parliament ?? "(every Land that delivers to the portal)"}`);
         io.out(`status:     ${entry.status}`);
         io.out(`note:       ${entry.note}`);
         if (entry.factory !== undefined) {

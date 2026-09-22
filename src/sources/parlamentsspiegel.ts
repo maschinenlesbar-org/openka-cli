@@ -40,6 +40,80 @@ const MAX_PAGES = 100;
 /** `DokTyp` filter for Kleine Anfragen, as the portal's own quick link uses it. */
 export const KLEINE_ANFRAGE_FILTER = "KlAnfr";
 
+/**
+ * Walk the portal's result pages. Shared by both adapters below; `herkunft` pins
+ * the search to one Land, or covers every Land when absent.
+ */
+async function discoverFromPortal(
+options: DiscoverOptions,
+herkunft: string | undefined,
+): Promise<DiscoverResult> {
+  const warnings: string[] = [];
+  const refs: DocRef[] = [];
+  const seen = new Set<string>();
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
+    // but that is a full-text constraint on top of the structured filters, and it
+    // silently drops entire Länder whose documents do not use the word
+    // prominently — Sachsen returns 50 results without it and none with it. The
+    // structured filters are what we actually mean.
+    const params: Record<string, string | number> = {
+      qyVTyp: "Anfrage",
+      fqDTyp: KLEINE_ANFRAGE_FILTER,
+      type: "vorgang",
+      als: 0,
+      size: PAGE_SIZE,
+      page,
+    };
+    if (herkunft !== undefined) params["qyHerk"] = herkunft;
+    if (options.since !== undefined) params["qyZeitAb"] = toGermanDate(options.since);
+    if (options.until !== undefined) params["qyZeitBis"] = toGermanDate(options.until);
+
+    const response = await options.engine.get(`${PARLAMENTSSPIEGEL_BASE}/suche`, {
+      params,
+      headers: { accept: "text/html" },
+    });
+    const html = response.body.toString("utf8");
+    const blocks = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/);
+    if (blocks.length === 0) {
+      if (page === 1) {
+        warnings.push(
+          "the search returned no `ps-vorgang` results — either the window is empty or the " +
+            "portal's markup changed; this adapter reports nothing rather than guessing",
+        );
+      }
+      break;
+    }
+
+    let added = 0;
+    for (const block of blocks) {
+      const ref = parseVorgangBlock(block, warnings);
+      if (ref === undefined || seen.has(ref.key)) continue;
+      seen.add(ref.key);
+      refs.push(ref);
+      added++;
+    }
+    // A page that adds nothing new means the pagination parameter did not move;
+    // stopping here is what keeps a changed parameter name from looping forever.
+    if (added === 0) break;
+    if (options.limit !== undefined && refs.length >= options.limit) break;
+  }
+
+  return { refs: applyWindow(refs, options), warnings };
+}
+
+/**
+ * The portal as one Land's source.
+ *
+ * Split from the all-Länder adapter, which used to be the same class in a second
+ * mode. That class had to invent a `parliament` it did not have — the field was
+ * documented as "only names the adapter's default" — and the placeholder leaked
+ * twice: `ka sources list` reported one Land's record count under the aggregator
+ * row, and every aggregator-backed Land reported "never synced" straight after a
+ * sync because the two modes disagreed about what `key` meant. Two types cannot
+ * disagree about which fields they have.
+ */
 export class ParlamentsspiegelSource implements Source {
   readonly key: string;
   readonly parliament: ParliamentKey;
@@ -51,28 +125,17 @@ export class ParlamentsspiegelSource implements Source {
     "Landtag. This adapter parses the `/suche` result markup for metadata and PDF URLs; the class " +
     "names are the contract, so a redesign shows up as zero results rather than as wrong data.";
 
-  /** Herkunft code this instance is pinned to (`NW`), or every Land when absent. */
-  private readonly herkunft: string | undefined;
+  /** Herkunft code this Land is known by in the portal (`NW`). */
+  private readonly herkunft: string;
 
-  constructor(parliament?: ParliamentKey) {
-    if (parliament === undefined) {
-      this.key = "parlamentsspiegel";
-      // The aggregator spans 16 Länder; a record's parliament is read per result
-      // from its Herkunft code, and this field only names the adapter's default.
-      this.parliament = "nordrhein-westfalen";
-      this.label = "Parlamentsspiegel (all 16 Länder)";
-      this.herkunft = undefined;
-      return;
-    }
+  constructor(parliament: ParliamentKey) {
     const entry = PARLIAMENTS.find((candidate) => candidate.key === parliament);
     if (entry?.herkunft === undefined) {
       throw new OpenKaError(`${parliament} does not deliver to the Parlamentsspiegel`);
     }
-    // The key must be the one the registry lists this Land under, because the
-    // pipeline stores sync state under `source.key` while `ka sources list` and the
-    // health report read it back by the registry key. A prefixed key here meant
-    // every aggregator-backed Land reported "never synced" straight after a sync,
-    // and its `last_error` could never surface as `degraded`.
+    // The key must be the one the registry lists this Land under: the pipeline
+    // stores sync state under `source.key` while `ka sources list` and the health
+    // report read it back by the registry key.
     this.key = parliament;
     this.parliament = parliament;
     this.label = `Parlamentsspiegel (${entry.label})`;
@@ -80,59 +143,29 @@ export class ParlamentsspiegelSource implements Source {
   }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
-    const warnings: string[] = [];
-    const refs: DocRef[] = [];
-    const seen = new Set<string>();
+    return discoverFromPortal(options, this.herkunft);
+  }
+}
 
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
-      // but that is a full-text constraint on top of the structured filters, and it
-      // silently drops entire Länder whose documents do not use the word
-      // prominently — Sachsen returns 50 results without it and none with it. The
-      // structured filters are what we actually mean.
-      const params: Record<string, string | number> = {
-        qyVTyp: "Anfrage",
-        fqDTyp: KLEINE_ANFRAGE_FILTER,
-        type: "vorgang",
-        als: 0,
-        size: PAGE_SIZE,
-        page,
-      };
-      if (this.herkunft !== undefined) params["qyHerk"] = this.herkunft;
-      if (options.since !== undefined) params["qyZeitAb"] = toGermanDate(options.since);
-      if (options.until !== undefined) params["qyZeitBis"] = toGermanDate(options.until);
+/**
+ * The portal as one source covering every Land that delivers to it.
+ *
+ * It has no `parliament` of its own, and says so by not declaring one: each
+ * record's parliament is read per result from its Herkunft code, so there is
+ * nothing for the adapter to fall back to and nothing for a report to count.
+ */
+export class ParlamentsspiegelAllLaender implements Source {
+  readonly key = "parlamentsspiegel";
+  readonly tier = "structured" as const;
+  readonly label = "Parlamentsspiegel (all 16 Länder)";
+  readonly homepage = "https://www.parlamentsspiegel.de/suche";
+  readonly notes =
+    "No API and, by the portal's own statement, no document interface — it links to the owning " +
+    "Landtag. This adapter parses the `/suche` result markup for metadata and PDF URLs; the class " +
+    "names are the contract, so a redesign shows up as zero results rather than as wrong data.";
 
-      const response = await options.engine.get(`${PARLAMENTSSPIEGEL_BASE}/suche`, {
-        params,
-        headers: { accept: "text/html" },
-      });
-      const html = response.body.toString("utf8");
-      const blocks = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/);
-      if (blocks.length === 0) {
-        if (page === 1) {
-          warnings.push(
-            "the search returned no `ps-vorgang` results — either the window is empty or the " +
-              "portal's markup changed; this adapter reports nothing rather than guessing",
-          );
-        }
-        break;
-      }
-
-      let added = 0;
-      for (const block of blocks) {
-        const ref = parseVorgangBlock(block, warnings);
-        if (ref === undefined || seen.has(ref.key)) continue;
-        seen.add(ref.key);
-        refs.push(ref);
-        added++;
-      }
-      // A page that adds nothing new means the pagination parameter did not move;
-      // stopping here is what keeps a changed parameter name from looping forever.
-      if (added === 0) break;
-      if (options.limit !== undefined && refs.length >= options.limit) break;
-    }
-
-    return { refs: applyWindow(refs, options), warnings };
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    return discoverFromPortal(options, undefined);
   }
 }
 

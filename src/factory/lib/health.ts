@@ -33,7 +33,7 @@ export interface HealthSnapshot {
 
 /** Sources whose records are filed under other parliaments, so a zero here means nothing. */
 function spanningSources(): Set<string> {
-  return new Set(SOURCE_REGISTRY.filter((entry) => entry.spansEveryLand === true).map((entry) => entry.key));
+  return new Set(SOURCE_REGISTRY.filter((entry) => entry.parliament === undefined).map((entry) => entry.key));
 }
 
 /** Measure the corpus as it stands. */

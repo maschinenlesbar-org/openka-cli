@@ -164,7 +164,16 @@ async function syncRef(
   httpCache: SourceState["http_cache"],
 ): Promise<RefOutcome> {
   const { source, store, engine } = options;
+  // A source pinned to one Land names it; one covering several leaves it to the
+  // ref. If neither says, there is no honest place to file the record — guessing
+  // would put a Land's Anfrage under another Land's name, so the ref fails and the
+  // report says which one.
   const parliament = ref.parliament ?? source.parliament;
+  if (parliament === undefined) {
+    throw new OpenKaError(
+      `${ref.reference}: neither the ref nor the ${source.key} adapter names a parliament`,
+    );
+  }
   const documents: FetchedDocument[] = [];
   let bytesFetched = 0;
 

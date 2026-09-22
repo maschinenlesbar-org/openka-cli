@@ -91,7 +91,13 @@ export interface DiscoverResult {
 
 export interface Source {
   readonly key: string;
-  readonly parliament: ParliamentKey;
+  /**
+   * The parliament this adapter is pinned to, when it is pinned to one. An
+   * adapter covering several Länder leaves it out rather than naming a
+   * placeholder: every ref it yields carries its own `parliament`, so there is
+   * nothing to fall back to.
+   */
+  readonly parliament?: ParliamentKey;
   /** The tier the pipeline runs for documents from this source. */
   readonly tier: Tier;
   readonly label: string;

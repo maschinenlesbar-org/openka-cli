@@ -9,7 +9,7 @@ import { blocksWithClass, decodeHtml, firstHref, regionWithClass, spanTexts, tex
 import { pardokVorgangToRef, parsePardokExport } from "../src/sources/pardok.js";
 import { BerlinSource, berlinFeedUrl, BERLIN_LATEST_PERIOD } from "../src/sources/berlin.js";
 import { BundDipSource, askersOf, parseDipAuthor, toRef } from "../src/sources/bund.js";
-import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate } from "../src/sources/parlamentsspiegel.js";
+import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender } from "../src/sources/parlamentsspiegel.js";
 import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeys } from "../src/sources/registry.js";
 import { applyWindow } from "../src/sources/base.js";
 import { PARLIAMENTS } from "../src/core/models/parliaments.js";
@@ -280,7 +280,7 @@ describe("Parlamentsspiegel source", () => {
 
   it("reports rather than guesses when the markup yields nothing", async () => {
     const { transport } = scriptedTransport([{ match: "/suche", body: "<html><body>redesigned</body></html>" }]);
-    const result = await new ParlamentsspiegelSource().discover({
+    const result = await new ParlamentsspiegelAllLaender().discover({
       engine: testEngine(transport),
       state: { source: "parlamentsspiegel", http_cache: {} },
     });
@@ -371,9 +371,21 @@ describe("HTML helpers", () => {
 
 describe("source registry", () => {
   it("registers all 17 parliaments plus the aggregator", () => {
-    const parliaments = new Set(SOURCE_REGISTRY.map((entry) => entry.parliament));
-    strictEqual(parliaments.size, PARLIAMENTS.length);
+    // Counted on entries that name a parliament. This used to count the whole
+    // registry and still come to 17, because the aggregator's placeholder
+    // `parliament` collided with the Land it was borrowed from — the test was
+    // relying on the very confusion that put a Land's record count under the
+    // aggregator's row.
+    const named = new Set(SOURCE_REGISTRY.map((entry) => entry.parliament).filter((key) => key !== undefined));
+    strictEqual(named.size, PARLIAMENTS.length);
     ok(sourceKeys().includes("parlamentsspiegel"));
+  });
+
+  it("gives the all-Länder adapter no parliament of its own", () => {
+    strictEqual(sourceEntry("parlamentsspiegel")?.parliament, undefined);
+    strictEqual(createSource("parlamentsspiegel").parliament, undefined);
+    // A Land-pinned instance still names one.
+    strictEqual(createSource("hamburg").parliament, "hamburg");
   });
 
   it("marks the parliaments with no dedicated adapter honestly", () => {
