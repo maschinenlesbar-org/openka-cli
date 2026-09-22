@@ -252,6 +252,20 @@ describe("frozen embeddings", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("refuses an empty vector and a duplicate id", () => {
+    // An empty first vector left `dimensions` at 0, so the next line defined the
+    // set's dimensionality and the empty one stayed — a set that imports cleanly
+    // and then throws "vector length mismatch" during a search.
+    const dir = mkdtempSync(join(tmpdir(), "openka-embed-"));
+    const empty = join(dir, "empty.jsonl");
+    writeFileSync(empty, '{"id":"a","vector":[]}\n{"id":"b","vector":[1,2,3]}\n');
+    throws(() => importEmbeddings(empty, { model: "x" }), /vector is empty/);
+    const duplicate = join(dir, "duplicate.jsonl");
+    writeFileSync(duplicate, '{"id":"b","vector":[1,2]}\n{"id":"b","vector":[9,9]}\n');
+    throws(() => importEmbeddings(duplicate, { model: "x" }), /duplicate id "b"/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("refuses a ragged or non-numeric import instead of storing nonsense", () => {
     const dir = mkdtempSync(join(tmpdir(), "openka-embed-"));
     const ragged = join(dir, "ragged.jsonl");

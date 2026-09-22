@@ -106,10 +106,16 @@ export function importEmbeddings(
       }
       return value;
     });
+    // An empty vector left `dimensions` at 0, so the *next* line silently defined
+    // the set's dimensionality and this one was kept at length 0 — a set that
+    // imports cleanly and then throws "vector length mismatch" during a search.
+    if (vector.length === 0) throw new Error(`${path}:${index + 1}: vector is empty`);
     if (dimensions === 0) dimensions = vector.length;
     else if (vector.length !== dimensions) {
       throw new Error(`${path}:${index + 1}: vector has ${vector.length} dimensions, expected ${dimensions}`);
     }
+    // Overwriting silently would keep whichever line happened to come last.
+    if (parsed.id in vectors) throw new Error(`${path}:${index + 1}: duplicate id "${parsed.id}"`);
     vectors[parsed.id] = vector;
   });
 
