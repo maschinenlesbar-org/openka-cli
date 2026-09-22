@@ -430,7 +430,13 @@ function segmentDocuments(
   if (parsed.length === 1) {
     const only = parsed[0] as ParsedDocument;
     const whole = flatten(only.text);
-    const segmented = segmentQa(whole, ruleSets);
+    // A question paper has no answers *by definition*, so the guard that refuses a
+    // reading with none would refuse every one of them — which it did: the
+    // Niedersachsen question PDF produced zero pairs, not the question-only record
+    // this project documents as its honest degraded mode. Only the role can tell a
+    // question list from a numbered table here, and it does; the numbering guards
+    // (starts at 1, density, skip) still apply.
+    const segmented = segmentQa(whole, ruleSets, only.role === "question_pdf" ? { requireAnswers: false } : {});
     if (segmented.rules !== undefined) {
       return collect(segmented.segments, segmented.rules, abstentions);
     }

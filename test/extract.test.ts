@@ -29,7 +29,7 @@ import { validateExtractedRecord } from "../src/core/extract/validators.js";
 import { extract } from "../src/core/extract/tiers.js";
 import { abstainingPerceiver } from "../src/core/perceive/perceiver.js";
 import { normalizeSpaces } from "../src/core/pdf/text.js";
-import { readFixture, sampleRecord } from "./helpers.js";
+import { readFixture, sampleRecord, questionPaper } from "./helpers.js";
 
 const FRAGE_STYLE = `
 Frage 1:
@@ -524,6 +524,56 @@ describe("metadata rules", () => {
     const markers = findMarkers("siehe Anlage 2 und Anlage 10.\nVS-NUR FÜR DEN DIENSTGEBRAUCH");
     strictEqual(markers.classified, true);
     deepStrictEqual(markers.attachments_referenced, ["Anlage 2", "Anlage 10"]);
+  });
+});
+
+describe("a question paper", () => {
+  it("is read as questions, not refused for having no answers", async () => {
+    // The guard that refuses a reading with no answers exists to reject numbered
+    // tables — but a question paper has no answers by definition, so it refused
+    // every one of them. Niedersachsen's documented degraded mode ("yields
+    // question-only records") produced zero pairs instead.
+    const { record } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "text_layer",
+      metadata: { reference: "19/1", legislative_period: 19, title: "T", askers: [], answered_by: {}, dates: {} },
+      documents: [
+        {
+          role: "question_pdf",
+          url: "https://x.invalid/q.pdf",
+          bytes: questionPaper(["1. Wie viele Brücken sind marode?", "2. Welche Mittel stehen bereit?"]),
+          urlStable: true,
+        },
+      ],
+      env: {},
+    });
+    deepStrictEqual(record.qa.map((pair) => pair.number), ["1", "2"]);
+    ok(record.qa.every((pair) => pair.question !== undefined));
+    // The holes are still visible: no answers were found, and the record says so.
+    ok(record.qa.every((pair) => pair.answer === undefined));
+    ok(record.extraction.abstained_fields.includes("qa[0].answer"));
+  });
+
+  it("still refuses a numbered table that arrives as a question paper", async () => {
+    // Dropping the answer requirement must not drop the numbering guards.
+    const { record } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "text_layer",
+      metadata: { reference: "19/2", legislative_period: 19, title: "T", askers: [], answered_by: {}, dates: {} },
+      documents: [
+        {
+          role: "question_pdf",
+          url: "https://x.invalid/t.pdf",
+          bytes: questionPaper(["7. Schule A", "34. Schule B", "112. Schule C"]),
+          urlStable: true,
+        },
+      ],
+      env: {},
+    });
+    strictEqual(record.qa.length, 0);
+    ok(record.extraction.abstained_fields.includes("qa"));
   });
 });
 
