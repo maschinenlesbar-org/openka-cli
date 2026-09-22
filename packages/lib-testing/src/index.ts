@@ -133,6 +133,12 @@ export class MemoryStore implements Store {
   removeCatalogEntry(id: string): void {
     this.rows.delete(id);
   }
+  /** Nothing to defer in memory; counted so a test can assert the pipeline batches. */
+  batches = 0;
+  async batchCatalog<T>(work: () => Promise<T>): Promise<T> {
+    this.batches++;
+    return work();
+  }
 
   loadShard(shard: string): IndexShard {
     return JSON.parse(JSON.stringify(this.shards.get(shard) ?? {})) as IndexShard;

@@ -120,34 +120,40 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
   // that were never stored.
   const httpCache = { ...(discovered.state ?? state).http_cache };
 
+  // One catalog write for the whole run rather than one per record: the catalog
+  // grows with the corpus, and rewriting it per record made a sync quadratic in
+  // catalog bytes. The batch also flushes when the loop throws, so an interrupted
+  // run keeps the rows it indexed.
   let index = 0;
-  for (const ref of discovered.refs) {
-    index++;
-    try {
-      const outcome = await syncRef(ref, options, now, httpCache);
-      if (outcome.action === "stored") {
-        report.stored++;
-        if (outcome.record !== undefined && outcome.record.extraction.abstained_fields.length > 0) {
-          report.needsReview++;
+  await store.batchCatalog(async () => {
+    for (const ref of discovered.refs) {
+      index++;
+      try {
+        const outcome = await syncRef(ref, options, now, httpCache);
+        if (outcome.action === "stored") {
+          report.stored++;
+          if (outcome.record !== undefined && outcome.record.extraction.abstained_fields.length > 0) {
+            report.needsReview++;
+          }
+        } else {
+          report.unchanged++;
         }
-      } else {
-        report.unchanged++;
+        report.bytesFetched += outcome.bytesFetched;
+        options.onProgress?.({ index, total: discovered.refs.length, id: outcome.id, action: outcome.action });
+      } catch (err) {
+        report.failed++;
+        const message = err instanceof Error ? err.message : String(err);
+        report.errors.push(`${ref.reference}: ${message}`);
+        options.onProgress?.({
+          index,
+          total: discovered.refs.length,
+          id: ref.reference,
+          action: "failed",
+          detail: message,
+        });
       }
-      report.bytesFetched += outcome.bytesFetched;
-      options.onProgress?.({ index, total: discovered.refs.length, id: outcome.id, action: outcome.action });
-    } catch (err) {
-      report.failed++;
-      const message = err instanceof Error ? err.message : String(err);
-      report.errors.push(`${ref.reference}: ${message}`);
-      options.onProgress?.({
-        index,
-        total: discovered.refs.length,
-        id: ref.reference,
-        action: "failed",
-        detail: message,
-      });
     }
-  }
+  });
 
   const nextState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
   if (report.errors.length === 0) {

@@ -79,6 +79,13 @@ describe("sync pipeline", () => {
     strictEqual(store.catalogEntry("berlin-19-10006")?.parliament, "berlin");
   });
 
+  it("indexes the whole run inside one catalog batch", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+    strictEqual(store.batches, 1);
+  });
+
   it("is idempotent: a second run over unchanged inputs stores nothing", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"v1"' } }]);

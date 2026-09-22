@@ -163,6 +163,8 @@ export class FileStore implements Store {
   /** Rows this process has written or deleted since it last read the catalog. */
   private readonly touched = new Set<string>();
   private readonly removed = new Set<string>();
+  /** Open `batchCatalog` scopes; writes persist only when this is back at zero. */
+  private deferring = 0;
 
   private loadCatalog(): Map<string, CatalogEntry> {
     if (this.catalogCache === undefined) {
@@ -189,7 +191,7 @@ export class FileStore implements Store {
     this.loadCatalog().set(entry.id, entry);
     this.touched.add(entry.id);
     this.removed.delete(entry.id);
-    this.flushCatalog();
+    this.flushUnlessDeferred();
   }
 
   putCatalogEntries(entries: readonly CatalogEntry[]): void {
@@ -200,14 +202,28 @@ export class FileStore implements Store {
       this.touched.add(entry.id);
       this.removed.delete(entry.id);
     }
-    this.flushCatalog();
+    this.flushUnlessDeferred();
   }
 
   removeCatalogEntry(id: string): void {
     if (!this.loadCatalog().delete(id)) return;
     this.removed.add(id);
     this.touched.delete(id);
-    this.flushCatalog();
+    this.flushUnlessDeferred();
+  }
+
+  async batchCatalog<T>(work: () => Promise<T>): Promise<T> {
+    this.deferring++;
+    try {
+      return await work();
+    } finally {
+      this.deferring--;
+      if (this.deferring === 0 && (this.touched.size > 0 || this.removed.size > 0)) this.flushCatalog();
+    }
+  }
+
+  private flushUnlessDeferred(): void {
+    if (this.deferring === 0) this.flushCatalog();
   }
 
   /**

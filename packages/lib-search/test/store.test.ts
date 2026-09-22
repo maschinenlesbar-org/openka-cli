@@ -1,6 +1,6 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
-import { deepStrictEqual, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -99,6 +99,53 @@ describe("two runs over one corpus", () => {
     }
   });
 
+  it("writes the catalog once for a batch, not once per row", async () => {
+    // `indexRecord` used to persist the catalog twice per record (a removal, then
+    // an insert), each a full re-read and rewrite of the file — quadratic in the
+    // corpus. Inside a batch nothing is written until the batch ends.
+    const root = mkdtempSync(join(tmpdir(), "openka-batch-"));
+    try {
+      const store = new FileStore(root);
+      let flushes = 0;
+      const realFlush = store.flushCatalog.bind(store);
+      store.flushCatalog = () => {
+        flushes++;
+        realFlush();
+      };
+      const records = Array.from({ length: 4 }, (_, i) =>
+        sampleRecord({ id: `berlin-19-2000${i}`, reference: `19/2000${i}` }),
+      );
+      await store.batchCatalog(async () => {
+        for (const record of records) {
+          store.putRecord(record);
+          indexRecord(store, record);
+        }
+        // Reads inside the batch see the rows already.
+        strictEqual(store.catalog().length, 4);
+        strictEqual(flushes, 0);
+      });
+      strictEqual(flushes, 1);
+      strictEqual(new FileStore(root).catalog().length, 4);
+
+      // A batch that throws still persists what it indexed.
+      await rejects(
+        store.batchCatalog(async () => {
+          indexRecord(store, sampleRecord({ id: "berlin-19-30000", reference: "19/30000" }));
+          throw new Error("interrupted");
+        }),
+        /interrupted/,
+      );
+      strictEqual(flushes, 2);
+      ok(new FileStore(root).catalogEntry("berlin-19-30000") !== undefined);
+
+      // Outside a batch every write persists, as before.
+      indexRecord(store, sampleRecord({ id: "berlin-19-40000", reference: "19/40000" }));
+      ok(flushes > 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("still honours a removal against a concurrent writer", () => {
     const root = mkdtempSync(join(tmpdir(), "openka-conc-"));
     try {
@@ -161,6 +208,7 @@ describe("the store's roles", () => {
       putCatalogEntry: () => undefined,
       putCatalogEntries: () => undefined,
       removeCatalogEntry: () => undefined,
+      batchCatalog: (work) => work(),
     };
     const hits = searchLike(tiny, "a");
     strictEqual(hits.length, 1);

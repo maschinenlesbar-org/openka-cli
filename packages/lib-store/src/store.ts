@@ -86,6 +86,17 @@ export interface CatalogStore {
    */
   putCatalogEntries(entries: readonly CatalogEntry[]): void;
   removeCatalogEntry(id: string): void;
+  /**
+   * Run `work` with catalog writes deferred, and persist the catalog once when it
+   * returns — also when it throws, so an interrupted run keeps what it indexed.
+   *
+   * `putCatalogEntry` persists on every call, which is the right default for a
+   * one-off caller and the wrong shape for a sync: indexing a record at a time
+   * re-read and rewrote the whole catalog per record, quadratic in the corpus.
+   * The pipeline wraps its record loop in this; nested batches flush once, at the
+   * outermost.
+   */
+  batchCatalog<T>(work: () => Promise<T>): Promise<T>;
 }
 
 export interface IndexStore {
