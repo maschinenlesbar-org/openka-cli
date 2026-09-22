@@ -1,5 +1,7 @@
 // Text helpers shared by the CLI's output paths.
 
+import { stripControlCharacters } from "../core/text.js";
+
 /**
  * Escape the control characters JSON.stringify leaves raw. It escapes C0 but not
  * DEL or the C1 range U+0080–U+009F, and terminals act on those — U+009B is the
@@ -23,14 +25,11 @@ export function escapeControlChars(json: string): string {
  * Strip the characters a terminal would act on from text that came from a
  * parliament's website or PDF. Every human-readable line the CLI prints goes
  * through this: a Drucksache title is upstream data like any other.
+ *
+ * A terminal line is one line, so the structural whitespace goes too.
  */
 export function sanitizeForTerminal(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    out += code < 0x20 || (code >= 0x7f && code <= 0x9f) ? " " : ch;
-  }
-  return out;
+  return stripControlCharacters(text, { keepWhitespace: false });
 }
 
 /** Truncate to `width` display columns, appending an ellipsis when cut. */

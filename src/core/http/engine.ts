@@ -4,6 +4,7 @@
 // each adapter has to remember.
 
 import { NetworkError, OpenKaApiError } from "../errors.js";
+import { stripControlCharacters } from "../text.js";
 import { buildQuery, type QueryParams } from "./query.js";
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
 
@@ -51,14 +52,12 @@ export function assertHttpScheme(baseUrl: string): void {
 /**
  * Strip the characters a terminal would act on from server-supplied text before it
  * reaches stderr. Upstream text (a Content-Type, an error body) is untrusted.
+ *
+ * The trim is this function's own: a server body arrives padded with the newlines
+ * that framed it, and an error message should not start with them.
  */
 export function sanitizeServerText(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    out += code < 0x20 || (code >= 0x7f && code <= 0x9f) ? " " : ch;
-  }
-  return out.trim();
+  return stripControlCharacters(text, { keepWhitespace: false }).trim();
 }
 
 /** Conditional-request state a caller can hand back on the next run. */
