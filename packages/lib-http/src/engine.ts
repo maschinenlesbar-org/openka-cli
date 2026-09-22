@@ -143,6 +143,39 @@ export class FetchEngine {
   }
 
   /**
+   * HEAD a URL: does this document exist, without downloading it.
+   *
+   * It is here for the case where a *path* carries a fact. Bayern files its
+   * Drucksachen under `…/Drucksachen/Schriftliche Anfragen/19_0013327.pdf`, so a
+   * 200 there is proof that the paper is a Schriftliche Anfrage and a 404 is proof
+   * that it is not — which is how that connector tells one instrument from another
+   * without guessing and without pulling half a megabyte per candidate.
+   *
+   * Unlike `get`, a 404 is returned rather than thrown: absence is the answer being
+   * asked for.
+   */
+  async head(
+    pathOrUrl: string,
+    options: { params?: QueryParams; headers?: Record<string, string> } = {},
+  ): Promise<{ status: number; headers: FetchResult["headers"] }> {
+    const target = this.url(pathOrUrl, options.params ?? {});
+    const headers: Record<string, string> = {
+      "user-agent": this.userAgent,
+      "accept-encoding": "identity",
+      ...(options.headers ?? {}),
+    };
+    try {
+      const result = await this.request("HEAD", target, headers);
+      return { status: result.status, headers: result.headers };
+    } catch (err) {
+      // A 404 is the answer, not a failure: the caller is asking whether the
+      // document is there. Anything else is a real problem and still throws.
+      if (err instanceof OpenKaApiError && err.status === 404) return { status: 404, headers: {} };
+      throw err;
+    }
+  }
+
+  /**
    * POST a body. Only one source needs this — Thüringen's Parlamentsdatenbank
    * drives its search from a JSON API rather than a GET form — and it goes through
    * the same retry, redirect and rate-limiting path as everything else, so being a

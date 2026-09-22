@@ -18,6 +18,9 @@
       "path": "packages/cli-ka-factory/tsconfig.test.json"
     },
     {
+      "path": "packages/connector-bayern/tsconfig.test.json"
+    },
+    {
       "path": "packages/connector-berlin/tsconfig.test.json"
     },
     {

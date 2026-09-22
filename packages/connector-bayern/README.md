@@ -1,67 +1,60 @@
 # @maschinenlesbar.org/openka-connector-bayern
 
-> Bayerischer Landtag — reachable today, no adapter of its own yet.
+> The Landtag's own Anfragen feed, plus the static Drucksachen it files them under.
 
-This package exists so the gap is a **place** rather than an absence.
-Bayerischer Landtag delivers
-to the Parlamentsspiegel, so it can be synced now through the shared aggregator —
-metadata and PDF links, with no Land-specific handling of where its documents
-actually live. `ka sources list` reports it as `via_aggregator`, which is the honest
-state.
+Bayern publishes RSS feeds at `/parlament/dokumente/rss-feeds/`; the one used here is
+`art=ANFRAGE`, "Drucksachen von Anfragen". robots.txt disallows `/service/suche` (the
+site search) and `/webangebot2/Vorgangsmappe` (the **old** Vorgangsmappe) — the feed
+and the documents below are on neither path.
 
-| | |
-|---|---|
-| parliament key | `bayern` |
-| Herkunft code | `BAY` — how the Parlamentsspiegel export format identifies this Land |
-| instrument | Schriftliche Anfrage |
-| `document_type` | `schriftliche_anfrage` |
+Three things had to be measured, and each one changed the design.
 
+**The feed mixes two instruments.** `art=ANFRAGE` carries both Schriftliche Anfragen —
+Bayern's instrument for this corpus — and Anfragen zum Plenum, the oral questions for
+a plenary sitting. Nothing in an item says which: every title reads
+"Initiativdrucksache 19/13327".
 
-It does have **goldens** here: records produced through the aggregator, frozen and verified by `ka-factory goldens verify` like any other. A Land needing no adapter of its own is not the same as a Land nobody has read.
+**Anfragen zum Plenum are Sammeldrucksachen.** One Drucksache collects ~50 separate
+questions, each a feed item with its own `gegenstandid` and subject but the *same*
+Drucksachennummer. In the window checked, 602 items carried only 444 distinct
+references, and three of them accounted for 161 items. Since a record's id derives
+from its reference, fifty of those would collide into one record.
 
-**Researched 2026-09-22 — corrected. Bayern is *not* blocked, and it publishes a feed.**
+**The feed's link is not the document.** `vorgangsmappe.xhtml?gegenstandid=…` returns
+a Vorgangsmappe: a dossier generated on demand, carrying a `Stand:` timestamp, so two
+fetches of the same Anfrage differ in their bytes. For a Sammeldrucksache it is the
+whole 81-page collection, with only the header line naming the requested question. A
+corpus built on byte-exact reproducibility should not archive that.
 
-An earlier pass of this work listed Bayern among the Länder "decided by robots.txt".
-That was wrong. `www.bayern.landtag.de/robots.txt` disallows eight paths, and the two
-that matter are:
+All three are solved by one observation — **Bayern files its Drucksachen at a static
+path that names the instrument**:
 
 ```
-Disallow: /service/suche
-Disallow: /webangebot2/Vorgangsmappe
+…/ElanTextAblage_WP19/Drucksachen/Schriftliche Anfragen/19_0013327.pdf
 ```
 
-That is the site search and the *old* Vorgangsmappe. It is not a whole-site block,
-and the Landtag's document routes are open:
+A 200 there is proof the paper is a Schriftliche Anfrage; a 404 is proof it is not.
+So the type test is a `HEAD` against a constructed URL rather than a guess about the
+feed's shape, and what gets archived is the Landtag's own stable file. Verified
+against both instruments: four Schriftliche Anfragen answer 200, all three
+Sammeldrucksachen answer 404.
 
-- **`/parlament/dokumente/rss-feeds/`** lists RSS feeds by document class, including
-  **`/webangebot3/views/rssfeed/rssfeed.xhtml?art=ANFRAGE`** — "Drucksachen von
-  Anfragen", `application/rss+xml`, 602 items when checked.
-- Each item carries the Drucksachennummer in its title
-  (`Initiativdrucksache 19/13327`), the Anfrage's subject as its description, a
-  `pubDate`, and a link to
-  `/webangebot3/views/vorgangsmappe/vorgangsmappe.xhtml?gegenstandid=…` — note
-  **`webangebot3`**, which is a different path from the disallowed `webangebot2` one.
+That file is a **combined paper** — question and "Antwort des Staatsministeriums …"
+in one document — which our PDF reader parses with no problems reported.
 
-So Bayern has an official, machine-readable, permitted source and should get a real
-adapter. Two things to settle first: the feed is a rolling window rather than an
-archive, so it suits a frequent sync better than a backfill; and the item link is a
-Vorgangsmappe page, so the PDF URL still has to be resolved from it.
+**No dates are claimed from the feed.** `pubDate` is when the entry appeared, not when
+the Anfrage was submitted or answered; the document header carries both and the
+extractor reads them there.
 
-Bayern's instrument is the **Schriftliche Anfrage**, not the Kleine Anfrage, and the
-record's `document_type` says so.
-
-**Writing the adapter.** Implement `Source` in `src/index.ts`, change this package's `ENTRY` to `status: "implemented"` and a factory, and put its tests and recorded
-payloads in this folder. Nothing else in the workspace has to change: the registry
-already imports this package. Look at `connector-sachsen` for a Land whose documents
-sit behind a viewer, `connector-saarland` for one behind an HTML wrapper, and
-`connector-berlin` for one with a real data feed.
+The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window. That
+is the price of not guessing, and `lib-http`'s `head()` exists for it.
 
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-PARLIAMENT, LABEL, STATUS, NOTE, createSource, ENTRY
+PARLIAMENT, LABEL, LANDTAG_BAYERN, ANFRAGEN_FEED, BAYERN_LATEST_PERIOD, drucksacheUrl, FeedItem, parseFeed, byReference, BayernFeedSource, toRef, createSource, ENTRY
 ```
 
 ## Depends on
@@ -71,10 +64,18 @@ PARLIAMENT, LABEL, STATUS, NOTE, createSource, ENTRY
 
 ## Tests
 
-No tests yet — there is no Land-specific code to test. Discovery through the aggregator is covered in `lib-parlamentsspiegel`.
+`test/bayern.test.ts` — run with:
+
+```bash
+npm test -w @maschinenlesbar.org/openka-connector-bayern
+```
 
 ## Fixtures
 
 **Goldens** — frozen input→record pairs, verified by `ka-factory goldens verify`:
 
 - `fixtures/bayern/bayern-19-6524/` — the record, its metadata and the exact source bytes
+
+**Recorded upstream payloads**, so tests never touch a live parliament:
+
+- `fixtures/payloads/rss-anfragen.xml`
