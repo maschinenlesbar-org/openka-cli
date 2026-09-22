@@ -8,7 +8,7 @@
 
 import { OpenKaApiError, OpenKaError } from "../errors.js";
 import type { FetchEngine } from "../http/engine.js";
-import type { KaRecord } from "../models/schema.js";
+import { makeRecordId, type KaRecord } from "../models/schema.js";
 import type { SourceState, Store } from "../store/store.js";
 import { indexRecord } from "../store/indexer.js";
 import { extract, type FetchedDocument, type SourceMetadata } from "../extract/tiers.js";
@@ -215,12 +215,17 @@ async function syncRef(
   return { id: record.id, action: "stored", bytesFetched, record };
 }
 
+/**
+ * The id the record will be stored under, used here to find an existing one.
+ *
+ * It must be `makeRecordId` itself, not a copy of it. This was a verbatim
+ * duplicate of the slug logic in `schema.ts`; the two agreed, but had they ever
+ * drifted the lookup would have missed every stored record, `isUpToDate` would
+ * never fire, and every sync would silently re-extract and rewrite the whole
+ * corpus — with no error and no symptom beyond churn.
+ */
 function recordIdFor(request: { parliament: string; metadata: SourceMetadata }): string {
-  const tail = request.metadata.reference.includes("/")
-    ? request.metadata.reference.slice(request.metadata.reference.indexOf("/") + 1)
-    : request.metadata.reference;
-  const slug = tail.replace(/\s+/g, "").replace(/[^0-9A-Za-z-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
-  return `${request.parliament}-${request.metadata.legislative_period}-${slug}`;
+  return makeRecordId(request.parliament, request.metadata.legislative_period, request.metadata.reference);
 }
 
 /**
