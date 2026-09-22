@@ -139,6 +139,35 @@ describe("fetch engine", () => {
     strictEqual(result.finalUrl, "https://example.invalid/to");
   });
 
+  it("follows a 303 (and a 301/302) to a POST with a GET and no body", async () => {
+    // A STARWEB servlet may answer a form POST with a redirect to the results
+    // page. Re-POSTing the form there is answered with the search form again.
+    for (const status of [301, 302, 303]) {
+      const { transport, requests } = scriptedTransport([
+        { match: "/search", status, headers: { location: "https://example.invalid/results" } },
+        { match: "/results", body: "hits" },
+      ]);
+      const result = await testEngine(transport).post("https://example.invalid/search", { body: "q=1" });
+      strictEqual(result.body.toString(), "hits", String(status));
+      strictEqual(requests[1]?.method, "GET", String(status));
+      strictEqual(requests[1]?.body, undefined, String(status));
+      strictEqual(requests[1]?.headers?.["content-type"], undefined, String(status));
+    }
+  });
+
+  it("keeps the method and body across a 307 and a 308", async () => {
+    for (const status of [307, 308]) {
+      const { transport, requests } = scriptedTransport([
+        { match: "/search", status, headers: { location: "https://example.invalid/results" } },
+        { match: "/results", body: "hits" },
+      ]);
+      await testEngine(transport).post("https://example.invalid/search", { body: "q=1" });
+      strictEqual(requests[1]?.method, "POST", String(status));
+      strictEqual(requests[1]?.body, "q=1", String(status));
+      match(requests[1]?.headers?.["content-type"] ?? "", /x-www-form-urlencoded/, String(status));
+    }
+  });
+
   it("strips credentials when a redirect crosses hosts", async () => {
     const { transport, requests } = scriptedTransport([
       { match: "origin.invalid", status: 302, headers: { location: "https://elsewhere.invalid/x" } },

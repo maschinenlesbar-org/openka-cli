@@ -198,12 +198,14 @@ export class FetchEngine {
   }
 
   private async request(
-    method: string,
+    startMethod: string,
     startUrl: string,
     headers: Record<string, string>,
-    body?: string,
+    startBody?: string,
   ): Promise<FetchResult> {
     let url = startUrl;
+    let method = startMethod;
+    let body = startBody;
     let currentHeaders = headers;
 
     for (let hop = 0; ; hop++) {
@@ -225,6 +227,15 @@ export class FetchEngine {
         // redirect from https: to http: is still a credential leak — the API key
         // would go out in clear text to anyone on the path.
         if (next.origin !== new URL(url).origin) currentHeaders = withoutSensitiveHeaders(currentHeaders);
+        // RFC 9110 §15.4: a 303 is followed with GET, and 301/302 are too by every
+        // client in practice; only 307/308 keep the method. Re-POSTing a STARWEB
+        // form to the results page it redirected to would be answered with the
+        // search form again — the same silent failure a wrong `__action` gives.
+        if ((status === 301 || status === 302 || status === 303) && method !== "GET" && method !== "HEAD") {
+          method = "GET";
+          body = undefined;
+          currentHeaders = withoutBodyHeaders(currentHeaders);
+        }
         url = next.toString();
         continue;
       }
@@ -309,6 +320,16 @@ function withoutSensitiveHeaders(headers: Record<string, string>): Record<string
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (!SENSITIVE_HEADERS.includes(key.toLowerCase())) out[key] = value;
+  }
+  return out;
+}
+
+/** Headers that describe a request body, dropped when a redirect drops the body. */
+function withoutBodyHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const lower = key.toLowerCase();
+    if (lower !== "content-type" && lower !== "content-length") out[key] = value;
   }
   return out;
 }
