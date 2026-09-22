@@ -783,6 +783,61 @@ describe("validators", () => {
     );
   });
 
+  it("abstains on the answering ministry of an answered document", () => {
+    // The last field whose hole was invisible: it was simply absent, and
+    // `abstained_fields` and `review_status` said nothing about it.
+    deepStrictEqual(
+      validateExtractedRecord(sampleRecord({ answered_by: {} })).map((problem) => problem.path),
+      ["answered_by.ministry"],
+    );
+  });
+
+  it("does not abstain on the ministry of a document nobody has answered", () => {
+    // "We do not know who answered" and "nobody has answered" are different facts,
+    // and abstaining on the second would make needs_review meaningless.
+    const unanswered = sampleRecord({
+      answered_by: {},
+      dates: { submitted: "2024-03-01" },
+      qa: [{ number: "1", question: "Wie viele Brücken sind marode?" }],
+      source_documents: [
+        {
+          role: "question_pdf",
+          url: "https://example.invalid/19-12345.pdf",
+          sha256: "0".repeat(64),
+          url_stable: true,
+        },
+      ],
+    });
+    deepStrictEqual(validateExtractedRecord(unanswered), []);
+  });
+
+  it("reads answeredness from any of the three signals a Land gives", () => {
+    const bare = {
+      answered_by: {},
+      dates: { submitted: "2024-03-01" },
+      qa: [{ number: "1", question: "Frage?" }],
+      source_documents: [
+        { role: "question_pdf" as const, url: "https://x.invalid/q.pdf", sha256: "0".repeat(64), url_stable: true },
+      ],
+    };
+    const paths = (overrides: Parameters<typeof sampleRecord>[0]): string[] =>
+      validateExtractedRecord(sampleRecord({ ...bare, ...overrides })).map((problem) => problem.path);
+
+    // An answer date, as the Bundestag's metadata gives it...
+    deepStrictEqual(paths({ dates: { submitted: "2024-03-01", answered: "2024-03-28" } }), ["answered_by.ministry"]);
+    // ...a Q/A pair that has an answer, where the reply was segmented...
+    deepStrictEqual(paths({ qa: [{ number: "1", question: "Frage?", answer: "Antwort." }] }), ["answered_by.ministry"]);
+    // ...or an answer document, which is all Saarland's prose reply leaves behind.
+    deepStrictEqual(
+      paths({
+        source_documents: [
+          { role: "answer_pdf", url: "https://x.invalid/a.pdf", sha256: "0".repeat(64), url_stable: true },
+        ],
+      }),
+      ["answered_by.ministry"],
+    );
+  });
+
   it("rejects a question that swallowed the rest of the document", () => {
     const record = sampleRecord({ qa: [{ number: "1", question: "x".repeat(20_001) }] });
     ok(validateExtractedRecord(record).some((problem) => problem.path === "qa[0].question"));
@@ -795,7 +850,9 @@ describe("reading more than one document", () => {
     legislative_period: 17,
     title: "Zwei Papiere",
     askers: [],
-    answered_by: {},
+    // Saarland's result row names it, and an answered record without one abstains,
+    // which would put an unrelated entry in every `abstained_fields` below.
+    answered_by: { ministry: "Landesregierung" },
     dates: {},
   };
 

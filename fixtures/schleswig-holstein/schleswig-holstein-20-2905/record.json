@@ -20,9 +20,10 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [
+      "answered_by.ministry",
       "qa"
     ],
-    "extractor_version": "pkg:0.0.1+extract:03aa52b6dc87",
+    "extractor_version": "pkg:0.0.1+extract:db87cb1ac73d",
     "input_sha256": "71f7105a24fc2012a8c3c31f9b7c95acabfac3a63bfff39ff3db6fa1067724f4",
     "model_artifacts": [],
     "parse_complete": false,

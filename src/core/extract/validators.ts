@@ -15,6 +15,22 @@ export interface ValidatorProblem {
 }
 
 /**
+ * Whether the record has an answer at all.
+ *
+ * Three signals, because no one of them holds for every Land: the Bundestag's
+ * answer is its own Drucksache, Schleswig-Holstein prints it inside the question's
+ * document, and a reply written as continuous prose yields no Q/A pair with an
+ * answer even though it plainly is one.
+ */
+function isAnswered(record: KaRecord): boolean {
+  return (
+    record.dates.answered !== undefined ||
+    record.qa.some((pair) => pair.answer !== undefined) ||
+    record.source_documents.some((document) => document.role === "answer_pdf" || document.role === "combined_pdf")
+  );
+}
+
+/**
  * The earliest plausible date for a document in this corpus. The Bundestag's
  * records start in 1949 and the Länder's documentation systems do not reach
  * further back, so an earlier date is an extraction error, not history.
@@ -78,6 +94,16 @@ export function validateExtractedRecord(record: KaRecord, now?: Date): Validator
   // visible in `abstained_fields`; this was the one that was not.
   if (record.title.trim() === "") {
     problems.push({ path: "title", message: "the source carried no title" });
+  }
+
+  // An answered document had an answering body. Not knowing which one is a hole
+  // like any other, and it was the last one this project kept invisible: the field
+  // was simply absent, `abstained_fields` stayed empty and `review_status` stayed
+  // `ok`. An *unanswered* document has no answering ministry to know, so it is not
+  // abstained on — "we do not know" and "there is none" are different facts, and
+  // this is the only place that can tell them apart.
+  if (record.answered_by.ministry === undefined && isAnswered(record)) {
+    problems.push({ path: "answered_by.ministry", message: "the document is answered but names no answering body" });
   }
 
   record.qa.forEach((pair, index) => {
