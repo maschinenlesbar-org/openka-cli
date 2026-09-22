@@ -23,7 +23,7 @@
 //     export becomes a real structured source with no new parser. Berlin already does.
 
 import { OpenKaError } from "../core/errors.js";
-import { PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "../core/models/parliaments.js";
+import { parliamentByKey, PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "../core/models/parliaments.js";
 import type { AnsweredBy, DocumentType, SourceDocumentRole } from "../core/models/schema.js";
 import { parseGermanDate, parseUrheber } from "../core/extract/metadata.js";
 import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "./html.js";
@@ -334,7 +334,23 @@ function urlIsStable(url: string): boolean {
   return !/edas\.landtag\.sachsen\.de/i.test(url);
 }
 
-/** Bayern and Berlin call the instrument a Schriftliche Anfrage. */
+/**
+ * Which instrument a Land's rows are.
+ *
+ * Read from the parliament table, where each Land declares it beside the name it
+ * uses — Bayern and Berlin call it a Schriftliche Anfrage, Hamburg a Schriftliche
+ * Kleine Anfrage. This used to be a two-Land conditional here, duplicating that
+ * table and covering the other fifteen by an else-branch.
+ *
+ * It is a property of the parliament rather than of the document on purpose: the
+ * portal does not label the instrument per row in a form we can trust — its own
+ * type filter is what constrains the search (`fqDTyp=KlAnfr`), which is also why
+ * `grosse_anfrage` cannot come out of this adapter. Reading the row's "Kleine
+ * Anfrage;" label instead was considered and rejected: it appears to be the
+ * portal's filter category rather than the Land's own word for the instrument,
+ * and no Berlin or Bayern row is recorded in `fixtures/payloads/` to settle it.
+ * A row from either Land would.
+ */
 function documentTypeFor(parliament: ParliamentKey): DocumentType {
-  return parliament === "berlin" || parliament === "bayern" ? "schriftliche_anfrage" : "kleine_anfrage";
+  return parliamentByKey(parliament)?.documentType ?? "kleine_anfrage";
 }

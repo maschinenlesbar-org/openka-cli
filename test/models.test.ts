@@ -5,7 +5,7 @@ import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/str
 import { describe, it } from "node:test";
 import { canonicalJson, canonicalJsonLine } from "../src/core/repro/canonical.js";
 import { isSha256, sha256, sha256Canonical } from "../src/core/repro/hash.js";
-import { makeRecordId, SCHEMA_VERSION } from "../src/core/models/schema.js";
+import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/core/models/schema.js";
 import { isCalendarDate, validateRecord } from "../src/core/models/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/core/models/json-schema.js";
 import { isParliamentKey, parliamentByHerkunft, parliamentByKey, PARLIAMENTS } from "../src/core/models/parliaments.js";
@@ -83,6 +83,22 @@ describe("record ids", () => {
 });
 
 describe("parliaments", () => {
+  it("declares a document type for every parliament, agreeing with its instrument", () => {
+    // The aggregator used to carry its own `berlin || bayern` conditional, which
+    // duplicated this table and covered the other fifteen by an else-branch.
+    for (const parliament of PARLIAMENTS) {
+      ok(DocumentTypes.includes(parliament.documentType), `${parliament.key} has no document type`);
+      const written = /^Schriftliche Anfrage/.test(parliament.instrument);
+      strictEqual(
+        parliament.documentType === "schriftliche_anfrage",
+        written,
+        `${parliament.key}: "${parliament.instrument}" does not match ${parliament.documentType}`,
+      );
+    }
+    // Hamburg's "Schriftliche Kleine Anfrage" is a Kleine Anfrage in writing.
+    strictEqual(parliamentByKey("hamburg")?.documentType, "kleine_anfrage");
+  });
+
   it("covers the Bundestag and all 16 Länder", () => {
     strictEqual(PARLIAMENTS.length, 17);
     strictEqual(PARLIAMENTS.filter((parliament) => parliament.herkunft !== undefined).length, 16);

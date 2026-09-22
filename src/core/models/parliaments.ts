@@ -6,6 +6,8 @@
 // codes are taken from the Parlamentsspiegel search form's `qyHerk` values and the
 // `<DHerk>` elements of the PARDOK export, not invented.
 
+import type { DocumentType } from "./schema.js";
+
 /** Stable parliament keys. Used verbatim in record ids and on the CLI. */
 export const ParliamentKeys = [
   "bund",
@@ -39,27 +41,37 @@ export interface Parliament {
   herkunft?: string;
   /** What the parliament calls the instrument this project collects. */
   instrument: string;
+  /**
+   * Which of the schema's document types that instrument is.
+   *
+   * A property of the parliament's rules of procedure, not of any one document:
+   * Bayern and Berlin call the same instrument a Schriftliche Anfrage, and
+   * Hamburg's "Schriftliche Kleine Anfrage" is a Kleine Anfrage in writing. It is
+   * declared here, beside the name it is derived from, so the two cannot disagree
+   * — an adapter used to carry its own two-Land conditional instead.
+   */
+  documentType: DocumentType;
 }
 
 /** Every parliament, in the order of `ParliamentKeys`. */
 export const PARLIAMENTS: readonly Parliament[] = [
-  { key: "bund", label: "Deutscher Bundestag", instrument: "Kleine Anfrage" },
-  { key: "baden-wuerttemberg", label: "Landtag Baden-Württemberg", herkunft: "BW", instrument: "Kleine Anfrage" },
-  { key: "bayern", label: "Bayerischer Landtag", herkunft: "BAY", instrument: "Schriftliche Anfrage" },
-  { key: "berlin", label: "Abgeordnetenhaus von Berlin", herkunft: "BLN", instrument: "Schriftliche Anfrage" },
-  { key: "brandenburg", label: "Landtag Brandenburg", herkunft: "BRA", instrument: "Kleine Anfrage" },
-  { key: "bremen", label: "Bremische Bürgerschaft", herkunft: "HB", instrument: "Kleine Anfrage" },
-  { key: "hamburg", label: "Hamburgische Bürgerschaft", herkunft: "HH", instrument: "Schriftliche Kleine Anfrage" },
-  { key: "hessen", label: "Hessischer Landtag", herkunft: "HES", instrument: "Kleine Anfrage" },
-  { key: "mecklenburg-vorpommern", label: "Landtag Mecklenburg-Vorpommern", herkunft: "MEVO", instrument: "Kleine Anfrage" },
-  { key: "niedersachsen", label: "Niedersächsischer Landtag", herkunft: "NDS", instrument: "Kleine Anfrage" },
-  { key: "nordrhein-westfalen", label: "Landtag Nordrhein-Westfalen", herkunft: "NW", instrument: "Kleine Anfrage" },
-  { key: "rheinland-pfalz", label: "Landtag Rheinland-Pfalz", herkunft: "RPF", instrument: "Kleine Anfrage" },
-  { key: "saarland", label: "Landtag des Saarlandes", herkunft: "SAL", instrument: "Kleine Anfrage" },
-  { key: "sachsen", label: "Sächsischer Landtag", herkunft: "SAC", instrument: "Kleine Anfrage" },
-  { key: "sachsen-anhalt", label: "Landtag von Sachsen-Anhalt", herkunft: "SACA", instrument: "Kleine Anfrage" },
-  { key: "schleswig-holstein", label: "Schleswig-Holsteinischer Landtag", herkunft: "SH", instrument: "Kleine Anfrage" },
-  { key: "thueringen", label: "Thüringer Landtag", herkunft: "THUE", instrument: "Kleine Anfrage" },
+  { key: "bund", label: "Deutscher Bundestag", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "baden-wuerttemberg", label: "Landtag Baden-Württemberg", herkunft: "BW", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "bayern", label: "Bayerischer Landtag", herkunft: "BAY", instrument: "Schriftliche Anfrage", documentType: "schriftliche_anfrage" },
+  { key: "berlin", label: "Abgeordnetenhaus von Berlin", herkunft: "BLN", instrument: "Schriftliche Anfrage", documentType: "schriftliche_anfrage" },
+  { key: "brandenburg", label: "Landtag Brandenburg", herkunft: "BRA", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "bremen", label: "Bremische Bürgerschaft", herkunft: "HB", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "hamburg", label: "Hamburgische Bürgerschaft", herkunft: "HH", instrument: "Schriftliche Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "hessen", label: "Hessischer Landtag", herkunft: "HES", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "mecklenburg-vorpommern", label: "Landtag Mecklenburg-Vorpommern", herkunft: "MEVO", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "niedersachsen", label: "Niedersächsischer Landtag", herkunft: "NDS", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "nordrhein-westfalen", label: "Landtag Nordrhein-Westfalen", herkunft: "NW", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "rheinland-pfalz", label: "Landtag Rheinland-Pfalz", herkunft: "RPF", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "saarland", label: "Landtag des Saarlandes", herkunft: "SAL", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "sachsen", label: "Sächsischer Landtag", herkunft: "SAC", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "sachsen-anhalt", label: "Landtag von Sachsen-Anhalt", herkunft: "SACA", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "schleswig-holstein", label: "Schleswig-Holsteinischer Landtag", herkunft: "SH", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
+  { key: "thueringen", label: "Thüringer Landtag", herkunft: "THUE", instrument: "Kleine Anfrage", documentType: "kleine_anfrage" },
 ];
 
 const BY_KEY = new Map<string, Parliament>(PARLIAMENTS.map((p) => [p.key, p]));
