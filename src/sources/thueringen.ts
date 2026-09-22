@@ -64,7 +64,7 @@ export function processBody(documentId: number, queryId: number): string {
  * for anything that is not the success shape, which is how an API that changed
  * under us becomes "no answer found" rather than a crash.
  */
-export function unwrap(body: string): Record<string, unknown> | undefined {
+export function successPayload(body: string): Record<string, unknown> | undefined {
   let outer: { success?: unknown; data?: unknown };
   try {
     outer = JSON.parse(body) as { success?: unknown; data?: unknown };
@@ -87,7 +87,7 @@ export interface FoundDocument {
 
 /** The first hit of a search, with the query id its Vorgang lookup needs. */
 export function firstHit(body: string): FoundDocument | undefined {
-  const data = unwrap(body);
+  const data = successPayload(body);
   if (data === undefined) return undefined;
   const docs = Array.isArray(data["docs"]) ? (data["docs"] as Record<string, unknown>[]) : [];
   const first = docs[0];
@@ -103,7 +103,7 @@ export function firstHit(body: string): FoundDocument | undefined {
  * own link, which is what gets fetched.
  */
 export function answerPosition(body: string): { url: string; reference?: string } | undefined {
-  const data = unwrap(body);
+  const data = successPayload(body);
   const process = data?.["process"];
   if (typeof process !== "object" || process === null) return undefined;
   const positions = (process as Record<string, unknown>)["positions"];

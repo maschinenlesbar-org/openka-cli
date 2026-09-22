@@ -168,8 +168,8 @@ export async function verifyGolden(golden: Golden, perceiver?: Perceiver): Promi
     ...(perceiver === undefined ? {} : { perceiver }),
   });
 
-  const expected = normalise(golden.record);
-  const actual = normalise(record);
+  const expected = comparableRecord(golden.record);
+  const actual = comparableRecord(record);
   const versionChanged = record.extraction.extractor_version !== golden.record.extraction.extractor_version;
   if (canonicalJsonLine(expected) === canonicalJsonLine(actual)) {
     return { id: golden.meta.id, ok: true, differences: [], versionChanged };
@@ -183,8 +183,8 @@ export async function verifyGolden(golden: Golden, perceiver?: Perceiver): Promi
   };
 }
 
-/** Strip the fields that are allowed to move between extractor versions. */
-function normalise(record: KaRecord): Record<string, unknown> {
+/** The record minus the fields allowed to move between extractor versions. */
+function comparableRecord(record: KaRecord): Record<string, unknown> {
   const copy = JSON.parse(JSON.stringify(record)) as KaRecord;
   copy.extraction.extractor_version = "<ignored>";
   // A human's review decision is not reproducible by definition; see `ka verify`.

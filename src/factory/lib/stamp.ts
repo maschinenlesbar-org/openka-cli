@@ -65,7 +65,7 @@ function filesUnder(projectRoot: string, entry: string): string[] {
  * every line trimmed, blank lines dropped. Re-indenting a block or reflowing a
  * comment therefore leaves the digest alone; changing a token does not.
  */
-function normalise(source: string): string {
+function behaviourBearingSource(source: string): string {
   return stripComments(source)
     .split("\n")
     .map((line) => line.trim())
@@ -89,7 +89,7 @@ export function computeExtractionDigest(projectRoot: string): string {
   for (const file of extractionSourceFiles(projectRoot)) {
     hash.update(file, "utf8");
     hash.update("\u0000", "utf8");
-    hash.update(normalise(readFileSync(join(projectRoot, relative("", file)), "utf8")), "utf8");
+    hash.update(behaviourBearingSource(readFileSync(join(projectRoot, relative("", file)), "utf8")), "utf8");
     hash.update("\u0000", "utf8");
   }
   return hash.digest("hex").slice(0, 12);

@@ -22,7 +22,7 @@ import { choiceOption } from "../shared.js";
  * same corpus always yields the same sample, which a reproducibility check needs)
  * while covering every part of it.
  */
-export function spread(ids: string[], count: number): string[] {
+export function evenSample(ids: string[], count: number): string[] {
   if (count >= ids.length) return ids;
   const step = ids.length / count;
   const out: string[] = [];
@@ -48,7 +48,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             ? [positionals[0]]
             : ctx.opts["all"] === true
               ? all
-              : spread(all, (ctx.opts["limit"] as number | undefined) ?? 25);
+              : evenSample(all, (ctx.opts["limit"] as number | undefined) ?? 25);
         if (ids.length === 0) throw new OpenKaError(`No records in ${ctx.corpusRoot()}`);
 
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";

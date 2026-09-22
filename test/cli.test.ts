@@ -7,7 +7,7 @@ import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/cli/run
 import { runFactory } from "../src/factory/cli/run.js";
 import { defaultCorpusRoot, parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/cli/shared.js";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/cli/text.js";
-import { spread } from "../src/cli/commands/maintain.js";
+import { evenSample } from "../src/cli/commands/maintain.js";
 import { renderShowLines } from "../src/cli/commands/query.js";
 import { cliHarness, readFixture, readFixtureText, sampleRecord, scriptedTransport } from "./helpers.js";
 
@@ -354,14 +354,14 @@ describe("ka-factory", () => {
       ...Array.from({ length: 15 }, (_, i) => `sachsen-8-${i}`),
       ...Array.from({ length: 15 }, (_, i) => `thueringen-8-${i}`),
     ];
-    const sample = spread(ids, 25);
+    const sample = evenSample(ids, 25);
     strictEqual(sample.length, 25);
     for (const parliament of ["berlin", "sachsen", "thueringen"]) {
       ok(sample.some((id: string) => id.startsWith(parliament)), `${parliament} missing from the sample`);
     }
     // Deterministic: a reproducibility check must pick the same records each run.
-    deepStrictEqual(spread(ids, 25), sample);
-    deepStrictEqual(spread(ids, 100), ids);
+    deepStrictEqual(evenSample(ids, 25), sample);
+    deepStrictEqual(evenSample(ids, 100), ids);
   });
 
   it("sanitises an error message, which routinely quotes upstream data", async () => {

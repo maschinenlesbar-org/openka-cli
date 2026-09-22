@@ -17,7 +17,7 @@ import {
   firstHit,
   processBody,
   searchBody,
-  unwrap,
+  successPayload,
 } from "../src/sources/thueringen.js";
 import { sourceEntry } from "../src/sources/registry.js";
 import { readFixtureText, scriptedTransport, testEngine } from "./helpers.js";
@@ -51,16 +51,16 @@ describe("Parldok request bodies", () => {
 
 describe("Parldok responses", () => {
   it("unwraps the payload, which arrives as JSON inside JSON", () => {
-    const data = unwrap(SEARCH);
+    const data = successPayload(SEARCH);
     ok(data !== undefined);
     strictEqual(typeof data["queryid"], "number");
   });
 
   it("treats anything but the success shape as nothing", () => {
-    strictEqual(unwrap("not json"), undefined);
-    strictEqual(unwrap('{"success":false,"data":"{}"}'), undefined);
-    strictEqual(unwrap('{"success":true,"data":{"already":"an object"}}'), undefined);
-    strictEqual(unwrap('{"success":true,"data":"not json either"}'), undefined);
+    strictEqual(successPayload("not json"), undefined);
+    strictEqual(successPayload('{"success":false,"data":"{}"}'), undefined);
+    strictEqual(successPayload('{"success":true,"data":{"already":"an object"}}'), undefined);
+    strictEqual(successPayload('{"success":true,"data":"not json either"}'), undefined);
   });
 
   it("reads the first hit and its query id", () => {
