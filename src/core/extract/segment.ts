@@ -382,10 +382,17 @@ function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
   let lastQuestion: string[] | undefined;
   /** Highest question number accepted so far, for the skip guard. */
   let highest = 0;
+  /** Highest number on the answer heading we are currently under, or 0. */
+  let answeringUpTo = 0;
+  /** The next number an in-reply enumeration would use, while one is running. */
+  let enumerationExpects: number | undefined;
 
   lines.forEach((line, index) => {
     const answer = rules.answer?.exec(line);
     if (answer?.[1] !== undefined) {
+      const numbers = expandNumbers(answer[1] as string).map((n) => Number.parseInt(n, 10));
+      answeringUpTo = Math.max(0, ...numbers.filter((n) => Number.isInteger(n)));
+      enumerationExpects = undefined;
       markers.push({
         kind: "answer",
         numbers: expandNumbers(answer[1] as string),
@@ -401,7 +408,27 @@ function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
       const value = plain === undefined ? undefined : Number.parseInt(plain, 10);
       const jumpsTooFar =
         rules.bareNumbering === true && value !== undefined && value > highest + MAX_NUMBER_SKIP;
-      if (!jumpsTooFar) {
+      // A German reply routinely enumerates its own findings, and with bare
+      // numbering those list items look exactly like question headings — the reply
+      // to "1." lists "1. … 2. … 3. …" and the last item was published as a question
+      // nobody asked, while the answer it belonged to was truncated at the list.
+      //
+      // The anchor is the number of the answer we are *inside*, not the highest seen.
+      // A list item re-uses a number that answer has already passed (the reply to 1
+      // starts its list at 1), and the rest of the list follows it by one. A restated
+      // question does not: Baden-Württemberg prints all six questions, then repeats
+      // "3." above the answer to 3, and 3 is beyond the answer to 1 and 2 that
+      // precedes it. `MIN_ANSWER_RATE_LARGE` never catches this — a three-item list
+      // is far below `LARGE_QUESTION_LIST`.
+      const isBare = rules.bareNumbering === true && value !== undefined;
+      if (isBare && enumerationExpects !== undefined && value === enumerationExpects) {
+        enumerationExpects = value + 1;
+      } else if (isBare && answeringUpTo > 0 && (value as number) <= answeringUpTo) {
+        enumerationExpects = (value as number) + 1;
+      } else if (isBare) {
+        enumerationExpects = undefined;
+      }
+      if (!jumpsTooFar && enumerationExpects === undefined) {
         if (plain !== undefined) lastInteger = plain;
         if (value !== undefined && value > highest) highest = value;
         lastQuestion = numbers;

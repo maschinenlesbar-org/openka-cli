@@ -22,7 +22,7 @@
     "abstained_fields": [
       "qa"
     ],
-    "extractor_version": "pkg:0.0.1+extract:7cab7a3fdb1b",
+    "extractor_version": "pkg:0.0.1+extract:08f1a9574c8e",
     "input_sha256": "71f7105a24fc2012a8c3c31f9b7c95acabfac3a63bfff39ff3db6fa1067724f4",
     "model_artifacts": [],
     "parse_complete": false,

@@ -560,6 +560,47 @@ describe("a question number that appears twice", () => {
   });
 });
 
+describe("a reply that enumerates its own findings", () => {
+  const doc = (lines: string[]) => segmentQa(lines.join("\n"), RULE_SETS);
+
+  it("absorbs the list instead of publishing its last item as a question", () => {
+    // The commonest shape in the corpus. The list both truncated the answer it
+    // belonged to and produced a third question nobody asked; the table guard
+    // never fires because three items is far below LARGE_QUESTION_LIST.
+    const result = doc([
+      "1. Wie viele Brücken sind sanierungsbedürftig?",
+      "2. Welche Mittel stehen bereit?",
+      "Zu 1.",
+      "Nach Auswertung der Bauwerksprüfungen:",
+      "1. Zustandsnote 3,0 bis 3,4: 14 Stück",
+      "2. Zustandsnote 3,5 und schlechter: 6 Stück",
+      "3. Bauwerke ohne aktuelle Prüfung: 2 Stück",
+      "Zu 2.",
+      "Im Haushalt 2025 sind 4,2 Mio. Euro veranschlagt.",
+    ]);
+    deepStrictEqual(result.segments.map((segment) => segment.number), ["1", "2"]);
+    // …and the figures that were the point of asking stay in the answer.
+    match(result.segments[0]?.answer ?? "", /14 Stück/);
+    match(result.segments[0]?.answer ?? "", /2 Stück/);
+  });
+
+  it("does not swallow a real question that follows an answer", () => {
+    // Baden-Württemberg prints all its questions, then restates each above its
+    // answer; a strictly interleaved document does the same thing question by
+    // question. Neither may be mistaken for a list.
+    deepStrictEqual(
+      doc(["1. Frage eins?", "2. Frage zwei?", "Zu 1. und 2.", "Gemeinsame Antwort.", "3. Frage drei?", "Zu 3.", "Antwort drei."])
+        .segments.map((segment) => segment.number),
+      ["1", "2", "3"],
+    );
+    deepStrictEqual(
+      doc(["1. Frage eins?", "Zu 1.", "Antwort eins.", "2. Frage zwei?", "Zu 2.", "Antwort zwei."])
+        .segments.map((segment) => segment.number),
+      ["1", "2"],
+    );
+  });
+});
+
 describe("an answer number that appears twice", () => {
   it("keeps the first body, deliberately — a recurring heading is not a second answer", () => {
     // Not symmetric with the question case, and the corpus is why. An answer
