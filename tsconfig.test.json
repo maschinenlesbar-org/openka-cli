@@ -2,10 +2,10 @@
   "files": [],
   "references": [
     {
-      "path": "packages/cli-ka/tsconfig.test.json"
+      "path": "packages/cli-ka-factory/tsconfig.test.json"
     },
     {
-      "path": "packages/cli-ka-factory/tsconfig.test.json"
+      "path": "packages/cli-ka/tsconfig.test.json"
     },
     {
       "path": "packages/connector-bayern/tsconfig.test.json"
@@ -35,10 +35,10 @@
       "path": "packages/connector-saarland/tsconfig.test.json"
     },
     {
-      "path": "packages/connector-sachsen/tsconfig.test.json"
+      "path": "packages/connector-sachsen-anhalt/tsconfig.test.json"
     },
     {
-      "path": "packages/connector-sachsen-anhalt/tsconfig.test.json"
+      "path": "packages/connector-sachsen/tsconfig.test.json"
     },
     {
       "path": "packages/connector-thueringen/tsconfig.test.json"
@@ -72,6 +72,9 @@
     },
     {
       "path": "packages/lib-render/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-repro/tsconfig.test.json"
     },
     {
       "path": "packages/lib-robots/tsconfig.test.json"

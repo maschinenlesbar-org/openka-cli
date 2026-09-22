@@ -29,7 +29,11 @@ ships and leaves the tag pointing at the wrong number. Use
 `npm version --workspace @maschinenlesbar.org/openka-cli patch`, and pack with
 `npm run pack` so the prepack/postpack pair runs. `release.yml` and `publish.yml`
 read the version from `packages/openka-cli/package.json` for the same reason, and a
-test in `cli-ka-factory` fails if a workflow goes back to reading the root's.
+test in `cli-ka-factory` fails if a workflow goes back to reading the root's. The
+bump also has to reach `PACKAGE_VERSION` in `packages/lib-repro/src/version.ts` — a
+literal, because the line reads no manifest at run time — which is what `ka --version` prints and `extractor_version` stamps. The published package's `version`
+lifecycle script (`tools/version.mjs`) rewrites and stages it during `npm version`,
+and a test in `lib-repro` fails if the two ever disagree.
 
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:

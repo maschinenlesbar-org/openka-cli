@@ -1,7 +1,7 @@
 {
   "name": "@maschinenlesbar.org/openka-cli",
   "version": "0.0.1",
-  "description": "OpenKA \u2014 German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
+  "description": "OpenKA — German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
   "type": "module",
   "bin": {
     "ka": "dist/src/bin/ka.js",
@@ -25,6 +25,7 @@
   ],
   "scripts": {
     "prepack": "tsc -b ../../tsconfig.json && node ../../tools/prepack.mjs",
+    "version": "node ../../tools/version.mjs",
     "test": "node --test dist/test/*.test.js",
     "postpack": "node ../../tools/postpack.mjs"
   },
@@ -107,7 +108,7 @@
     "cli"
   ],
   "license": "AGPL-3.0-or-later",
-  "author": "Sebastian Sch\u00fcrmann <sebs@2xs.org>",
+  "author": "Sebastian Schürmann <sebs@2xs.org>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git"

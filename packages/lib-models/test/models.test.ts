@@ -9,8 +9,7 @@ import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/schema.js";
 import { isCalendarDate, validateRecord } from "../src/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/json-schema.js";
 import { isParliamentKey, parliamentByHerkunft, parliamentByKey, PARLIAMENTS } from "../src/parliaments.js";
-import { readFileSync } from "node:fs";
-import { extractorVersion, PACKAGE_VERSION, VERSION_ENV } from "@maschinenlesbar.org/openka-lib-repro";
+import { extractorVersion, VERSION_ENV } from "@maschinenlesbar.org/openka-lib-repro";
 import { EXTRACTION_DIGEST } from "@maschinenlesbar.org/openka-lib-repro";
 import { computeExtractionDigest, extractionSourceFiles } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import {sampleRecord, PROJECT_ROOT } from "@maschinenlesbar.org/openka-lib-testing";
@@ -267,8 +266,4 @@ describe("extractor version", () => {
     ok(!files.some((file) => file.startsWith("src/core/repro/")));
   });
 
-  it("keeps PACKAGE_VERSION in step with package.json", () => {
-    const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
-    strictEqual(PACKAGE_VERSION, manifest.version);
-  });
 });
