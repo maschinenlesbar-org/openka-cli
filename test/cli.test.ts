@@ -379,6 +379,16 @@ describe("ka-factory", () => {
     );
   });
 
+  it("refuses a query with no searchable terms rather than matching everything", async () => {
+    const harness = cliHarness();
+    for (const query of ["--- ... ???", "a"]) {
+      strictEqual(await run(["search", query, "--corpus", harness.corpus], harness.deps), EXIT_USAGE, query);
+    }
+    match(harness.stderr(), /Nothing searchable/);
+    // An explicitly empty query still means "everything that passes the filters".
+    strictEqual(await run(["search", "", "--corpus", harness.corpus], harness.deps), EXIT_OK);
+  });
+
   it("refuses --like combined with options it cannot honour", async () => {
     // Accepting them and quietly dropping them is the silently-ignored constraint
     // this CLI refuses everywhere else.

@@ -5,6 +5,7 @@ import { OpenKaError, UsageError } from "../../core/errors.js";
 import { parliamentByKey } from "../../core/models/parliaments.js";
 import { ReviewStatuses, type KaRecord } from "../../core/models/schema.js";
 import { search } from "../../core/search/search.js";
+import { parseQuery } from "../../core/store/fts.js";
 import { searchLike } from "../../core/search/semantic.js";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "../../core/render/render.js";
 import type { CatalogEntry } from "../../core/store/store.js";
@@ -141,7 +142,21 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         return;
       }
 
-      const result = search(store, positionals[0] ?? "", {
+      // A query the tokenizer cannot use is not an empty query. "--- ... ???" has
+      // no terms left after tokenising, and answering it with every record is the
+      // silently-dropped constraint `--party ""` is a usage error to prevent.
+      const query = positionals[0] ?? "";
+      if (query.trim() !== "") {
+        const parsed = parseQuery(query);
+        if (parsed.required.length === 0 && parsed.excluded.length === 0) {
+          throw new UsageError(
+            `Nothing searchable in ${JSON.stringify(query)} — terms are runs of letters and digits ` +
+              "of at least two characters, so this would have matched every record.",
+          );
+        }
+      }
+
+      const result = search(store, query, {
         ...filters,
         limit,
         offset: (ctx.opts["offset"] as number | undefined) ?? 0,
