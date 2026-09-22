@@ -203,6 +203,38 @@ describe("Bundestag DIP source", () => {
     deepStrictEqual(warnings, []);
   });
 
+  it("does not name a ministry DIP did not mark as the lead", () => {
+    // The array order is an accident of the API. Taking the first entry published
+    // a positional accident as a fact about who answered; for the Bundestag the
+    // PDF cannot rescue it either, since an answer never names the ministry in
+    // its text. A named hole beats a plausible wrong ministry.
+    const answer = (ressort: unknown[]) => [
+      {
+        vorgangsposition: "Kleine Anfrage",
+        dokumentart: "Drucksache",
+        fundstelle: { dokumentnummer: "21/7449", pdf_url: "https://x.invalid/q.pdf", datum: "2026-08-13" },
+        titel: "T",
+      },
+      {
+        vorgangsposition: "Antwort",
+        dokumentart: "Drucksache",
+        fundstelle: { pdf_url: "https://x.invalid/a.pdf", datum: "2026-08-17" },
+        ressort,
+      },
+    ];
+    const ministryOf = (ressort: unknown[], warnings: string[] = []) =>
+      toRef("1", answer(ressort) as never, warnings)?.answered_by.ministry;
+
+    // One ressort: nothing to choose between, flag or no flag.
+    strictEqual(ministryOf([{ titel: "BMBFSFJ" }]), "BMBFSFJ");
+    // Several, one marked: the marked one.
+    strictEqual(ministryOf([{ titel: "BMF" }, { titel: "BMVg", federfuehrend: true }]), "BMVg");
+    // Several, none marked: no ministry, and the run says so.
+    const warnings: string[] = [];
+    strictEqual(ministryOf([{ titel: "BMF" }, { titel: "BMVg" }], warnings), undefined);
+    match(warnings[0] ?? "", /none marked federfuehrend/);
+  });
+
   it("skips a Vorgang whose question position is missing, and says so", () => {
     const warnings: string[] = [];
     strictEqual(toRef("1", [{ vorgangsposition: "Antwort" }], warnings), undefined);

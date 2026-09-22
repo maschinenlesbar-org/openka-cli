@@ -169,9 +169,27 @@ export function toRef(
   const answerPdf = stringOf(answerFundstelle?.["pdf_url"]);
   if (answerPdf !== undefined) documents.push({ role: "answer_pdf", url: answerPdf, urlStable: true });
 
+  // Who answered. DIP marks the lead ministry with `federfuehrend`; with a single
+  // ressort there is nothing to choose between. When several are listed and none
+  // is marked, the array order is an accident of the API rather than a statement
+  // about who replied — and this used to take the first one, publishing a
+  // positional accident as a fact about a government answer.
+  //
+  // It is left unset instead, and for the Bundestag that means the ministry is
+  // simply absent: `findMinistry` cannot rescue it, because a Bundestag answer
+  // does not name the ministry anywhere in its text (checked against 21/7449).
+  // A named hole beats a plausible wrong ministry, and the warning says which
+  // Vorgang needs a human if anyone wants the answer.
   const answeredBy: AnsweredBy = {};
-  const ressorts = Array.isArray(answer?.["ressort"]) ? (answer["ressort"] as unknown[]) : [];
-  const lead = ressorts.map(record).find((entry) => entry?.["federfuehrend"] === true) ?? ressorts.map(record)[0];
+  const ressorts = (Array.isArray(answer?.["ressort"]) ? (answer["ressort"] as unknown[]) : []).map(record);
+  const flagged = ressorts.filter((entry) => entry?.["federfuehrend"] === true);
+  const lead = flagged[0] ?? (ressorts.length === 1 ? ressorts[0] : undefined);
+  if (lead === undefined && ressorts.length > 1) {
+    warnings.push(
+      `Vorgang ${vorgangId}: ${ressorts.length} ressorts and none marked federfuehrend; ` +
+        "the answering ministry is left to the document",
+    );
+  }
   const ministry = stringOf(lead?.["titel"]);
   if (ministry !== undefined) answeredBy.ministry = ministry;
 
