@@ -51,22 +51,59 @@ export function findDate(text: string): string | undefined {
 }
 
 /**
- * A Drucksachen reference as printed: `19/10006`, `19 / 10 006`, `18/27 064`.
- * The spaces Berlin's cover page inserts for legibility are removed from the
- * numeric part but the printed slash form is kept, because that is what a citation
- * looks like.
+ * The shape of a Drucksachennummer: `19/10006`, `19 / 10 006`, `18/27 064`.
+ *
+ * Spaces and tabs only, never a newline. `\s` let the pattern weld two lines of a
+ * PDF text layer together, so "19/10" ending one line and "006" starting the next
+ * read as Drucksache 19/10006 — a fabricated document identity, which is worse
+ * than no reference at all.
+ */
+const REFERENCE_BODY = String.raw`(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))`;
+
+/**
+ * What a German parliament prints before the number.
+ *
+ * Taken from the corpus rather than guessed. Across the fifteen goldens — ten
+ * parliaments — the number is introduced three ways: `Drucksache` (eleven of them,
+ * `DRUCKSACHE` in Sachsen, sometimes as `BT-Drs.` or `Drucks. Nr.`), `Schriftliche
+ * Anfrage Nr.` (Berlin), and `Kleine Anfrage` (Thüringen, which labels the question
+ * paper by its document type and keeps `Drucksache` for the answer). `Große
+ * Anfrage` completes the set of document types the schema declares.
+ */
+const REFERENCE_LABEL = String.raw`(?:(?:[A-Za-zÄÖÜäöü]{1,4}-)?(?:Drucksachen?|Drucks\.?|Drs\.?)|(?:Kleine|Schriftliche|Gro(?:ß|ss)e)[ \t]+Anfrage)[ \t]*(?:Nr\.?[ \t]*)?`;
+
+/**
+ * Normalise a string that *is* a reference. The spaces Berlin's cover page inserts
+ * for legibility are removed from the numeric part; the printed slash form is kept,
+ * because that is what a citation looks like.
+ *
+ * Whole-string, like `parseGermanDate` — use `findReference` to look inside prose.
+ */
+export function parseReference(value: string): string | undefined {
+  const match = new RegExp(`^[ \\t]*${REFERENCE_BODY}[ \\t]*$`).exec(value);
+  return match === null ? undefined : normaliseReference(match);
+}
+
+/**
+ * Find the Drucksachennummer in a document's text.
+ *
+ * The number has to be introduced by its label. A bare `a/b` is not evidence of a
+ * Drucksachennummer and reading one as such produced real misreadings: a page
+ * header `Seite 2 / 4` became reference `2/4`, `im Verhältnis 2/3` became `2/3`,
+ * and `Stand 11/2024` became `11/2024` — each a document identity that does not
+ * exist. Structure cannot separate them, because `11/2024` is a perfectly
+ * well-formed reference; only the label can. With no labelled number this returns
+ * `undefined` and the caller abstains, which is the honest answer.
  */
 export function findReference(text: string): string | undefined {
-  // Spaces and tabs only, never a newline: `\s` let the pattern weld two lines of
-  // a PDF text layer together, so "19/10" followed by "006" on the next line read
-  // as Drucksache 19/10006 — a fabricated document identity, which is worse than
-  // no reference at all.
-  const match = /(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))/.exec(text);
-  if (match === null) return undefined;
+  const match = new RegExp(REFERENCE_LABEL + REFERENCE_BODY, "i").exec(text);
+  return match === null ? undefined : normaliseReference(match);
+}
+
+function normaliseReference(match: RegExpExecArray): string | undefined {
   const period = match[1] as string;
   const number = (match[2] as string).replace(/[ \t]+/g, "");
-  if (number === "") return undefined;
-  return `${period}/${number}`;
+  return number === "" ? undefined : `${period}/${number}`;
 }
 
 /** The legislative period from a reference such as `19/10006`. */

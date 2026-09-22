@@ -20,6 +20,7 @@ import {
   findMarkers,
   findMinistry,
   findReference,
+  parseReference,
   parseGermanDate,
   parseUrheber,
   periodFromReference,
@@ -468,6 +469,35 @@ describe("metadata rules", () => {
     // `\s` spanned newlines, so two unrelated lines of a PDF text layer read as
     // one Drucksachennummer — a fabricated identity is worse than no reference.
     strictEqual(findReference("Drucksache 19/10\n006 vom heute"), "19/10");
+  });
+
+  it("only reads a number that carries its label", () => {
+    // A bare `a/b` is not evidence of a Drucksachennummer, and reading one as such
+    // produced real misreadings. Structure cannot separate them — `11/2024` is a
+    // perfectly well-formed reference — so only the label can.
+    strictEqual(findReference("Seite 2 / 4\nDrucksache 19 / 6524"), "19/6524");
+    strictEqual(findReference("im Verhältnis 2/3 der Stimmen, Drucksache 19/6524"), "19/6524");
+    strictEqual(findReference("Stand 11/2024 — siehe Drucksache 19/6524"), "19/6524");
+    strictEqual(findReference("19/10006 steht hier ohne Bezeichnung"), undefined);
+  });
+
+  it("knows the labels the parliaments actually print", () => {
+    // Every form below is taken from a golden: Drucksache (eleven of fifteen,
+    // uppercase in Sachsen), Schriftliche Anfrage Nr. (Berlin), Kleine Anfrage
+    // (Thüringen, which labels the question paper by its document type).
+    strictEqual(findReference("Sächsischer Landtag DRUCKSACHE 8/3284"), "8/3284");
+    strictEqual(findReference("Antwort auf die Schriftliche Anfrage Nr. 19 / 10 006"), "19/10006");
+    strictEqual(findReference("8. Wahlperiode Kleine Anfrage 8/980"), "8/980");
+    strictEqual(findReference("vgl. BT-Drs. 21/7449"), "21/7449");
+    strictEqual(findReference("Drucks. Nr. 18/27 064"), "18/27064");
+  });
+
+  it("normalises a string that is already a reference, without a label", () => {
+    // Whole-string, the way `parseGermanDate` is to `findDate`.
+    strictEqual(parseReference("19 / 10 006"), "19/10006");
+    strictEqual(parseReference(" 18/27064 "), "18/27064");
+    strictEqual(parseReference("Drucksache 19/10006"), undefined);
+    strictEqual(parseReference("2/3 der Stimmen"), undefined);
   });
 
   it("splits a PARDOK Urheber field into askers", () => {
