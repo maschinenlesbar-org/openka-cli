@@ -1,5 +1,5 @@
 {
-  "name": "@maschinenlesbar.org/openka-connector-sachsen-anhalt",
+  "name": "@maschinenlesbar.org/openka-lib-robots",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,10 +11,6 @@
       "import": "./dist/src/index.js"
     },
     "./package.json": "./package.json"
-  },
-  "dependencies": {
-    "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
-    "@maschinenlesbar.org/openka-lib-source": "0.0.1"
   },
   "files": [
     "dist/src"

@@ -38,12 +38,15 @@ describe("source registry", () => {
   });
 
   it("marks the parliaments with no dedicated adapter honestly", () => {
-    // Niedersachsen's answer is the one the Parlamentsspiegel still will not render
-    // and no other route has been found for, so the aggregator is all it has.
-    // Hessen, Brandenburg, MV and the rest still reach their answers through the
-    // aggregator, which renders their follow-up documents.
+    // What is left on the aggregator is now the Länder whose own interface has not
+    // been reached: the three ESearch portals, and Hamburg while its Parldok is
+    // down. Brandenburg and Sachsen-Anhalt are `implemented` but produce nothing
+    // without `--ignore-robots`, which is a different kind of gap and is why their
+    // notes say so rather than their status.
     strictEqual(sourceEntry("hessen")?.status, "via_aggregator");
-    strictEqual(sourceEntry("brandenburg")?.status, "via_aggregator");
+    strictEqual(sourceEntry("baden-wuerttemberg")?.status, "via_aggregator");
+    ok(sourceEntry("brandenburg")?.note.includes("--ignore-robots"));
+    ok(sourceEntry("sachsen-anhalt")?.note.includes("--ignore-robots"));
     strictEqual(sourceEntry("thueringen")?.status, "implemented");
     strictEqual(sourceEntry("niedersachsen")?.status, "implemented");
     strictEqual(sourceEntry("berlin")?.status, "implemented");
@@ -80,14 +83,14 @@ describe("every connector's own entry", () => {
     "mecklenburg-vorpommern",
     "bremen",
     "bayern",
+    "brandenburg",
+    "sachsen-anhalt",
   ];
   const VIA_AGGREGATOR = [
     "baden-wuerttemberg",
-    "brandenburg",
     "hamburg",
     "hessen",
     "rheinland-pfalz",
-    "sachsen-anhalt",
     "schleswig-holstein",
   ];
 

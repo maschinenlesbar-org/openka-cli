@@ -17,6 +17,7 @@
     "@maschinenlesbar.org/openka-lib-extract": "0.0.1",
     "@maschinenlesbar.org/openka-lib-http": "0.0.1",
     "@maschinenlesbar.org/openka-lib-models": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-robots": "0.0.1",
     "@maschinenlesbar.org/openka-lib-store": "0.0.1",
     "@maschinenlesbar.org/openka-lib-text": "0.0.1"
   },

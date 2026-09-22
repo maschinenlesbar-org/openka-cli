@@ -64,6 +64,10 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
     .option("--metadata-only", "do not download documents; qa is abstained")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
+    .option(
+      "--ignore-robots",
+      "fetch documents from a server whose robots.txt disallows it — your decision, and recorded in every record's warnings",
+    )
     .addOption(choiceOption("--ocr <mode>", "OCR engine for the ocr tier", OCR_MODES))
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
@@ -78,7 +82,17 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
         const source = createSource(key);
         const store = ctx.store();
-        const engine = ctx.deps.createEngine(toEngineOptions(ctx.global));
+        // A source may set a politeness floor — the two Länder whose servers ask
+        // not to be crawled go far slower than the default — and it raises the
+        // global setting rather than replacing it.
+        const engineOptions = toEngineOptions(ctx.global);
+        if (source.minHostIntervalMs !== undefined) {
+          engineOptions.minHostIntervalMs = Math.max(
+            source.minHostIntervalMs,
+            engineOptions.minHostIntervalMs ?? 0,
+          );
+        }
+        const engine = ctx.deps.createEngine(engineOptions);
 
         const apiKey =
           (ctx.opts["apiKey"] as string | undefined) ??
@@ -103,6 +117,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(apiKey === undefined ? {} : { apiKey }),
           ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
           ...(ctx.opts["force"] === true ? { force: true } : {}),
+          ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
           ...(ctx.global.quiet === true || ctx.opts["json"] === true
             ? {}
             : {

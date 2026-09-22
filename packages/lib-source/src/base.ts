@@ -7,6 +7,8 @@
 // one Landtag from turning into a rewrite.
 
 import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
+import { DEFAULT_USER_AGENT } from "@maschinenlesbar.org/openka-lib-http";
+import { NO_RULES, isAllowed, parseRobots } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
   AnsweredBy,
   Asker,
@@ -72,6 +74,15 @@ export interface DiscoverOptions {
   /** Credential for sources that need one, already resolved from flag or env. */
   apiKey?: string;
   /**
+   * Fetch from a server whose robots.txt disallows it.
+   *
+   * Off by default, and never inferred: it is a flag the operator typed. Two Länder
+   * publish their Drucksachen openly and disallow every client in robots.txt, so
+   * this is the switch that decides whether their documents can be read at all. It
+   * is not silent — every ref it produces carries a warning saying it was used.
+   */
+  ignoreRobots?: boolean;
+  /**
    * Ignore cached validators and re-read the upstream feed. Without this a source
    * that answers 304 would report "nothing changed" even when the caller asked for
    * a full re-extraction, which makes `ka sync --force` silently do nothing.
@@ -116,6 +127,13 @@ export interface Source {
   readonly notes: string;
   /** Environment variable holding this source's credential, when it needs one. */
   readonly apiKeyEnv?: string;
+  /**
+   * A politeness floor for this source, in milliseconds between requests to one
+   * host. Sources that reach a server which has asked not to be crawled set it
+   * well above the default: if the operator has decided to fetch anyway, the least
+   * the tool can do is go slowly.
+   */
+  readonly minHostIntervalMs?: number;
   /** Rule sets to use for segmentation; the shared default when omitted. */
   readonly ruleSets?: readonly SegmentationRules[];
   discover(options: DiscoverOptions): Promise<DiscoverResult>;
@@ -262,4 +280,46 @@ export class FallbackSource implements Source {
       ],
     };
   }
+}
+
+
+/**
+ * Ask a server's robots.txt whether we may fetch from it.
+ *
+ * The file is read at run time rather than baked into a connector, so a Land that
+ * lifts its `Disallow: /` stops blocking us the same day — and one that adds a rule
+ * starts being honoured the same day. A server with no robots.txt allows
+ * everything, which is what a 404 there means.
+ */
+export async function robotsGate(
+  engine: FetchEngine,
+  options: { origin: string; path: string; ignoreRobots?: boolean },
+): Promise<{ allowed: boolean; overridden: boolean; note?: string }> {
+  let rules = NO_RULES;
+  try {
+    const response = await engine.get(`${options.origin}/robots.txt`, { headers: { accept: "text/plain" } });
+    rules = parseRobots(response.body.toString("utf8"));
+  } catch {
+    // No robots.txt, or it could not be read. Neither is a prohibition, and
+    // inventing one would block a server that never asked to be left alone.
+    rules = NO_RULES;
+  }
+  if (isAllowed(rules, DEFAULT_USER_AGENT, options.path)) return { allowed: true, overridden: false };
+  if (options.ignoreRobots === true) {
+    return {
+      allowed: true,
+      overridden: true,
+      note:
+        `${options.origin} disallows ${options.path} in its robots.txt, and --ignore-robots was given, ` +
+        "so these documents were fetched anyway — the decision and its consequences are the operator's",
+    };
+  }
+  return {
+    allowed: false,
+    overridden: false,
+    note:
+      `${options.origin} disallows ${options.path} in its robots.txt, so its documents were not fetched. ` +
+      "The records exist and are public; pass --ignore-robots to fetch them anyway, and read " +
+      "the connector's README first — it says what is known about this Land's position.",
+  };
 }

@@ -105,6 +105,9 @@
       "path": "packages/lib-repro"
     },
     {
+      "path": "packages/lib-robots"
+    },
+    {
       "path": "packages/lib-search"
     },
     {

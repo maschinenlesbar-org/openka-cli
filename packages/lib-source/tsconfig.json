@@ -21,6 +21,9 @@
       "path": "../lib-models"
     },
     {
+      "path": "../lib-robots"
+    },
+    {
       "path": "../lib-store"
     },
     {

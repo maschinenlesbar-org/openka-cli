@@ -32,6 +32,12 @@ export interface SyncOptions {
   metadataOnly?: boolean;
   /** Re-extract even when nothing changed. */
   force?: boolean;
+  /**
+   * Fetch from a server whose robots.txt disallows it. Two Länder publish their
+   * Drucksachen openly and disallow every client; this is the operator's decision
+   * to make, and the sources that honour it warn on every record.
+   */
+  ignoreRobots?: boolean;
   /** Called after each record, for progress output. */
   onProgress?: (event: ProgressEvent) => void;
   /** Injected clock — the only place the pipeline reads time (`retrieved_at`). */
@@ -92,6 +98,7 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
       ...(options.limit !== undefined ? { limit: options.limit } : {}),
       ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
       ...(options.force === true ? { force: true } : {}),
+      ...(options.ignoreRobots === true ? { ignoreRobots: true } : {}),
     };
     discovered = await source.discover(discoverOptions);
   } catch (err) {

@@ -24,6 +24,9 @@
       "path": "packages/connector-berlin/tsconfig.test.json"
     },
     {
+      "path": "packages/connector-brandenburg/tsconfig.test.json"
+    },
+    {
       "path": "packages/connector-bremen/tsconfig.test.json"
     },
     {
@@ -43,6 +46,9 @@
     },
     {
       "path": "packages/connector-sachsen/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-sachsen-anhalt/tsconfig.test.json"
     },
     {
       "path": "packages/connector-thueringen/tsconfig.test.json"
@@ -70,6 +76,9 @@
     },
     {
       "path": "packages/lib-render/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-robots/tsconfig.test.json"
     },
     {
       "path": "packages/lib-search/tsconfig.test.json"
