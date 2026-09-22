@@ -27,6 +27,14 @@ describe("XML reader", () => {
     strictEqual(decodeEntities("a &amp; b &#65; &#x42; &unknown;"), "a & b A B &unknown;");
   });
 
+  it("refuses a character reference that would produce a lone surrogate", () => {
+    // Not a character: it cannot be written to XML and becomes U+FFFD as soon as
+    // the string is encoded, so a feed built from it stops matching its record.
+    strictEqual(decodeEntities("&#xD800;"), "&#xD800;");
+    strictEqual(decodeEntities("&#55296;"), "&#55296;");
+    strictEqual(decodeEntities("&#xE4;"), "ä");
+  });
+
   it("skips comments, processing instructions and a DOCTYPE with an internal subset", () => {
     const nodes = parseXmlFragment('<?xml version="1.0"?><!DOCTYPE x [<!ENTITY y "z">]><!-- c --><r>ok</r>');
     strictEqual(nodes.length, 1);
@@ -335,6 +343,8 @@ describe("HTML helpers", () => {
   it("decodes entities and strips tags", () => {
     strictEqual(textOf("<p>Br&uuml;cke <b>&amp;</b> Weg</p>"), "Brücke & Weg");
     strictEqual(decodeHtml("&#8211;"), "–");
+    // A surrogate code point is not a character; the reference is left as written.
+    strictEqual(decodeHtml("&#xD800;"), "&#xD800;");
   });
 
   it("matches a class as a whole word", () => {

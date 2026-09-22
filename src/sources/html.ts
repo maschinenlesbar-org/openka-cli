@@ -16,17 +16,28 @@ const NAMED = new Map<string, string>([
   ["rsquo", "’"], ["deg", "°"], ["sect", "§"], ["middot", "·"],
 ]);
 
+/**
+ * True for a code point a character reference may legally denote. The surrogate
+ * range is excluded: `String.fromCodePoint(0xd800)` yields a lone surrogate, which
+ * is not a character, cannot be written to XML, and turns into U+FFFD the moment
+ * the string is encoded as UTF-8 — so a feed built from it stops matching the
+ * record it came from.
+ */
+function isUsableCodePoint(code: number): boolean {
+  return Number.isFinite(code) && code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+}
+
 /** Resolve HTML entities. Unknown entities are left as written. */
 export function decodeHtml(text: string): string {
   if (!text.includes("&")) return text;
   return text.replace(/&(#x?[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);/g, (whole, body: string) => {
     if (body.startsWith("#x") || body.startsWith("#X")) {
       const code = Number.parseInt(body.slice(2), 16);
-      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+      return isUsableCodePoint(code) ? String.fromCodePoint(code) : whole;
     }
     if (body.startsWith("#")) {
       const code = Number.parseInt(body.slice(1), 10);
-      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+      return isUsableCodePoint(code) ? String.fromCodePoint(code) : whole;
     }
     return NAMED.get(body) ?? whole;
   });
