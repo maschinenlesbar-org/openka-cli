@@ -35,7 +35,8 @@
     "test": "npm test --workspaces --if-present && node --test dist/test/*.test.js",
     "lint:line": "node packages/cli-ka-factory/dist/src/cli/index.js lint",
     "docs": "node tools/docs/node_modules/typedoc/bin/typedoc src/index.ts --out out",
-    "start": "node packages/cli-ka/dist/src/index.js"
+    "start": "node packages/cli-ka/dist/src/index.js",
+    "coverage": "npm run build && node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/test/**\" packages/*/dist/test/*.test.js dist/test/*.test.js"
   },
   "keywords": [
     "kleine-anfrage",

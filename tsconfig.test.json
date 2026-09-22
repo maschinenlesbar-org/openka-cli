@@ -54,6 +54,9 @@
       "path": "packages/connector-thueringen/tsconfig.test.json"
     },
     {
+      "path": "packages/lib-errors/tsconfig.test.json"
+    },
+    {
       "path": "packages/lib-extract/tsconfig.test.json"
     },
     {
@@ -72,6 +75,9 @@
       "path": "packages/lib-pdf/tsconfig.test.json"
     },
     {
+      "path": "packages/lib-perceive/tsconfig.test.json"
+    },
+    {
       "path": "packages/lib-registry/tsconfig.test.json"
     },
     {
@@ -88,6 +94,9 @@
     },
     {
       "path": "packages/lib-starweb/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-verify/tsconfig.test.json"
     },
     {
       "path": "packages/cli-ka-factory"

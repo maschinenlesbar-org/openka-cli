@@ -63,6 +63,7 @@ with `fixturesOf(...)` rather than keeping a second copy of the bytes.
 ```bash
 npm run build && npm test     # 467 tests across the workspace, node:test, no network
 npm run typecheck
+npm run coverage              # the suite with an enforced 80% line/function floor
 npm run lint:line             # the guardrail
 node packages/cli-ka-factory/dist/src/cli/index.js goldens verify
 ```

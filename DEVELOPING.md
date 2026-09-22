@@ -11,10 +11,17 @@ npm install         # links the workspace packages
 npm run build       # tsc -b: every package, in dependency order
 npm run typecheck   # the same build; with project references there is no --noEmit
 npm test            # every package's suite, then the integration suite
+npm run coverage    # the same, with a hard 80% floor on lines and functions
 npm start           # runs `ka` from the build
 npm run lint:line   # the no-generative-model guardrail
 npm run stamp       # re-freeze the extraction digest after changing extraction code
 ```
+
+**Coverage has a floor, not a target.** `npm run coverage` fails the build below 80%
+of lines or functions, measured across the whole workspace in one run — because
+packages exercise each other and measuring one in isolation understates it. Every
+package is above the floor; the workspace sits at ~94% of lines and ~93% of
+functions.
 
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:

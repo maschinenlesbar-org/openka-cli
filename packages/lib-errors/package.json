@@ -14,5 +14,8 @@
   },
   "files": [
     "dist/src"
-  ]
+  ],
+  "scripts": {
+    "test": "node --test dist/test/*.test.js"
+  }
 }
