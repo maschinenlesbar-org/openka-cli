@@ -65,21 +65,35 @@ describe("Parldok responses", () => {
 
   it("reads the first hit and its query id", () => {
     const hit = firstHit(SEARCH);
-    strictEqual(hit?.id, 102282);
-    strictEqual(hit?.queryId, 366775);
+    strictEqual(hit.kind, "found");
+    strictEqual(hit.kind === "found" ? hit.value.id : undefined, 102282);
+    strictEqual(hit.kind === "found" ? hit.value.queryId : undefined, 366775);
   });
 
   it("finds the answer among the Vorgang's positions", () => {
     const answer = answerPosition(PROCESS);
+    strictEqual(answer.kind, "found");
     // 8/979 is answered by 8/1715 — no relation between the numbers, which is why
     // the lookup exists at all.
-    strictEqual(answer?.reference, "8/1715");
-    match(answer?.url ?? "", new RegExp(`^${PARLDOK_WEB}/dokument/103169/`));
+    strictEqual(answer.kind === "found" ? answer.value.reference : undefined, "8/1715");
+    match(answer.kind === "found" ? answer.value.url : "", new RegExp(`^${PARLDOK_WEB}/dokument/103169/`));
   });
 
-  it("reports no answer rather than guessing when the shape is unfamiliar", () => {
-    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{\\"positions\\":[]}}"}'), undefined);
-    strictEqual(firstHit('{"success":true,"data":"{\\"docs\\":[]}"}'), undefined);
+  it("calls an empty result absent, not unrecognised", () => {
+    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{\\"positions\\":[]}}"}').kind, "absent");
+    strictEqual(firstHit('{"success":true,"data":"{\\"docs\\":[]}"}').kind, "absent");
+  });
+
+  it("separates a response it does not understand from one that holds nothing", () => {
+    // Both end the lookup with no answer, but only one of them means the API
+    // changed under us, and a sync that cannot say which reports the wrong fact.
+    strictEqual(firstHit("<html>Wartungsarbeiten</html>").kind, "unrecognised");
+    strictEqual(firstHit('{"success":true,"data":"{}"}').kind, "unrecognised");
+    strictEqual(answerPosition('{"success":true,"data":"{}"}').kind, "unrecognised");
+    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{}}"}').kind, "unrecognised");
+    // An Antwort we can see and cannot follow is not an unanswered Anfrage either.
+    const linkless = '{"success":true,"data":"{\\"process\\":{\\"positions\\":[{\\"text\\":\\"Antwort auf Kleine Anfrage\\",\\"doc\\":{}}]}}"}';
+    strictEqual(answerPosition(linkless).kind, "unrecognised");
   });
 });
 
@@ -131,6 +145,6 @@ describe("Thüringen source", () => {
       state: { source: "thueringen", http_cache: {} },
     });
     ok(result.refs.length >= 1);
-    ok(result.warnings.some((warning) => warning.includes("no Kleine Anfrage with that number")));
+    ok(result.warnings.some((warning) => warning.includes("a form this adapter does not know")));
   });
 });

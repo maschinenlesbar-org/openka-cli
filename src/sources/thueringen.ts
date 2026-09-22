@@ -61,9 +61,23 @@ export function processBody(documentId: number, queryId: number): string {
 }
 
 /**
+ * What a read of an undocumented response amounts to.
+ *
+ * `absent` and `unrecognised` both end a lookup with no answer, and both are
+ * non-fatal, but they are different facts about the world: one says Parldok has
+ * nothing, the other says Parldok said something we do not understand. Collapsing
+ * them into `undefined` meant a schema change downstream looked exactly like a
+ * Kleine Anfrage nobody had answered yet, and nothing in the sync said otherwise.
+ */
+export type ApiReading<T> =
+  | { kind: "found"; value: T }
+  | { kind: "absent" }
+  | { kind: "unrecognised"; reason: string };
+
+/**
  * Responses wrap their payload as a JSON *string* under `data`. Returns `undefined`
- * for anything that is not the success shape, which is how an API that changed
- * under us becomes "no answer found" rather than a crash.
+ * for anything that is not the success shape — always a shape we do not recognise,
+ * never an empty result, which the callers distinguish.
  */
 export function successPayload(body: string): Record<string, unknown> | undefined {
   let outer: { success?: unknown; data?: unknown };
@@ -87,15 +101,19 @@ export interface FoundDocument {
 }
 
 /** The first hit of a search, with the query id its Vorgang lookup needs. */
-export function firstHit(body: string): FoundDocument | undefined {
+export function firstHit(body: string): ApiReading<FoundDocument> {
   const data = successPayload(body);
-  if (data === undefined) return undefined;
-  const docs = Array.isArray(data["docs"]) ? (data["docs"] as Record<string, unknown>[]) : [];
-  const first = docs[0];
-  const id = first?.["id"];
+  if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
+  if (!Array.isArray(data["docs"])) return { kind: "unrecognised", reason: "no docs array in the search result" };
+  const docs = data["docs"] as Record<string, unknown>[];
+  // An empty docs array is the honest "that number is not in Parldok".
+  if (docs.length === 0) return { kind: "absent" };
+  const id = docs[0]?.["id"];
   const queryId = data["queryid"];
-  if (typeof id !== "number" || typeof queryId !== "number") return undefined;
-  return { id, queryId };
+  if (typeof id !== "number" || typeof queryId !== "number") {
+    return { kind: "unrecognised", reason: "a hit without a numeric id or queryid" };
+  }
+  return { kind: "found", value: { id, queryId } };
 }
 
 /**
@@ -103,27 +121,39 @@ export function firstHit(body: string): FoundDocument | undefined {
  * answer's reads "Antwort auf Kleine Anfrage <ministry>" — and carry the document's
  * own link, which is what gets fetched.
  */
-export function answerPosition(body: string): { url: string; reference?: string } | undefined {
+export function answerPosition(body: string): ApiReading<{ url: string; reference?: string }> {
   const data = successPayload(body);
-  const process = data?.["process"];
-  if (typeof process !== "object" || process === null) return undefined;
+  if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
+  const process = data["process"];
+  if (typeof process !== "object" || process === null) return { kind: "unrecognised", reason: "no process object" };
   const positions = (process as Record<string, unknown>)["positions"];
-  if (!Array.isArray(positions)) return undefined;
+  if (!Array.isArray(positions)) return { kind: "unrecognised", reason: "no positions array" };
 
+  let unusable: string | undefined;
   for (const entry of positions as Record<string, unknown>[]) {
     const text = typeof entry["text"] === "string" ? entry["text"] : "";
     if (!/\bAntwort\b/i.test(text)) continue;
     const document = entry["doc"];
-    if (typeof document !== "object" || document === null) continue;
+    // An Antwort we can see and cannot follow is not an unanswered Anfrage. Keep
+    // looking — a Vorgang can list more than one — but remember that we saw it.
+    if (typeof document !== "object" || document === null) {
+      unusable ??= "an Antwort position with no document";
+      continue;
+    }
     const link = (document as Record<string, unknown>)["prelink"] ?? (document as Record<string, unknown>)["link"];
-    if (typeof link !== "string" || link === "") continue;
+    if (typeof link !== "string" || link === "") {
+      unusable ??= "an Antwort position whose document carries no link";
+      continue;
+    }
     const found: { url: string; reference?: string } = { url: `${PARLDOK_WEB}${link}` };
     // The slug carries the Drucksachennummer: `/dokument/103169/8_1715_personal…`.
     const match = /\/dokument\/\d+\/(\d{1,2})_0*(\d+)_/.exec(link);
     if (match !== null) found.reference = `${match[1]}/${match[2]}`;
-    return found;
+    return { kind: "found", value: found };
   }
-  return undefined;
+  if (unusable !== undefined) return { kind: "unrecognised", reason: unusable };
+  // No Antwort position at all: an Anfrage nobody has answered yet looks like this.
+  return { kind: "absent" };
 }
 
 export class ThueringenSource implements Source {
@@ -179,21 +209,33 @@ export class ThueringenSource implements Source {
         headers: { accept: "application/json" },
       });
       const hit = firstHit(search.body.toString("utf8"));
-      if (hit === undefined) {
+      if (hit.kind === "unrecognised") {
+        warnings.push(
+          `${ref.reference}: Parldok's search answered in a form this adapter does not know ` +
+            `(${hit.reason}) — treated as no answer, but the API may have changed`,
+        );
+        return undefined;
+      }
+      if (hit.kind === "absent") {
         warnings.push(`${ref.reference}: Parldok found no Kleine Anfrage with that number`);
         return undefined;
       }
       const process = await options.engine.post(`${PARLDOK_API}/Process/Document`, {
-        body: `data=${encodeURIComponent(processBody(hit.id, hit.queryId))}`,
+        body: `data=${encodeURIComponent(processBody(hit.value.id, hit.value.queryId))}`,
         headers: { accept: "application/json" },
       });
       const answer = answerPosition(process.body.toString("utf8"));
-      if (answer === undefined) {
-        // Not an error: an Anfrage that has not been answered yet looks exactly
-        // like this, and so does one whose answer Parldok has not published.
+      if (answer.kind === "unrecognised") {
+        warnings.push(
+          `${ref.reference}: Parldok's Vorgang answered in a form this adapter does not know ` +
+            `(${answer.reason}) — treated as no answer, but the API may have changed`,
+        );
         return undefined;
       }
-      return answer;
+      // Not an error: an Anfrage that has not been answered yet looks exactly like
+      // this, and so does one whose answer Parldok has not published.
+      if (answer.kind === "absent") return undefined;
+      return answer.value;
     } catch (err) {
       warnings.push(`${ref.reference}: could not reach Parldok (${(err as Error).message})`);
       return undefined;
