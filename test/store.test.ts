@@ -70,6 +70,52 @@ describe("query syntax", () => {
   });
 });
 
+describe("two runs over one corpus", () => {
+  it("does not drop the other run's catalog rows", () => {
+    // A corpus is a directory and nothing locks it. Both runs cached the catalog
+    // at startup and then wrote it whole, so the second dropped the first's rows:
+    // the record stayed on disk and vanished from search, stats, export and
+    // health, with only `ka reindex` to recover it.
+    const root = mkdtempSync(join(tmpdir(), "openka-conc-"));
+    try {
+      const first = new FileStore(root);
+      const second = new FileStore(root);
+      first.catalog();
+      second.catalog();
+      const a = sampleRecord({ id: "berlin-19-11111", reference: "19/11111" });
+      const b = sampleRecord({ id: "berlin-19-22222", reference: "19/22222" });
+      first.putRecord(a);
+      indexRecord(first, a);
+      second.putRecord(b);
+      indexRecord(second, b);
+
+      const fresh = new FileStore(root);
+      deepStrictEqual(
+        fresh.catalog().map((row) => row.id).sort(),
+        ["berlin-19-11111", "berlin-19-22222"],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still honours a removal against a concurrent writer", () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-conc-"));
+    try {
+      const seed = new FileStore(root);
+      const record = sampleRecord({ id: "berlin-19-33333", reference: "19/33333" });
+      seed.putRecord(record);
+      indexRecord(seed, record);
+
+      const remover = new FileStore(root);
+      unindexRecord(remover, "berlin-19-33333");
+      deepStrictEqual(new FileStore(root).catalog(), []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("rebuilding the index", () => {
   it("writes each shard once for the whole corpus, not once per record", () => {
     // Indexing a record at a time read-modify-writes one file per shard its

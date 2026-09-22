@@ -160,13 +160,20 @@ export class FileStore implements Store {
   // -------------------------------------------------------------- catalog
 
   private catalogCache: Map<string, CatalogEntry> | undefined;
+  /** Rows this process has written or deleted since it last read the catalog. */
+  private readonly touched = new Set<string>();
+  private readonly removed = new Set<string>();
 
   private loadCatalog(): Map<string, CatalogEntry> {
     if (this.catalogCache === undefined) {
-      const rows = this.readJson<CatalogEntry[]>(this.path("index", "catalog.json"), []);
-      this.catalogCache = new Map(rows.map((row) => [row.id, row]));
+      this.catalogCache = this.readCatalogFile();
     }
     return this.catalogCache;
+  }
+
+  private readCatalogFile(): Map<string, CatalogEntry> {
+    const rows = this.readJson<CatalogEntry[]>(this.path("index", "catalog.json"), []);
+    return new Map(rows.map((row) => [row.id, row]));
   }
 
   catalog(): CatalogEntry[] {
@@ -180,21 +187,54 @@ export class FileStore implements Store {
   /** Insert or replace one catalog row and persist the catalog. */
   putCatalogEntry(entry: CatalogEntry): void {
     this.loadCatalog().set(entry.id, entry);
+    this.touched.add(entry.id);
+    this.removed.delete(entry.id);
     this.flushCatalog();
   }
 
   putCatalogEntries(entries: readonly CatalogEntry[]): void {
     if (entries.length === 0) return;
     const catalog = this.loadCatalog();
-    for (const entry of entries) catalog.set(entry.id, entry);
+    for (const entry of entries) {
+      catalog.set(entry.id, entry);
+      this.touched.add(entry.id);
+      this.removed.delete(entry.id);
+    }
     this.flushCatalog();
   }
 
   removeCatalogEntry(id: string): void {
-    if (this.loadCatalog().delete(id)) this.flushCatalog();
+    if (!this.loadCatalog().delete(id)) return;
+    this.removed.add(id);
+    this.touched.delete(id);
+    this.flushCatalog();
   }
 
+  /**
+   * Write the catalog, merging this process's changes onto what is on disk now.
+   *
+   * A corpus is a directory and nothing locks it, so two `ka sync` runs — or a
+   * sync racing a reindex — both cached the catalog at startup and then wrote it
+   * whole. The second write dropped the first run's rows: the record stayed on
+   * disk and vanished from search, stats, export, feed and health, silently, with
+   * only `ka reindex` to recover it.
+   *
+   * Re-reading here means a concurrent writer's rows survive. It does not make the
+   * corpus transactional — two writes can still interleave between this read and
+   * the rename — but it removes the failure that needed no race at all, just two
+   * runs that started before either finished.
+   */
   flushCatalog(): void {
+    const merged = this.readCatalogFile();
+    const mine = this.loadCatalog();
+    for (const id of this.touched) {
+      const entry = mine.get(id);
+      if (entry !== undefined) merged.set(id, entry);
+    }
+    for (const id of this.removed) merged.delete(id);
+    this.catalogCache = merged;
+    this.touched.clear();
+    this.removed.clear();
     this.writeJson(this.path("index", "catalog.json"), this.catalog());
   }
 
