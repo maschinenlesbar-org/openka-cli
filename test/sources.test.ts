@@ -42,6 +42,18 @@ describe("XML reader", () => {
     deepStrictEqual(found.map((node) => childText(node, "n")), ["1", "2"]);
   });
 
+  it("does not swallow the record after a self-closing element", () => {
+    // `<V/>` has no `</V>`, so taking the next one consumed the element after it
+    // and dropped that record entirely — silent loss in a 30k-record export.
+    const found = [...streamElements("<r><V><n>1</n></V><V/><V><n>3</n></V><V><n>4</n></V></r>", "V")];
+    deepStrictEqual(found.map((node) => childText(node, "n")), ["1", undefined, "3", "4"]);
+  });
+
+  it("keeps streaming when a self-closing element is the last one", () => {
+    const found = [...streamElements("<r><V><n>1</n></V><V/></r>", "V")];
+    strictEqual(found.length, 2);
+  });
+
   it("ignores a stray closing tag instead of throwing away the document", () => {
     strictEqual(childText(parseXml("<a></b><c>ok</c></a>"), "c"), "ok");
   });

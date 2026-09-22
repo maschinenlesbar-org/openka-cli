@@ -190,6 +190,19 @@ export function* streamElements(source: string, tag: string): Generator<XmlNode>
       pos = start + open.length;
       continue;
     }
+    const tagEnd = source.indexOf(">", start);
+    if (tagEnd < 0) return;
+    if (source[tagEnd - 1] === "/") {
+      // `<tag/>` closes itself. Looking for the next `</tag>` would take the close
+      // tag of the *following* element, yielding this empty one and consuming that
+      // whole record without ever emitting it — silent data loss in an export of
+      // tens of thousands of siblings. One empty element in the file also used to
+      // truncate the stream, since a missing `</tag>` ends the generator.
+      pos = tagEnd + 1;
+      const empty = parseXmlFragment(source.slice(start, tagEnd + 1))[0];
+      if (empty !== undefined) yield empty;
+      continue;
+    }
     const end = source.indexOf(close, start);
     if (end < 0) return;
     const fragment = source.slice(start, end + close.length);
