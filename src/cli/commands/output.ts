@@ -4,36 +4,22 @@ import type { Command } from "commander";
 import { OpenKaError } from "../../core/errors.js";
 import { RECORD_JSON_SCHEMA } from "../../core/models/json-schema.js";
 import { canonicalJsonLine } from "../../core/repro/canonical.js";
-import { search, type SearchFilters } from "../../core/search/search.js";
+import { search } from "../../core/search/search.js";
 import { atomEntryUpdated, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "../../core/render/render.js";
 import { isoInstant } from "../../core/pipeline/pipeline.js";
-import { ParliamentKeys } from "../../core/models/parliaments.js";
 import type { KaRecord } from "../../core/models/schema.js";
 import type { CliDeps } from "../io.js";
-import { action, choiceOption, collect, collectInt, emit, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson } from "../shared.js";
+import { action, addCorpusFilters, choiceOption, corpusFiltersFrom, emit, parseBoundedInt, parseNonEmpty, printJson } from "../shared.js";
 
 const EXPORT_FORMATS = ["csv", "jsonl", "jsonld"] as const;
 
-function filtersFrom(opts: Record<string, unknown>): SearchFilters {
-  const filters: SearchFilters = {};
-  if (opts["parliament"] !== undefined) filters.parliament = opts["parliament"] as string[];
-  if (opts["party"] !== undefined) filters.party = opts["party"] as string[];
-  if (opts["year"] !== undefined) filters.year = opts["year"] as number[];
-  if (opts["period"] !== undefined) filters.period = opts["period"] as number[];
-  if (opts["from"] !== undefined) filters.from = opts["from"] as string;
-  if (opts["to"] !== undefined) filters.to = opts["to"] as string;
-  return filters;
-}
-
+/** The shared filters plus the free-text selection only the bulk commands offer. */
 function addSelectionOptions(command: Command): Command {
-  return command
-    .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known)`, collect)
-    .option("--party <name>", "restrict to a party (repeatable)", collect)
-    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
-    .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))
-    .option("--from <date>", "answered (or submitted) on or after this date", parseIsoDate)
-    .option("--to <date>", "answered (or submitted) on or before this date", parseIsoDate)
-    .option("--query <terms>", "restrict to records matching these search terms", parseNonEmpty);
+  return addCorpusFilters(command).option(
+    "--query <terms>",
+    "restrict to records matching these search terms",
+    parseNonEmpty,
+  );
 }
 
 /**
@@ -49,7 +35,7 @@ function selectRecords(
   opts: Record<string, unknown>,
   limit: number,
 ): KaRecord[] {
-  const result = search(store, (opts["query"] as string | undefined) ?? "", { ...filtersFrom(opts), limit });
+  const result = search(store, (opts["query"] as string | undefined) ?? "", { ...corpusFiltersFrom(opts), limit });
   const records: KaRecord[] = [];
   for (const hit of result.hits) {
     const record = store.getRecord(hit.entry.id);

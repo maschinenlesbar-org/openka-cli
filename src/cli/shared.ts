@@ -7,6 +7,8 @@
 // exists to avoid.
 
 import { Command, InvalidArgumentError, Option } from "commander";
+import { ParliamentKeys } from "../core/models/parliaments.js";
+import type { SearchFilters } from "../core/search/search.js";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { OpenKaError } from "../core/errors.js";
@@ -155,6 +157,43 @@ export function emit(ctx: ActionContext, text: string, outPath: string | undefin
     throw new OpenKaError(`could not write ${outPath}: ${reason}`, { cause: err });
   }
   ctx.deps.io.err(`Wrote ${data.length} bytes to ${outPath}`);
+}
+
+/**
+ * The corpus-selection options every read command shares.
+ *
+ * One declaration, because two existed and had already drifted: the same
+ * `--parliament` flag documented itself with a colon in one command and a
+ * semicolon in the other, and `--party` had two different descriptions. A user
+ * reading `ka search --help` and `ka export --help` saw two answers for one flag.
+ * Commands add the options that are genuinely their own on top of this.
+ */
+export function addCorpusFilters(command: Command): Command {
+  return command
+    .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known)`, collect)
+    .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
+    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
+    .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))
+    .option("--from <date>", "answered (or submitted) on or after this date", parseIsoDate)
+    .option("--to <date>", "answered (or submitted) on or before this date", parseIsoDate);
+}
+
+/**
+ * Read those options back as typed filters. `reviewStatus` and `onlyAbstained`
+ * come from options only `ka search` and `ka review` declare, so they are simply
+ * absent elsewhere.
+ */
+export function corpusFiltersFrom(opts: Record<string, unknown>): SearchFilters {
+  const filters: SearchFilters = {};
+  if (opts["parliament"] !== undefined) filters.parliament = opts["parliament"] as string[];
+  if (opts["party"] !== undefined) filters.party = opts["party"] as string[];
+  if (opts["year"] !== undefined) filters.year = opts["year"] as number[];
+  if (opts["period"] !== undefined) filters.period = opts["period"] as number[];
+  if (opts["from"] !== undefined) filters.from = opts["from"] as string;
+  if (opts["to"] !== undefined) filters.to = opts["to"] as string;
+  if (opts["reviewStatus"] !== undefined) filters.reviewStatus = [opts["reviewStatus"] as string];
+  if (opts["needsReview"] === true) filters.onlyAbstained = true;
+  return filters;
 }
 
 /** An Option constrained to a fixed set of choices. */

@@ -2,7 +2,7 @@
 
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "../../core/errors.js";
-import { parliamentByKey, ParliamentKeys } from "../../core/models/parliaments.js";
+import { parliamentByKey } from "../../core/models/parliaments.js";
 import { ReviewStatuses } from "../../core/models/schema.js";
 import { search } from "../../core/search/search.js";
 import { searchLike } from "../../core/search/semantic.js";
@@ -11,39 +11,20 @@ import type { CatalogEntry } from "../../core/store/store.js";
 import type { CliDeps } from "../io.js";
 import {
   action,
+  addCorpusFilters,
   choiceOption,
-  collect,
-  collectInt,
+  corpusFiltersFrom,
   parseBoundedInt,
-  parseIsoDate,
   parseNonEmpty,
   printJson,
 } from "../shared.js";
 import { pad, sanitizeForTerminal, truncate } from "../text.js";
 
+/** The shared filters plus the two only the read commands offer. */
 function addFilterOptions(command: Command): Command {
-  return command
-    .option("--parliament <key>", `restrict to a parliament (repeatable: ${ParliamentKeys.length} known)`, collect)
-    .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
-    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
-    .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))
-    .option("--from <date>", "answered (or submitted) on or after this date", parseIsoDate)
-    .option("--to <date>", "answered (or submitted) on or before this date", parseIsoDate)
+  return addCorpusFilters(command)
     .addOption(choiceOption("--review-status <status>", "restrict by review status", ReviewStatuses))
     .option("--needs-review", "only records with at least one abstained field");
-}
-
-function filtersFrom(opts: Record<string, unknown>): Record<string, unknown> {
-  const filters: Record<string, unknown> = {};
-  if (opts["parliament"] !== undefined) filters["parliament"] = opts["parliament"];
-  if (opts["party"] !== undefined) filters["party"] = opts["party"];
-  if (opts["year"] !== undefined) filters["year"] = opts["year"];
-  if (opts["period"] !== undefined) filters["period"] = opts["period"];
-  if (opts["from"] !== undefined) filters["from"] = opts["from"];
-  if (opts["to"] !== undefined) filters["to"] = opts["to"];
-  if (opts["reviewStatus"] !== undefined) filters["reviewStatus"] = [opts["reviewStatus"]];
-  if (opts["needsReview"] === true) filters["onlyAbstained"] = true;
-  return filters;
 }
 
 /** One result line: id, date, parliament, title — and a marker for holes. */
@@ -70,7 +51,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
   ).action(
     action(deps, async (ctx, positionals) => {
       const store = ctx.store();
-      const filters = filtersFrom(ctx.opts);
+      const filters = corpusFiltersFrom(ctx.opts);
       const limit = (ctx.opts["limit"] as number | undefined) ?? 20;
 
       if (ctx.opts["like"] !== undefined) {
