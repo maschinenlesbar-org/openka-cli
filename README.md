@@ -25,7 +25,7 @@ Two binaries are installed:
 | `ka`         | line    | the deterministic runtime: sync, search, get, verify, review, export |
 | `ka-factory` | factory | build-time tooling: the no-model guardrail, golden fixtures, health and drift |
 
-Node ≥ 20. The only required runtime dependency is `commander`; HTTP is
+Node ≥ 22. The only required runtime dependency is `commander`; HTTP is
 `node:http`/`https`, PDF reading is written here, and the corpus is plain files.
 
 ## Quick start
@@ -82,20 +82,41 @@ holes for a human; the archived PDF is the appeal court for any field you doubt.
 
 ## Sources
 
-| Source | Parliament | Kind | Notes |
-|--------|-----------|------|-------|
-| `berlin` | Abgeordnetenhaus von Berlin | structured XML | daily open-data export per Wahlperiode, in the `Parlamentsspiegel Export 1.0` format |
-| `bund` | Deutscher Bundestag | structured JSON API | DIP; needs `--api-key` / `DIP_API_KEY` |
-| `nordrhein-westfalen` | Landtag NRW | dedicated adapter | discovery via the Parlamentsspiegel (the Landtag's own search is robots-disallowed), with document URLs built from the Drucksachennummer |
-| `saarland` | Landtag des Saarlandes | dedicated adapter | unwraps the iframe page the aggregator links to |
-| `sachsen` | Sächsischer Landtag | dedicated adapter | walks every document position of the EDAS viewer |
-| `thueringen` | Thüringer Landtag | dedicated adapter | looks the answer Drucksache up through Parldok's JSON API |
-| `niedersachsen` | Niedersächsischer Landtag | dedicated adapter | answers come from a map the factory sweep freezes |
-| `parlamentsspiegel` | all 16 Länder | HTML search | the Länder's shared portal: metadata and PDF links, no API |
-| the other 10 Länder | — | via the aggregator | registered with `status: via_aggregator`; `ka sources list` shows the map |
+Every parliament publishes differently, so every connector is different. The table
+is the overview; each connector's `README.md` under `packages/connector-<land>/` has
+the detail, the fixtures and the tests for that Land.
 
-All 17 parliaments are registered. The ones without a dedicated adapter say so
-rather than quietly returning nothing — run `ka sources list`.
+**Discovery** is where the list of Anfragen comes from. *Own* means the parliament's
+own interface; *aggregator* means the [Parlamentsspiegel](https://www.parlamentsspiegel.de/),
+the Länder's shared portal run by the Landtag NRW. **Fallback** is what runs when the
+own interface throws or answers in a shape the connector does not recognise — never
+when it simply returns nothing. **Tier** is the extraction path the record declares.
+
+| `--source` | Parliament | Discovery | Tier | Documents per record | Fallback | Specific to this Land |
+| --- | --- | --- | --- | --- | --- | --- |
+| `bund` | Deutscher Bundestag | **own** — DIP JSON API (`dip.bundestag.de`), cursor-paged | structured | question PDF + answer PDF (two Drucksachen of one Vorgang) | — | needs `--api-key` / `DIP_API_KEY`; half-seen pairs are completed with a per-Vorgang request |
+| `berlin` | Abgeordnetenhaus von Berlin | **own** — PARDOK open-data XML, one file per Wahlperiode in the `Parlamentsspiegel Export 1.0` format | structured | one combined PDF | — | 50+ MB per period, kept cheap by ETag / If-Modified-Since; the instrument is the *Schriftliche* Anfrage |
+| `bayern` | Bayerischer Landtag | **own** — RSS feed `Drucksachen von Anfragen` plus the static Drucksache PDF | text_layer | one combined PDF | aggregator | the feed mixes Schriftliche Anfragen with Anfragen zum Plenum; each is tested by a HEAD against the `…/Drucksachen/Schriftliche Anfragen/` path, where 404 means "not this instrument". No dates are claimed from the feed; the feed source does not yet apply `--since`/`--until` |
+| `bremen` | Bremische Bürgerschaft | **own** — PARiS, a STARWEB session form (`lib-starweb`) | text_layer | question PDF | aggregator | type is selected through `Dokumenttyp` (Vorgangstyp silently matches nothing); only the Land chamber, not the Stadtbürgerschaft; the result line names the Fraktion, not the members, so no askers are invented |
+| `mecklenburg-vorpommern` | Landtag Mecklenburg-Vorpommern | **own** — Parldok JSON API (`lib-parldok`) | text_layer | one combined PDF (`Kleine Anfrage und Antwort` is one Dokumenttyp) | aggregator | the result row already carries asker, Fraktion and answering ministry; the API is undocumented, so an unfamiliar shape is reported as unreadable, not as an empty Land |
+| `thueringen` | Thüringer Landtag | **own** — Parldok JSON API: one listing search, then one Vorgang lookup per hit | structured | question PDF + the answer as a combined PDF | aggregator | the answer is a Drucksache with no numeric relation to the question (8/979 is answered by 8/1715); "Antwort liegt noch nicht vor" is read as *unanswered*, not as an API change |
+| `nordrhein-westfalen` | Landtag Nordrhein-Westfalen | **aggregator** — the Landtag's own search is robots-disallowed, and it runs the aggregator itself | structured | question PDF + answer PDF | — | document URLs are *constructed* from the Drucksachennummer (`MMD18-14035.pdf`) rather than scraped; Wahlperioden 11–15 are refused because robots.txt disallows that part of the archive |
+| `saarland` | Landtag des Saarlandes | **aggregator** | structured | as linked, rewritten | — | the linked `Drucksache/*.pdf` is an HTML page with an iframe; the URL is rewritten to the `Downloadfile.ashx` endpoint the iframe names |
+| `sachsen` | Sächsischer Landtag | **aggregator** | structured | question PDF + answer PDF, every position of the Vorgang | — | the link is an EDAS frameset viewer; the real file is read from the viewer's navigation frame, one request per document; viewer links expire, the resolved file does not |
+| `niedersachsen` | Niedersächsischer Landtag | **aggregator** | structured | question PDF + the answer paper from a frozen map | — | nothing reachable links question to answer, so `ka-factory answers niedersachsen` sweeps a Drucksachen range once and freezes the map the connector reads |
+| `brandenburg` | Landtag Brandenburg | **aggregator** for the list; the documents live on `parlamentsdokumentation.brandenburg.de`, whose robots.txt is `Disallow: /` | text_layer | as the aggregator links them | — | produces **nothing** by default and says why; `--ignore-robots` fetches, at one request per 4 s; the file is read at run time, so a lifted rule takes effect without a release |
+| `sachsen-anhalt` | Landtag von Sachsen-Anhalt | **aggregator** for the list; documents on `padoka.landtag.sachsen-anhalt.de`, robots.txt `Disallow: /` | text_layer | as the aggregator links them | — | same shape as Brandenburg |
+| `parlamentsspiegel` | all 16 Länder | **aggregator** — the `/suche` HTML search, one result markup for every Land | structured | as linked | — | no API and no document interface by the portal's own statement; metadata and PDF links only; each record is filed under the Land its Herkunft code names |
+| `baden-wuerttemberg` | Landtag Baden-Württemberg | aggregator only | structured | as linked | — | the Landtag runs PARLIS, an ESearch portal; no connector for it yet |
+| `hamburg` | Hamburgische Bürgerschaft | aggregator only | structured | as linked | — | runs ParlDok, the same software as MV and Thüringen; its service was unreachable when this was built |
+| `hessen` | Hessischer Landtag | aggregator only | structured | as linked | — | runs LIS (STARWEB family); the search entry point has not been located |
+| `rheinland-pfalz` | Landtag Rheinland-Pfalz | aggregator only | structured | as linked | — | the classic OPAL servlet is retired; the current portal is a client-side ESearch application |
+| `schleswig-holstein` | Schleswig-Holsteinischer Landtag | aggregator only | structured | as linked | — | e-LISSH, an ESearch portal like Baden-Württemberg's |
+
+All 17 parliaments are registered. The ones without a connector of their own say so
+rather than quietly returning nothing — run `ka sources list`, or
+`ka sources show <key>` for one Land's notes. The survey behind this table, with the
+robots.txt verdict per host, is in the workspace's `.reviews/` folder.
 
 Coverage is honest, not complete. Across 96 records from eight parliaments, 68
 extract completely and 89 yield at least one question/answer pair; the rest abstain and land
