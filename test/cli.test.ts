@@ -8,7 +8,8 @@ import { runFactory } from "../src/factory/cli/run.js";
 import { defaultCorpusRoot, parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/cli/shared.js";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/cli/text.js";
 import { spread } from "../src/cli/commands/maintain.js";
-import { cliHarness, readFixture, readFixtureText, scriptedTransport } from "./helpers.js";
+import { renderShowLines } from "../src/cli/commands/query.js";
+import { cliHarness, readFixture, readFixtureText, sampleRecord, scriptedTransport } from "./helpers.js";
 
 const PDF = readFixture(
   "berlin",
@@ -318,6 +319,31 @@ describe("ka-factory", () => {
     strictEqual(await runFactory(["lint"], harness.deps), EXIT_OK);
     match(harness.stdout(), /No generative-model dependency on the line/);
     harness.cleanup();
+  });
+
+  it("renders a record for reading, sanitising every upstream field", () => {
+    // Now assertable directly; it used to be 55 lines of `io.out` calls inside a
+    // registration closure, reachable only by driving the whole CLI.
+    const lines = renderShowLines(
+      sampleRecord({
+        title: "Titel\u009b31m",
+        source_documents: [{ role: "answer_pdf", url: "https://x.invalid/a.pdf\u009b31m", url_stable: false }],
+      }),
+    );
+    ok(lines.some((line) => line.startsWith("Abgeordnetenhaus von Berlin · Drucksache 19/12345")));
+    ok(lines.some((line) => line.includes("(link expires upstream)")));
+    strictEqual(
+      lines.some((line) => [...line].some((ch) => {
+        const code = ch.codePointAt(0) ?? 0;
+        return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+      })),
+      false,
+    );
+  });
+
+  it("says so rather than printing a blank when nothing was extracted", () => {
+    const lines = renderShowLines(sampleRecord({ qa: [] }));
+    ok(lines.includes("(no question/answer pairs were extracted)"));
   });
 
   it("samples across the corpus rather than one alphabetical prefix", () => {

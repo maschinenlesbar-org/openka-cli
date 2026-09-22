@@ -3,7 +3,7 @@
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "../../core/errors.js";
 import { parliamentByKey } from "../../core/models/parliaments.js";
-import { ReviewStatuses } from "../../core/models/schema.js";
+import { ReviewStatuses, type KaRecord } from "../../core/models/schema.js";
 import { search } from "../../core/search/search.js";
 import { searchLike } from "../../core/search/semantic.js";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "../../core/render/render.js";
@@ -35,6 +35,67 @@ function formatHit(entry: CatalogEntry, score: number, snippet?: string): string
     `${flag} ${pad(entry.id, 24)} ${pad(date, 10)} ${pad(truncate(entry.parliament, 14), 14)} ` +
     `${truncate(entry.title, 70)}${score > 0 ? ` (${score.toFixed(2)})` : ""}`;
   return snippet === undefined ? line : `${line}\n      ${truncate(snippet, 150)}`;
+}
+
+/**
+ * `ka show`, as lines.
+ *
+ * A pure function of the record rather than a sequence of `io.out` calls inside
+ * the registration closure, so the formatting can be asserted directly instead of
+ * only through the whole CLI. Every field goes through `sanitizeForTerminal`: a
+ * title, a URL and an attachment label are all upstream data.
+ */
+export function renderShowLines(record: KaRecord): string[] {
+  const parliament = parliamentByKey(record.parliament);
+  const lines: string[] = [];
+  lines.push(sanitizeForTerminal(record.title || "(no title)"));
+  lines.push(
+    `${parliament?.label ?? record.parliament} · Drucksache ${sanitizeForTerminal(record.reference)} · ` +
+      `WP ${record.legislative_period}`,
+  );
+  const askers = record.askers
+    .map((asker) => (asker.party === undefined ? asker.name : `${asker.name} (${asker.party})`))
+    .join(", ");
+  if (askers !== "") lines.push(`Gefragt von: ${sanitizeForTerminal(askers)}`);
+  if (record.answered_by.ministry !== undefined) {
+    lines.push(`Beantwortet von: ${sanitizeForTerminal(record.answered_by.ministry)}`);
+  }
+  lines.push(
+    [
+      record.dates.submitted === undefined ? undefined : `eingereicht ${record.dates.submitted}`,
+      record.dates.answered === undefined ? undefined : `beantwortet ${record.dates.answered}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  );
+  lines.push("");
+  if (record.markers.classified) lines.push("[ als Verschlusssache gekennzeichnet ]");
+  if (record.markers.attachments_referenced.length > 0) {
+    lines.push(`[ Anlagen: ${sanitizeForTerminal(record.markers.attachments_referenced.join(", "))} ]`);
+  }
+  if (record.qa.length === 0) lines.push("(no question/answer pairs were extracted)");
+  for (const pair of record.qa) {
+    lines.push(`Frage ${sanitizeForTerminal(pair.number)}:`);
+    lines.push(sanitizeForTerminal(pair.question ?? "  — abstained: no question text recognised —"));
+    lines.push("");
+    lines.push(`Antwort zu ${sanitizeForTerminal(pair.number)}:`);
+    lines.push(sanitizeForTerminal(pair.answer ?? "  — abstained: no answer text recognised —"));
+    lines.push("");
+  }
+  lines.push("—");
+  lines.push(
+    `tier ${record.extraction.tier} · extractor ${sanitizeForTerminal(record.extraction.extractor_version)} · ` +
+      `${record.extraction.review_status}`,
+  );
+  if (record.extraction.abstained_fields.length > 0) {
+    lines.push(`abstained: ${sanitizeForTerminal(record.extraction.abstained_fields.join(", "))}`);
+  }
+  for (const source of record.source_documents) {
+    // A URL is scraped out of upstream HTML, which makes it among the most
+    // attacker-influenced strings in the record.
+    lines.push(`${source.role}: ${sanitizeForTerminal(source.url)}${source.url_stable ? "" : " (link expires upstream)"}`);
+  }
+  return lines;
 }
 
 export function registerQuery(program: Command, deps: CliDeps): void {
@@ -133,56 +194,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         const id = positionals[0] as string;
         const record = ctx.store().getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
-        const parliament = parliamentByKey(record.parliament);
-        const io = ctx.deps.io;
-        io.out(sanitizeForTerminal(record.title || "(no title)"));
-        io.out(
-          `${parliament?.label ?? record.parliament} · Drucksache ${sanitizeForTerminal(record.reference)} · ` +
-            `WP ${record.legislative_period}`,
-        );
-        const askers = record.askers
-          .map((asker) => (asker.party === undefined ? asker.name : `${asker.name} (${asker.party})`))
-          .join(", ");
-        if (askers !== "") io.out(`Gefragt von: ${sanitizeForTerminal(askers)}`);
-        if (record.answered_by.ministry !== undefined) {
-          io.out(`Beantwortet von: ${sanitizeForTerminal(record.answered_by.ministry)}`);
-        }
-        io.out(
-          [
-            record.dates.submitted === undefined ? undefined : `eingereicht ${record.dates.submitted}`,
-            record.dates.answered === undefined ? undefined : `beantwortet ${record.dates.answered}`,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        );
-        io.out("");
-        if (record.markers.classified) io.out("[ als Verschlusssache gekennzeichnet ]");
-        if (record.markers.attachments_referenced.length > 0) {
-          io.out(`[ Anlagen: ${sanitizeForTerminal(record.markers.attachments_referenced.join(", "))} ]`);
-        }
-        if (record.qa.length === 0) io.out("(no question/answer pairs were extracted)");
-        for (const pair of record.qa) {
-          io.out(`Frage ${sanitizeForTerminal(pair.number)}:`);
-          io.out(sanitizeForTerminal(pair.question ?? "  — abstained: no question text recognised —"));
-          io.out("");
-          io.out(`Antwort zu ${sanitizeForTerminal(pair.number)}:`);
-          io.out(sanitizeForTerminal(pair.answer ?? "  — abstained: no answer text recognised —"));
-          io.out("");
-        }
-        io.out("—");
-        io.out(
-          `tier ${record.extraction.tier} · extractor ${sanitizeForTerminal(record.extraction.extractor_version)} · ` +
-            `${record.extraction.review_status}`,
-        );
-        if (record.extraction.abstained_fields.length > 0) {
-          io.out(`abstained: ${sanitizeForTerminal(record.extraction.abstained_fields.join(", "))}`);
-        }
-        for (const source of record.source_documents) {
-          // A URL is scraped out of upstream HTML, which makes it among the most
-          // attacker-influenced strings in the record — it goes through the same
-          // sanitiser as the title, which is what its docstring already promised.
-          io.out(`${source.role}: ${sanitizeForTerminal(source.url)}${source.url_stable ? "" : " (link expires upstream)"}`);
-        }
+        for (const line of renderShowLines(record)) ctx.deps.io.out(line);
       }),
     );
 
