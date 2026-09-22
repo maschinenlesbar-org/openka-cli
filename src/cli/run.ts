@@ -5,6 +5,7 @@
 import { CommanderError, type Command } from "commander";
 import { AbstainError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "../core/errors.js";
 import { buildProgram, defaultDeps } from "./program.js";
+import { sanitizeForTerminal } from "./text.js";
 import type { CliDeps } from "./io.js";
 
 /**
@@ -14,6 +15,10 @@ import type { CliDeps } from "./io.js";
  *   2  a usage error (commander's parse failures are remapped to this)
  *   3  the corpus is missing or unreadable
  *   4  the requested record or resource does not exist upstream (HTTP 404)
+ *
+ * Every message printed here goes through `sanitizeForTerminal`: an error text
+ * routinely quotes upstream data — a URL, a Content-Type, a record id — and an
+ * error path is no less of a terminal than the success path.
  */
 export const EXIT_OK = 0;
 export const EXIT_ERROR = 1;
@@ -49,22 +54,22 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
       return EXIT_USAGE;
     }
     if (err instanceof OpenKaApiError) {
-      deps.io.err(`Error: ${err.message}`);
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return err.status === 404 ? EXIT_NOT_FOUND : EXIT_ERROR;
     }
     if (err instanceof UsageError) {
-      deps.io.err(`Error: ${err.message}`);
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_USAGE;
     }
     if (err instanceof StoreError) {
-      deps.io.err(`Error: ${err.message}`);
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_STORE;
     }
     if (err instanceof AbstainError || err instanceof OpenKaError) {
-      deps.io.err(`Error: ${err.message}`);
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_ERROR;
     }
-    deps.io.err(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
+    deps.io.err(`Unexpected error: ${sanitizeForTerminal(err instanceof Error ? err.message : String(err))}`);
     return EXIT_ERROR;
   }
 }

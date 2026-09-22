@@ -338,6 +338,21 @@ describe("ka-factory", () => {
     deepStrictEqual(spread(ids, 100), ids);
   });
 
+  it("sanitises an error message, which routinely quotes upstream data", async () => {
+    const harness = cliHarness();
+    // A record id is echoed back in the "no such record" message.
+    await run(["get", "nosuch\u009b31m", "--corpus", harness.corpus], harness.deps);
+    const stderr = harness.stderr();
+    strictEqual(
+      [...stderr].some((ch) => {
+        const code = ch.codePointAt(0) ?? 0;
+        return (code < 0x20 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+      }),
+      false,
+      stderr,
+    );
+  });
+
   it("refuses --like combined with options it cannot honour", async () => {
     // Accepting them and quietly dropping them is the silently-ignored constraint
     // this CLI refuses everywhere else.
