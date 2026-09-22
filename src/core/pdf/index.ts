@@ -30,6 +30,8 @@ export interface PdfTextResult {
   unmappedRatio: number;
   /** True when the document has no text-showing operators at all (a scan). */
   imageOnly: boolean;
+  /** Content streams refused outright — an encrypted or unsupported filter. */
+  undecodableStreams: number;
   version: string;
   pageCount: number;
 }
@@ -57,9 +59,17 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
   let unmapped = 0;
   let total = 0;
 
+  let undecodable = 0;
   for (const page of pages) {
+    if (page.undecodable.length > 0) {
+      undecodable += page.undecodable.length;
+      problems.push(
+        `page ${page.number}: could not decode ${page.undecodable.length} content stream(s) ` +
+          `(filter ${page.undecodable.join(", ")})`,
+      );
+    }
     if (page.content.length === 0) {
-      problems.push(`page ${page.number}: no decodable content stream`);
+      if (page.undecodable.length === 0) problems.push(`page ${page.number}: no decodable content stream`);
       results.push({ page: page.number, text: "", unmappedCodes: 0, totalCodes: 0 });
       continue;
     }
@@ -92,7 +102,11 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     text: results.map((page) => page.text).join(PAGE_SEPARATOR),
     problems,
     unmappedRatio: total === 0 ? 0 : unmapped / total,
-    imageOnly: total === 0,
+    // "No text-showing operators" only means "a scan" when we actually got to look.
+    // A page whose content stream we refused has unknown text, and calling that
+    // image-only sent the operator to OCR, which cannot decode it either.
+    imageOnly: total === 0 && undecodable === 0,
+    undecodableStreams: undecodable,
     version: doc.version,
     pageCount: pages.length,
   };

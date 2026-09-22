@@ -349,3 +349,39 @@ describe("reporting a page that lost its text", () => {
     strictEqual(extractPdfText(rawContentPdf("BT /F1 12 Tf 72 720 Td (Text) Tj ET")).problems.length, 0);
   });
 });
+
+describe("a content stream the reader refuses", () => {
+  const withFilter = (filter: string): Buffer => {
+    const content = "BT /F1 12 Tf 72 720 Td (Wichtiger Text) Tj ET";
+    return Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj",
+        `4 0 obj << /Length ${content.length}${filter} >> stream\n${content}\nendstream endobj`,
+        "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj",
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+  };
+
+  it("names the filter instead of reporting nothing", () => {
+    // The separator was pushed after a failed stream too, so the page was never
+    // empty and the "no decodable content stream" check could not fire.
+    const result = extractPdfText(withFilter(" /Filter /Crypt"));
+    strictEqual(result.text, "");
+    strictEqual(result.undecodableStreams, 1);
+    match(result.problems[0] ?? "", /could not decode 1 content stream\(s\) \(filter Crypt\)/);
+  });
+
+  it("is not called an image-only document", () => {
+    // It used to be, so the operator was told to run OCR — which cannot decode an
+    // encrypted stream either.
+    strictEqual(extractPdfText(withFilter(" /Filter /JBIG2Decode")).imageOnly, false);
+    // A page with no text-showing operators at all still is one.
+    strictEqual(extractPdfText(withFilter("")).imageOnly, false);
+  });
+});

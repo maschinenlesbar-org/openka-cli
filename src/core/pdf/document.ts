@@ -9,7 +9,7 @@
 // still refusing anything genuinely unreadable rather than guessing.
 
 import { ParseError } from "../errors.js";
-import { decodeStream } from "./filters.js";
+import { decodeStream, filterChain } from "./filters.js";
 import { Lexer } from "./lexer.js";
 import {
   isDict,
@@ -27,6 +27,13 @@ export interface PdfPage {
   dict: PdfDict;
   /** The page's content streams, concatenated in order. */
   content: Buffer;
+  /**
+   * Filter chains on this page's content streams that could not be decoded.
+   *
+   * Non-empty means the page's text is missing *because we refused it*, not
+   * because there is none — which is a different fact and a different repair.
+   */
+  undecodable: string[];
   resources: PdfDict;
 }
 
@@ -207,7 +214,7 @@ export class PdfDocument {
     return collected.map((dict, i) => ({
       number: i + 1,
       dict,
-      content: this.pageContent(dict),
+      ...this.pageContent(dict),
       resources: this.dict(dict.get("Resources")) ?? new Map(),
     }));
   }
@@ -236,7 +243,7 @@ export class PdfDocument {
     out.push(node);
   }
 
-  private pageContent(page: PdfDict): Buffer {
+  private pageContent(page: PdfDict): { content: Buffer; undecodable: string[] } {
     const contents = this.resolve(page.get("Contents"));
     const streams: PdfStream[] = [];
     if (isStream(contents)) streams.push(contents);
@@ -247,15 +254,20 @@ export class PdfDocument {
       }
     }
     const parts: Buffer[] = [];
+    const undecodable: string[] = [];
     for (const stream of streams) {
       try {
         parts.push(decodeStream(stream, (value) => this.resolve(value)));
+        parts.push(Buffer.from("\n"));
       } catch {
-        // A content stream we cannot decode contributes nothing; the text simply
-        // is not there, and the tier reports a shortfall rather than inventing one.
+        // A stream we cannot decode contributes nothing — but *which* nothing
+        // matters. The separator used to be pushed here too, so the page was never
+        // empty, the "no decodable content stream" check could not fire, and an
+        // encrypted document was reported as a scan with a suggestion to run OCR
+        // that could not possibly help. Name the filter instead.
+        undecodable.push(filterChain(stream.dict, (value: PdfValue | undefined) => this.resolve(value)).filters.join("+") || "unknown");
       }
-      parts.push(Buffer.from("\n"));
     }
-    return Buffer.concat(parts);
+    return { content: Buffer.concat(parts), undecodable };
   }
 }

@@ -268,6 +268,15 @@ function tryText(bytes: Buffer, abstentions: Abstentions): string | undefined {
     abstentions.note("pdf: no text layer (image-only document) — the ocr tier is needed");
     return undefined;
   }
+  // Refused streams and no text is not the same as no text: the page had content
+  // and we would not decode it, so there is nothing usable and OCR is not the
+  // answer either. Saying which one it is decides what a reviewer does next.
+  if (result.undecodableStreams > 0 && result.text.trim() === "") {
+    abstentions.note(
+      `pdf: ${result.undecodableStreams} content stream(s) could not be decoded and no text was recovered`,
+    );
+    return undefined;
+  }
   // A document where a tenth of the characters have no mapping is a document we
   // are reading wrong, not one with a few odd glyphs. Refuse it.
   if (result.unmappedRatio > 0.1) {
