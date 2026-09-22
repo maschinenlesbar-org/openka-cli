@@ -286,3 +286,30 @@ export function workflowCommands(projectRoot: string): WorkflowCommand[] {
   }
   return found;
 }
+
+
+/** The Node versions CI builds against, lowest first. */
+export function ciNodeVersions(projectRoot: string): number[] {
+  let text: string;
+  try {
+    text = readFileSync(join(projectRoot, ".github", "workflows", "ci.yml"), "utf8");
+  } catch {
+    return [];
+  }
+  const matrix = /node-version:\s*\[([^\]]*)\]/.exec(text);
+  if (matrix === null) return [];
+  return (matrix[1] as string)
+    .split(",")
+    .map((entry) => Number.parseInt(entry.trim(), 10))
+    .filter((major) => Number.isInteger(major))
+    .sort((a, b) => a - b);
+}
+
+/** The major version `engines.node` requires, from a `>=N` range. */
+export function enginesFloor(projectRoot: string): number | undefined {
+  const manifest = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8")) as {
+    engines?: { node?: string };
+  };
+  const match = /(\d+)/.exec(manifest.engines?.node ?? "");
+  return match === null ? undefined : Number.parseInt(match[1] as string, 10);
+}

@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
-import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
+import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, buildEmbeddings, importEmbeddings } from "../src/lib/embed.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
@@ -352,5 +352,29 @@ describe("the CI workflows", () => {
       .join("\n");
     ok(!/require\('\.\/package\.json'\)/.test(text), "a workflow still reads the root package.json version");
     ok(/packages\/openka-cli\/package\.json/.test(text));
+  });
+});
+
+describe("the supported Node versions", () => {
+  // These two drifted apart and CI found out the slow way: `engines` said >=20
+  // while the coverage step used flags that only exist from 22, so the Node 20 job
+  // died with `bad option` after the build and the tests had already passed.
+  it("builds against every version engines claims to support", () => {
+    const versions = ciNodeVersions(PROJECT_ROOT);
+    const floor = enginesFloor(PROJECT_ROOT);
+    ok(versions.length > 0, "no node-version matrix found in ci.yml");
+    ok(floor !== undefined, "no engines.node floor in package.json");
+    strictEqual(
+      versions[0],
+      floor,
+      `ci.yml builds from Node ${versions[0]} but engines.node says >=${floor}`,
+    );
+  });
+
+  it("keeps the published package's floor in step with the workspace", () => {
+    const published = JSON.parse(
+      readFileSync(join(PROJECT_ROOT, "packages", "openka-cli", "package.json"), "utf8"),
+    ) as { engines?: { node?: string } };
+    strictEqual(published.engines?.node, `>=${enginesFloor(PROJECT_ROOT)}`);
   });
 });

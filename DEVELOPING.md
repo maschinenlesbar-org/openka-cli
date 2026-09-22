@@ -551,9 +551,13 @@ An extractor may not be promoted while a golden is red. That is the gate.
 
 Stated plainly so they are not mistaken for oversights:
 
-- **No SQLite.** `node:sqlite` needs Node ≥ 22.5 and the corpus has to work on
-  Node 20. The store is plain files with a sharded inverted index, behind a `Store`
-  interface a SQLite implementation can slot into later.
+- **No SQLite.** This used to be because `node:sqlite` needs Node ≥ 22.5 and the
+  corpus had to work on Node 20. Node 20 is no longer supported, so that reason is
+  gone and the decision now rests on the two that were always the better ones:
+  `node:sqlite` is still experimental, and a corpus of plain files is one anybody
+  can read, diff and archive with ordinary tools. The store is plain files with a
+  sharded inverted index, behind a `Store` interface a SQLite implementation can
+  slot into if either of those changes.
 - **No site, no skills, no plugin packaging.** The other repos in this workspace
   ship a bilingual Jekyll site and Claude Code skills; this one does not yet.
 - **No real semantic embeddings on the line.** `ka-factory embed` builds hashed

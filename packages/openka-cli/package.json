@@ -113,7 +113,7 @@
     "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"

@@ -20,7 +20,11 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        # 22 is the floor: `--test-coverage-lines` and `--test-coverage-exclude`
+        # are Node 22 features, and the coverage step below depends on them. Node
+        # 20 answers `bad option` and exits 9. `engines` says >=22 to match, and a
+        # test in cli-ka-factory fails if the two ever disagree.
+        node-version: [22.x, 24.x]
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
