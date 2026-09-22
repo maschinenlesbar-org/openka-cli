@@ -20,6 +20,36 @@ describe("the no-LLM-on-the-line guardrail", () => {
     ok(report.filesChecked > 30, `expected to have scanned the line, saw ${report.filesChecked} files`);
   });
 
+  it("catches a forbidden import however it is written", () => {
+    // A line-by-line scan missed the multi-line form, which is the prevailing
+    // style in this codebase — so the guardrail enforced nothing against the
+    // ordinary way of writing an import.
+    const forms = [
+      'import OpenAI from "openai";',
+      'import {\n  OpenAI,\n  type Client,\n} from "openai";',
+      'import "openai";',
+      'const m = await import("openai");',
+      'const m = require("openai");',
+      'import type { X } from "openai";',
+      'export { x } from "openai";',
+    ];
+    for (const source of forms) {
+      const rules = lintSource("x.ts", source).map((violation) => violation.rule);
+      deepStrictEqual(rules, ["forbidden-module"], `not caught: ${JSON.stringify(source)}`);
+    }
+  });
+
+  it("catches a multi-line factory import", () => {
+    const rules = lintSource("x.ts", 'import {\n  buildEmbeddings,\n} from "../factory/lib/embed.js";').map(
+      (violation) => violation.rule,
+    );
+    deepStrictEqual(rules, ["factory-import"]);
+  });
+
+  it("does not trip on an ordinary import that merely mentions the word", () => {
+    deepStrictEqual(lintSource("x.ts", 'import { sha256 } from "../repro/hash.js";\nconst s = "not from openai";'), []);
+  });
+
   it("scans core, sources, cli and the library entry point", () => {
     const files = lineFiles(PROJECT_ROOT);
     ok(files.includes("src/index.ts"));

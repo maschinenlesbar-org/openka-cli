@@ -89,7 +89,26 @@ export function lineFiles(projectRoot: string): string[] {
   return files.sort();
 }
 
-const IMPORT_PATTERN = /(?:^|\s)(?:import|export)[^;\n]*?from\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+/**
+ * Every form in which a module specifier can enter a file: a static `import`/`export
+ * … from`, a side-effect `import "x"`, a dynamic `import("x")` and `require("x")`.
+ *
+ * The clause between the keyword and `from` is `[^;'"]*?` — deliberately including
+ * newlines. Matching it line by line is how this check came to miss
+ * `import {\n  OpenAI,\n} from "openai"`, which is the prevailing style in this
+ * codebase, so the guardrail was enforcing nothing against the ordinary way of
+ * writing an import. Excluding `;` and both quote characters keeps the lazy match
+ * from running past the end of the statement it started in.
+ */
+const IMPORT_PATTERN =
+  /\b(?:import|export)\b\s*(?:[^;'"]*?\s)?from\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+/** 1-based line number of a character offset, for reporting a whole-file match. */
+function lineAt(source: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index && i < source.length; i++) if (source[i] === "\n") line++;
+  return line;
+}
 
 /**
  * Check one file's text. Comments are stripped first so that *writing about* the
@@ -98,32 +117,35 @@ const IMPORT_PATTERN = /(?:^|\s)(?:import|export)[^;\n]*?from\s*["']([^"']+)["']
 export function lintSource(file: string, source: string): LintViolation[] {
   const violations: LintViolation[] = [];
   const stripped = stripComments(source);
-  const lines = stripped.split("\n");
 
-  lines.forEach((line, index) => {
-    IMPORT_PATTERN.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = IMPORT_PATTERN.exec(line)) !== null) {
-      const specifier = match[1] ?? match[2] ?? match[3];
-      if (specifier === undefined) continue;
-      const bare = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
-      if ((FORBIDDEN_MODULES as readonly string[]).includes(bare ?? "")) {
-        violations.push({
-          file,
-          line: index + 1,
-          rule: "forbidden-module",
-          detail: `imports "${specifier}" — a generative model client may not be reachable from the line`,
-        });
-      }
-      if (/(^|\/)factory(\/|$)/.test(specifier)) {
-        violations.push({
-          file,
-          line: index + 1,
-          rule: "factory-import",
-          detail: `imports "${specifier}" — factory tooling is build-time only and must not be a runtime dependency`,
-        });
-      }
+  // Imports are matched over the whole file, because a static import may be
+  // spread across several lines; the offset is mapped back to a line for the report.
+  IMPORT_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = IMPORT_PATTERN.exec(stripped)) !== null) {
+    const specifier = match[1] ?? match[2] ?? match[3] ?? match[4];
+    if (specifier === undefined) continue;
+    const line = lineAt(stripped, match.index);
+    const bare = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
+    if ((FORBIDDEN_MODULES as readonly string[]).includes(bare ?? "")) {
+      violations.push({
+        file,
+        line,
+        rule: "forbidden-module",
+        detail: `imports "${specifier}" — a generative model client may not be reachable from the line`,
+      });
     }
+    if (/(^|\/)factory(\/|$)/.test(specifier)) {
+      violations.push({
+        file,
+        line,
+        rule: "factory-import",
+        detail: `imports "${specifier}" — factory tooling is build-time only and must not be a runtime dependency`,
+      });
+    }
+  }
+
+  stripped.split("\n").forEach((line, index) => {
     for (const host of FORBIDDEN_HOSTS) {
       if (line.includes(host)) {
         violations.push({ file, line: index + 1, rule: "forbidden-host", detail: `mentions ${host}` });
@@ -131,7 +153,7 @@ export function lintSource(file: string, source: string): LintViolation[] {
     }
   });
 
-  return violations;
+  return violations.sort((a, b) => a.line - b.line || (a.rule < b.rule ? -1 : a.rule > b.rule ? 1 : 0));
 }
 
 /** Remove line and block comments, preserving line numbering. */
