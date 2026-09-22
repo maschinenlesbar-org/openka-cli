@@ -9,6 +9,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { OpenKaError } from "../errors.js";
 import { sha256 } from "../repro/hash.js";
 import type { ModelArtifact } from "../models/schema.js";
@@ -75,13 +76,45 @@ export class TesseractCliPerceiver implements Perceiver {
       );
     }
     const artifact: ModelArtifact = { name: "ocr", version: `tesseract-${version}+${this.language}` };
-    if (this.traineddataPath !== undefined) {
-      if (!existsSync(this.traineddataPath)) {
-        throw new OpenKaError(`Traineddata not found: ${this.traineddataPath}`);
-      }
-      artifact.weights_sha256 = sha256(readFileSync(this.traineddataPath));
+    const weights = this.traineddataPath ?? this.locateTraineddata();
+    if (weights === undefined || !existsSync(weights)) {
+      // Tesseract's output depends entirely on the traineddata — two `deu`
+      // builds give different text — so a record naming only the binary version
+      // claims a provenance it does not have, and `ka verify` re-running it
+      // could not tell that the model had changed. `--ocr-traineddata` was
+      // optional, so that was the default. OCR is opt-in; asking it to be
+      // verifiable when you opt in is the deal CONCEPT.md §6 already describes.
+      throw new OpenKaError(
+        weights === undefined
+          ? `Could not find ${this.language}.traineddata next to the tesseract binary. ` +
+            "Pass --ocr-traineddata <path> so the weights can be hashed into the record."
+          : `Traineddata not found: ${weights}`,
+      );
     }
+    artifact.weights_sha256 = sha256(readFileSync(weights));
     return artifact;
+  }
+
+  /**
+   * Where tesseract says its own tessdata lives. `--list-langs` prints the
+   * directory in its first line, which is the only way to learn it without
+   * guessing at a package layout.
+   */
+  private locateTraineddata(): string | undefined {
+    let listing: string;
+    try {
+      listing = execFileSync(this.binary, ["--list-langs"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      const output = (err as { stderr?: string; stdout?: string }).stderr ?? (err as { stdout?: string }).stdout;
+      if (typeof output !== "string") return undefined;
+      listing = output;
+    }
+    const directory = /in "([^"]+)"/.exec(listing)?.[1];
+    if (directory === undefined) return undefined;
+    return join(directory, `${this.language}.traineddata`);
   }
 
   async recognize(input: PerceiveInput): Promise<PerceiveOutput> {
