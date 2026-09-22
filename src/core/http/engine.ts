@@ -304,9 +304,12 @@ function bodyPreview(body: Buffer): string {
 
 /** Linear backoff, overridden by a `Retry-After` the server sent. Capped at 60s. */
 export function retryDelayMs(retryAfter: string | string[] | undefined, attempt: number): number {
-  const header = firstHeader(retryAfter);
-  if (header !== undefined) {
-    const seconds = Number(header.trim());
+  // A blank header is no header. `Number("")` is 0, so an empty `Retry-After` used
+  // to mean "retry immediately" and turned the backoff off entirely for all three
+  // attempts — the opposite of what a 429 is asking for.
+  const header = firstHeader(retryAfter)?.trim();
+  if (header !== undefined && header !== "") {
+    const seconds = Number(header);
     if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 60_000);
     const date = Date.parse(header);
     if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), 60_000);

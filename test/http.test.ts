@@ -56,6 +56,10 @@ describe("retry timing", () => {
   it("backs off linearly without a header", () => {
     strictEqual(retryDelayMs(undefined, 0), 1000);
     strictEqual(retryDelayMs(undefined, 2), 3000);
+    // A blank header is no header. `Number("")` is 0, so an empty Retry-After
+    // used to mean "retry now" and switched the backoff off for every attempt.
+    strictEqual(retryDelayMs("", 0), 1000);
+    strictEqual(retryDelayMs("   ", 2), 3000);
   });
 });
 
