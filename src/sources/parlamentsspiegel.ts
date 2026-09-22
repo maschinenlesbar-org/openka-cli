@@ -27,7 +27,7 @@ import { PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "../core/m
 import type { AnsweredBy, DocumentType, SourceDocumentRole } from "../core/models/schema.js";
 import { parseGermanDate, parseUrheber } from "../core/extract/metadata.js";
 import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "./html.js";
-import { parseReference } from "../core/models/reference.js";
+import { parseReference, periodNumber } from "../core/models/reference.js";
 import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 
 export const PARLAMENTSSPIEGEL_BASE = "https://www.parlamentsspiegel.de";
@@ -237,7 +237,8 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     return undefined;
   }
   const reference = normaliseReference(referenceMatch[1] as string);
-  const period = parseReference(reference)?.period ?? Number.NaN;
+  const parsed = parseReference(reference);
+  const period = parsed === undefined ? Number.NaN : periodNumber(parsed);
   if (!Number.isInteger(period) || period < 1) return undefined;
 
   const fundstelleRegion = regionWithClass(head, "ps-fundstelle");

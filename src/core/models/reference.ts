@@ -14,15 +14,23 @@
 const BODY = /^[ \t]*(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))[ \t]*$/;
 
 /**
- * A Drucksachennummer.
+ * A Drucksachennummer, as printed.
  *
- * `number` stays a string because leading zeros are part of how a Land prints it:
- * Thüringen's records carry `08/980` while the document says `8/980`, and turning
- * that into `980` would lose which form the source used.
+ * Both halves are strings, because the padding is part of how a Land writes it and
+ * it is not ours to normalise: Thüringen's records carry `08/980` while the
+ * document itself says `8/980`. An earlier version made `period` a number "because
+ * leading zeros are part of how a Land prints it" — which was true, and then
+ * dropped the zero from the only half that had one, so `formatReference` did not
+ * round-trip. `periodNumber` is there for the callers that want to compare.
  */
 export interface Reference {
-  readonly period: number;
+  readonly period: string;
   readonly number: string;
+}
+
+/** The period as an integer, for comparing and filtering. */
+export function periodNumber(reference: Reference): number {
+  return Number.parseInt(reference.period, 10);
 }
 
 /**
@@ -38,7 +46,7 @@ export function parseReference(value: string): Reference | undefined {
   if (match === null) return undefined;
   const number = (match[2] as string).replace(/[ \t]+/g, "");
   if (number === "") return undefined;
-  return { period: Number(match[1]), number };
+  return { period: match[1] as string, number };
 }
 
 /** The printed form, which is what a citation looks like. */

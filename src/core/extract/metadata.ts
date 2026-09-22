@@ -5,7 +5,7 @@
 // does not match. Callers turn that into an abstention.
 
 import { isCalendarDate } from "../models/validate.js";
-import { formatReference, parseReference } from "../models/reference.js";
+import { formatReference, parseReference, periodNumber } from "../models/reference.js";
 
 const MONTHS: Record<string, number> = {
   januar: 1, februar: 2, "märz": 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7,
@@ -96,8 +96,10 @@ function normaliseReference(match: RegExpExecArray): string | undefined {
 
 /** The legislative period from a reference such as `19/10006`. */
 export function periodFromReference(reference: string): number | undefined {
-  const period = parseReference(reference)?.period;
-  return period !== undefined && period > 0 ? period : undefined;
+  const parsed = parseReference(reference);
+  if (parsed === undefined) return undefined;
+  const period = periodNumber(parsed);
+  return Number.isInteger(period) && period > 0 ? period : undefined;
 }
 
 export interface ParsedAsker {
