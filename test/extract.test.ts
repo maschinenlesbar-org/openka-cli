@@ -718,6 +718,18 @@ describe("validators", () => {
     ok(validateExtractedRecord(record).some((problem) => problem.path === "dates.submitted"));
   });
 
+  it("abstains on a title the source did not carry", () => {
+    // Every adapter writes `?? ""` for a missing title, and an empty title was
+    // otherwise indistinguishable from a document that genuinely has none — the
+    // one field that could go missing without appearing in `abstained_fields`.
+    deepStrictEqual(
+      validateExtractedRecord(sampleRecord({ title: "" })).map((problem) => problem.path),
+      ["title"],
+    );
+    deepStrictEqual(validateExtractedRecord(sampleRecord({ title: "   " })).map((p) => p.path), ["title"]);
+    deepStrictEqual(validateExtractedRecord(sampleRecord({ title: "Ein Titel" })), []);
+  });
+
   it("judges a future date against the archive, not against the clock", () => {
     const record = sampleRecord({ dates: { submitted: "2028-05-01" } });
     // Retrieved in 2026, a 2028 date is dated in advance...

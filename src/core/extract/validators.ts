@@ -72,6 +72,14 @@ export function validateExtractedRecord(record: KaRecord, now?: Date): Validator
     problems.push({ path: "dates.answered", message: `answered ${answered} precedes submitted ${submitted}` });
   }
 
+  // A title the source did not carry arrives here as "" — every adapter writes
+  // `?? ""` for it — and an empty title is otherwise indistinguishable from a
+  // document that genuinely has none. Every other missing field in this project is
+  // visible in `abstained_fields`; this was the one that was not.
+  if (record.title.trim() === "") {
+    problems.push({ path: "title", message: "the source carried no title" });
+  }
+
   record.qa.forEach((pair, index) => {
     if (pair.question !== undefined && pair.question.trim() === "") {
       problems.push({ path: `qa[${index}].question`, message: "question text is empty" });
