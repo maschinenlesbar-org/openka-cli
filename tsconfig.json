@@ -111,6 +111,9 @@
       "path": "packages/lib-source"
     },
     {
+      "path": "packages/lib-starweb"
+    },
+    {
       "path": "packages/lib-store"
     },
     {

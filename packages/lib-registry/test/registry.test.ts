@@ -78,12 +78,12 @@ describe("every connector's own entry", () => {
     "sachsen",
     "thueringen",
     "mecklenburg-vorpommern",
+    "bremen",
   ];
   const VIA_AGGREGATOR = [
     "baden-wuerttemberg",
     "bayern",
     "brandenburg",
-    "bremen",
     "hamburg",
     "hessen",
     "rheinland-pfalz",

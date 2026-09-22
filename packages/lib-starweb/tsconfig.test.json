@@ -12,6 +12,9 @@
       "path": "./tsconfig.json"
     },
     {
+      "path": "../connector-bremen"
+    },
+    {
       "path": "../lib-testing"
     }
   ]

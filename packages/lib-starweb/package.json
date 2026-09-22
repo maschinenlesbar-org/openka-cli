@@ -1,5 +1,5 @@
 {
-  "name": "@maschinenlesbar.org/openka-connector-bremen",
+  "name": "@maschinenlesbar.org/openka-lib-starweb",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,17 +12,15 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {
-    "@maschinenlesbar.org/openka-lib-extract": "0.0.1",
-    "@maschinenlesbar.org/openka-lib-models": "0.0.1",
-    "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
-    "@maschinenlesbar.org/openka-lib-source": "0.0.1",
-    "@maschinenlesbar.org/openka-lib-starweb": "0.0.1"
-  },
   "files": [
     "dist/src"
   ],
+  "dependencies": {
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-source": "0.0.1"
+  },
   "devDependencies": {
+    "@maschinenlesbar.org/openka-connector-bremen": "0.0.1",
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
   },
   "scripts": {

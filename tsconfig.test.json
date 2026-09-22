@@ -21,6 +21,9 @@
       "path": "packages/connector-berlin/tsconfig.test.json"
     },
     {
+      "path": "packages/connector-bremen/tsconfig.test.json"
+    },
+    {
       "path": "packages/connector-bund/tsconfig.test.json"
     },
     {
@@ -70,6 +73,9 @@
     },
     {
       "path": "packages/lib-source/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-starweb/tsconfig.test.json"
     },
     {
       "path": "packages/cli-ka-factory"

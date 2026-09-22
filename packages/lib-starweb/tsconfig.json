@@ -9,19 +9,10 @@
   ],
   "references": [
     {
-      "path": "../lib-extract"
-    },
-    {
-      "path": "../lib-models"
-    },
-    {
-      "path": "../lib-parlamentsspiegel"
+      "path": "../lib-http"
     },
     {
       "path": "../lib-source"
-    },
-    {
-      "path": "../lib-starweb"
     }
   ]
 }
