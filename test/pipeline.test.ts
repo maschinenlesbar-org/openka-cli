@@ -9,6 +9,7 @@ import { canonicalJsonLine } from "../src/core/repro/canonical.js";
 import { listGoldens, verifyGolden } from "../src/factory/lib/goldens.js";
 import { BerlinSource, berlinFeedUrl } from "../src/sources/berlin.js";
 import type { DiscoverOptions, DiscoverResult, Source } from "../src/sources/base.js";
+import type { Asker } from "../src/core/models/schema.js";
 import { FIXTURES, MemoryStore, readFixture, readFixtureText, scriptedTransport, testEngine } from "./helpers.js";
 
 const PDF_URL = "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-10006.pdf";
@@ -28,7 +29,7 @@ class StubSource implements Source {
   readonly notes = "test double";
   discoveries = 0;
 
-  constructor(private readonly overrides: { title?: string } = {}) {}
+  constructor(private readonly overrides: { title?: string; askers?: Asker[]; ministry?: string } = {}) {}
 
   async discover(_options: DiscoverOptions): Promise<DiscoverResult> {
     this.discoveries++;
@@ -41,8 +42,8 @@ class StubSource implements Source {
           legislative_period: 19,
           title: this.overrides.title ?? "Wann kommen die Solaranlagen nach Pankow?",
           documentType: "schriftliche_anfrage",
-          askers: [{ name: "Andreas Otto", party: "Grüne" }],
-          answered_by: {},
+          askers: this.overrides.askers ?? [{ name: "Andreas Otto", party: "Grüne" }],
+          answered_by: this.overrides.ministry === undefined ? {} : { ministry: this.overrides.ministry },
           dates: { submitted: "2021-11-04", answered: "2021-11-12" },
           documents: [{ role: "combined_pdf", url: PDF_URL, urlStable: true }],
         },
@@ -96,6 +97,49 @@ describe("sync pipeline", () => {
     });
     strictEqual(report.stored, 1);
     strictEqual(store.getRecord("berlin-19-10006")?.title, "Ein korrigierter Titel");
+  });
+
+  it("re-extracts when upstream corrects an asker", async () => {
+    // The sync used to compare only the title and the dates, so a Landtag
+    // correcting a misattributed MP was reported as "unchanged" and the wrong
+    // name stayed in the corpus indefinitely.
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const engine = testEngine(transport);
+    const now = () => new Date("2026-01-02T03:04:05Z");
+    await sync({ source: new StubSource(), store, engine, now });
+    const report = await sync({
+      source: new StubSource({ askers: [{ name: "Berta Richtig", party: "CDU" }] }),
+      store,
+      engine,
+      now,
+    });
+    strictEqual(report.stored, 1);
+    strictEqual(store.getRecord("berlin-19-10006")?.askers[0]?.name, "Berta Richtig");
+  });
+
+  it("re-extracts when upstream corrects the answering ministry", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const engine = testEngine(transport);
+    const now = () => new Date("2026-01-02T03:04:05Z");
+    await sync({ source: new StubSource({ ministry: "Ministerium A" }), store, engine, now });
+    const report = await sync({ source: new StubSource({ ministry: "Ministerium B" }), store, engine, now });
+    strictEqual(report.stored, 1);
+    strictEqual(store.getRecord("berlin-19-10006")?.answered_by.ministry, "Ministerium B");
+  });
+
+  it("does not churn when a ministry was derived from the document, not stated", async () => {
+    // `findMinistry` fills in what the source left out. Comparing the stored value
+    // against the source's silence would rewrite every record on every run.
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const engine = testEngine(transport);
+    const now = () => new Date("2026-01-02T03:04:05Z");
+    await sync({ source: new StubSource(), store, engine, now });
+    const second = await sync({ source: new StubSource(), store, engine, now });
+    strictEqual(second.stored, 0);
+    strictEqual(second.unchanged, 1);
   });
 
   it("re-uses the archived bytes when the upstream answers 304", async () => {

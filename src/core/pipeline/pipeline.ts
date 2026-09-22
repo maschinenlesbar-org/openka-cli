@@ -12,6 +12,7 @@ import type { KaRecord } from "../models/schema.js";
 import type { SourceState, Store } from "../store/store.js";
 import { indexRecord } from "../store/indexer.js";
 import { extract, type FetchedDocument, type SourceMetadata } from "../extract/tiers.js";
+import { canonicalJson } from "../repro/canonical.js";
 import { extractorVersion } from "../repro/version.js";
 import { sha256 } from "../repro/hash.js";
 import type { Perceiver } from "../perceive/perceiver.js";
@@ -224,9 +225,20 @@ function recordIdFor(request: { parliament: string; metadata: SourceMetadata }):
 
 /**
  * Is the stored record still the right answer for these inputs? Compares the
- * extractor version, the hash of the bytes that were parsed, and the metadata that
- * does not come from the document — so a corrected title upstream does trigger a
- * rewrite, and a re-run over identical inputs does not.
+ * extractor version, the hash of the bytes that were parsed, and the metadata the
+ * source supplied — so a correction upstream does trigger a rewrite, and a re-run
+ * over identical inputs does not.
+ *
+ * Every field the source states verbatim is compared, not just the title and the
+ * dates: when a Landtag corrects a misattributed MP or names the answering
+ * ministry, the sync used to report "unchanged" and keep the wrong value
+ * indefinitely.
+ *
+ * Two fields need care, because extraction may fill in what the source left out.
+ * `answered_by` is only compared where the source actually stated something —
+ * `findMinistry` derives a ministry from the document text otherwise, and
+ * comparing against that would rewrite every record on every run. The same holds
+ * for a title or date a validator rejected and cleared.
  */
 function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: SourceMetadata): boolean {
   if (existing.extraction.extractor_version !== extractorVersion()) return false;
@@ -235,9 +247,23 @@ function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: 
     if (!stored.has(sha256(document.bytes))) return false;
   }
   if (documents.length !== existing.source_documents.length) return false;
-  if (existing.title !== metadata.title) return false;
-  if (existing.dates.submitted !== metadata.dates.submitted) return false;
-  if (existing.dates.answered !== metadata.dates.answered) return false;
+
+  if (existing.reference !== metadata.reference) return false;
+  if (existing.legislative_period !== metadata.legislative_period) return false;
+  if (canonicalJson(existing.askers) !== canonicalJson(metadata.askers)) return false;
+
+  // Stated-only fields: a value the source supplies must match; one it omits is
+  // left to whatever extraction derived.
+  for (const key of ["ministry", "signatory"] as const) {
+    const claimed = metadata.answered_by[key];
+    if (claimed !== undefined && existing.answered_by[key] !== claimed) return false;
+  }
+  if (metadata.title !== "" && existing.title !== "" && existing.title !== metadata.title) return false;
+  for (const key of ["submitted", "answered"] as const) {
+    const claimed = metadata.dates[key];
+    if (claimed !== undefined && existing.dates[key] !== undefined && existing.dates[key] !== claimed) return false;
+    if (claimed === undefined && existing.dates[key] !== undefined) return false;
+  }
   return true;
 }
 
