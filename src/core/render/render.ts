@@ -148,9 +148,12 @@ export function renderCsvRow(record: KaRecord): string {
  *
  * Human-facing renderings strip control characters; `json` and `jsonld` do not,
  * deliberately — those must stay byte-identical to what is on disk, which is what
- * `ka verify` compares, and the store refuses to write a record carrying one in
- * the first place. This is the belt to that braces, for a corpus an older build
- * wrote.
+ * `ka verify` compares.
+ *
+ * Nothing that goes through the store can carry one: extraction strips them and
+ * `putRecord` refuses them. The strip here is for the other caller — these
+ * renderers are part of the published library surface, so a consumer can hand one
+ * a `KaRecord` it built itself, which never passed the store at all.
  */
 export function renderMarkdown(record: KaRecord): string {
   const parliament = parliamentByKey(record.parliament);
