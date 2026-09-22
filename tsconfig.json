@@ -1,46 +1,123 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    /* Language and environment */
-    "target": "ES2022",
-    "lib": ["ES2023"],
-
-    /* Modules: modern, vanilla Node ESM */
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "resolveJsonModule": true,
-
-    /* Load Node's ambient globals (process, Buffer, setTimeout) and built-in
-       modules (node:http, node:test, ...). Required explicitly since TS 6.0,
-       which stopped auto-including every @types/* package. */
-    "types": ["node"],
-
-    /* Emit */
     "outDir": "dist",
-    "rootDir": ".",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "removeComments": false,
-
-    /* Interop */
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-
-    /* Strictness — the type safety contract for the whole project */
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": false,
-    "useUnknownInCatchVariables": true,
-
-    /* Speed / ergonomics */
-    "skipLibCheck": true
+    "rootDir": "."
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "packages/cli-ka"
+    },
+    {
+      "path": "packages/cli-ka-factory"
+    },
+    {
+      "path": "packages/connector-baden-wuerttemberg"
+    },
+    {
+      "path": "packages/connector-bayern"
+    },
+    {
+      "path": "packages/connector-berlin"
+    },
+    {
+      "path": "packages/connector-brandenburg"
+    },
+    {
+      "path": "packages/connector-bremen"
+    },
+    {
+      "path": "packages/connector-bund"
+    },
+    {
+      "path": "packages/connector-hamburg"
+    },
+    {
+      "path": "packages/connector-hessen"
+    },
+    {
+      "path": "packages/connector-mecklenburg-vorpommern"
+    },
+    {
+      "path": "packages/connector-niedersachsen"
+    },
+    {
+      "path": "packages/connector-nordrhein-westfalen"
+    },
+    {
+      "path": "packages/connector-rheinland-pfalz"
+    },
+    {
+      "path": "packages/connector-saarland"
+    },
+    {
+      "path": "packages/connector-sachsen"
+    },
+    {
+      "path": "packages/connector-sachsen-anhalt"
+    },
+    {
+      "path": "packages/connector-schleswig-holstein"
+    },
+    {
+      "path": "packages/connector-thueringen"
+    },
+    {
+      "path": "packages/lib-errors"
+    },
+    {
+      "path": "packages/lib-extract"
+    },
+    {
+      "path": "packages/lib-http"
+    },
+    {
+      "path": "packages/lib-models"
+    },
+    {
+      "path": "packages/lib-pardok"
+    },
+    {
+      "path": "packages/lib-parlamentsspiegel"
+    },
+    {
+      "path": "packages/lib-pdf"
+    },
+    {
+      "path": "packages/lib-perceive"
+    },
+    {
+      "path": "packages/lib-pipeline"
+    },
+    {
+      "path": "packages/lib-registry"
+    },
+    {
+      "path": "packages/lib-render"
+    },
+    {
+      "path": "packages/lib-repro"
+    },
+    {
+      "path": "packages/lib-search"
+    },
+    {
+      "path": "packages/lib-source"
+    },
+    {
+      "path": "packages/lib-store"
+    },
+    {
+      "path": "packages/lib-testing"
+    },
+    {
+      "path": "packages/lib-text"
+    },
+    {
+      "path": "packages/lib-verify"
+    }
+  ]
 }

@@ -1,0 +1,48 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../lib-errors"
+    },
+    {
+      "path": "../lib-http"
+    },
+    {
+      "path": "../lib-models"
+    },
+    {
+      "path": "../lib-perceive"
+    },
+    {
+      "path": "../lib-pipeline"
+    },
+    {
+      "path": "../lib-registry"
+    },
+    {
+      "path": "../lib-render"
+    },
+    {
+      "path": "../lib-repro"
+    },
+    {
+      "path": "../lib-search"
+    },
+    {
+      "path": "../lib-store"
+    },
+    {
+      "path": "../lib-text"
+    },
+    {
+      "path": "../lib-verify"
+    }
+  ]
+}

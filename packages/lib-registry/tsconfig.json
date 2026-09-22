@@ -1,0 +1,69 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../connector-baden-wuerttemberg"
+    },
+    {
+      "path": "../connector-bayern"
+    },
+    {
+      "path": "../connector-berlin"
+    },
+    {
+      "path": "../connector-brandenburg"
+    },
+    {
+      "path": "../connector-bremen"
+    },
+    {
+      "path": "../connector-bund"
+    },
+    {
+      "path": "../connector-hamburg"
+    },
+    {
+      "path": "../connector-hessen"
+    },
+    {
+      "path": "../connector-mecklenburg-vorpommern"
+    },
+    {
+      "path": "../connector-niedersachsen"
+    },
+    {
+      "path": "../connector-nordrhein-westfalen"
+    },
+    {
+      "path": "../connector-rheinland-pfalz"
+    },
+    {
+      "path": "../connector-saarland"
+    },
+    {
+      "path": "../connector-sachsen"
+    },
+    {
+      "path": "../connector-sachsen-anhalt"
+    },
+    {
+      "path": "../connector-schleswig-holstein"
+    },
+    {
+      "path": "../connector-thueringen"
+    },
+    {
+      "path": "../lib-parlamentsspiegel"
+    },
+    {
+      "path": "../lib-source"
+    }
+  ]
+}

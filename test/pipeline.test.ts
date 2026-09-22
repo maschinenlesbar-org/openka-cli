@@ -3,14 +3,21 @@
 
 import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isoInstant, sync } from "../src/core/pipeline/pipeline.js";
-import { verifyRecord, diffPaths } from "../src/core/repro/verify.js";
-import { canonicalJsonLine } from "../src/core/repro/canonical.js";
-import { listGoldens, verifyGolden } from "../src/factory/lib/goldens.js";
-import { BerlinSource, berlinFeedUrl } from "../src/sources/berlin.js";
-import type { DiscoverOptions, DiscoverResult, Source } from "../src/sources/base.js";
-import type { Asker } from "../src/core/models/schema.js";
-import { FIXTURES, MemoryStore, readFixture, readFixtureText, scriptedTransport, testEngine } from "./helpers.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { isoInstant, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
+import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { listAllGoldens, verifyGolden } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
+import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
+import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
+import { MemoryStore, PROJECT_ROOT, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
+
+// Real documents come from the connector that recorded them, and the PARDOK export
+// from the package that parses it: one copy of each, borrowed explicitly.
+const { readFixture } = fixturesOf("@maschinenlesbar.org/openka-connector-berlin", import.meta.url);
+const { readFixtureText } = fixturesOf("@maschinenlesbar.org/openka-lib-pardok", import.meta.url);
 
 const PDF_URL = "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-10006.pdf";
 const PDF = readFixture(
@@ -269,13 +276,13 @@ describe("ka verify", () => {
     // re-extraction still abstains, and the only field that differs is the review
     // status the human set. That must not be reported as a reproducibility failure.
     const store = new MemoryStore();
-    const golden = listGoldens(FIXTURES).find((candidate) =>
+    const golden = listAllGoldens(PROJECT_ROOT).find((candidate) =>
       candidate.record.extraction.abstained_fields.includes("qa"),
     );
     ok(golden !== undefined);
     for (const document of golden.record.source_documents) {
       if (document.sha256 === undefined) continue;
-      store.putBlob(readFixture(golden.meta.source, golden.meta.id, `${document.sha256}.bin`));
+      store.putBlob(readFileSync(join(golden.dir, `${document.sha256}.bin`)));
     }
     store.putRecord({ ...golden.record, extraction: { ...golden.record.extraction, review_status: "human_verified" } });
     const result = await verifyRecord(golden.meta.id, { store, env: {} });
@@ -290,7 +297,7 @@ describe("ka verify", () => {
 
 describe("golden fixtures", () => {
   it("ships goldens for every source kind and for an honest failure", () => {
-    const goldens = listGoldens(FIXTURES);
+    const goldens = listAllGoldens(PROJECT_ROOT);
     const parliaments = new Set(goldens.map((golden) => golden.record.parliament));
     // One per source kind: a structured XML feed (Berlin), a JSON API (Bundestag),
     // a dedicated Land adapter (NRW) and the aggregator (Baden-Württemberg).
@@ -307,14 +314,14 @@ describe("golden fixtures", () => {
   });
 
   it("every golden re-extracts to exactly its frozen record", async () => {
-    for (const golden of listGoldens(FIXTURES)) {
+    for (const golden of listAllGoldens(PROJECT_ROOT)) {
       const result = await verifyGolden(golden);
       strictEqual(result.ok, true, `${golden.meta.id}: ${result.reason} ${result.differences.join(", ")}`);
     }
   });
 
   it("stores goldens in canonical form", () => {
-    for (const golden of listGoldens(FIXTURES)) {
+    for (const golden of listAllGoldens(PROJECT_ROOT)) {
       strictEqual(canonicalJsonLine(golden.record), canonicalJsonLine(JSON.parse(JSON.stringify(golden.record))));
     }
   });
@@ -323,7 +330,7 @@ describe("golden fixtures", () => {
     // The title comes from the source feed, not from the PDF, so changing it moves
     // the input and the expectation together. A question's text does not: it is
     // what the extractor produced, and changing it must be caught.
-    const golden = listGoldens(FIXTURES).find((candidate) => candidate.record.qa.length > 0);
+    const golden = listAllGoldens(PROJECT_ROOT).find((candidate) => candidate.record.qa.length > 0);
     ok(golden !== undefined);
     const qa = golden.record.qa.map((pair, index) => (index === 0 ? { ...pair, answer: "erfunden" } : pair));
     const result = await verifyGolden({ ...golden, record: { ...golden.record, qa } });

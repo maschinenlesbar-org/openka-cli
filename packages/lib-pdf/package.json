@@ -1,0 +1,28 @@
+{
+  "name": "@maschinenlesbar.org/openka-lib-pdf",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@maschinenlesbar.org/openka-lib-errors": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-text": "0.0.1"
+  },
+  "scripts": {
+    "test": "node --test dist/test/*.test.js"
+  },
+  "devDependencies": {
+    "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
+  },
+  "files": [
+    "dist/src"
+  ]
+}

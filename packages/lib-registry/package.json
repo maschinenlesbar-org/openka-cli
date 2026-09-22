@@ -1,0 +1,45 @@
+{
+  "name": "@maschinenlesbar.org/openka-lib-registry",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@maschinenlesbar.org/openka-connector-baden-wuerttemberg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bayern": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-berlin": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-brandenburg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bremen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bund": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-hamburg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-hessen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-mecklenburg-vorpommern": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-niedersachsen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-nordrhein-westfalen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-rheinland-pfalz": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-saarland": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-sachsen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-sachsen-anhalt": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-schleswig-holstein": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-thueringen": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-source": "0.0.1"
+  },
+  "devDependencies": {
+    "@maschinenlesbar.org/openka-lib-models": "0.0.1"
+  },
+  "scripts": {
+    "test": "node --test dist/test/*.test.js"
+  },
+  "files": [
+    "dist/src"
+  ]
+}

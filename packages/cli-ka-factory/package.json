@@ -1,0 +1,42 @@
+{
+  "name": "@maschinenlesbar.org/openka-cli-ka-factory",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/lib.js",
+  "types": "dist/src/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/lib.d.ts",
+      "import": "./dist/src/lib.js"
+    },
+    "./package.json": "./package.json",
+    "./bin": "./dist/src/cli/index.js"
+  },
+  "dependencies": {
+    "@maschinenlesbar.org/openka-cli-ka": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-niedersachsen": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-errors": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-extract": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-models": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pdf": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-perceive": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pipeline": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-registry": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-repro": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-store": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-verify": "0.0.1",
+    "commander": "15.0.0"
+  },
+  "scripts": {
+    "test": "node --test dist/test/*.test.js"
+  },
+  "devDependencies": {
+    "@maschinenlesbar.org/openka-lib-search": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
+  },
+  "files": [
+    "dist/src"
+  ]
+}

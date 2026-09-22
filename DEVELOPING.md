@@ -7,58 +7,87 @@ is actually here, where the judgement calls live, and what is deliberately absen
 ## Commands
 
 ```bash
-npm install
-npm run build       # tsc -> dist/
-npm run typecheck   # tsc --noEmit
-npm test            # pretest builds, then node --test dist/test/*.test.js
+npm install         # links the workspace packages
+npm run build       # tsc -b: every package, in dependency order
+npm run typecheck   # the same build; with project references there is no --noEmit
+npm test            # every package's suite, then the integration suite
 npm start           # runs `ka` from the build
 npm run lint:line   # the no-generative-model guardrail
 npm run stamp       # re-freeze the extraction digest after changing extraction code
 ```
 
-One test file: `node --test dist/test/pdf.test.js`. The CLI from source:
-`node dist/src/cli/index.js --help`.
+One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
+`node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
+`node packages/cli-ka/dist/src/index.js --help`.
 
-## The two planes, as directories
+## The two planes, as packages
+
+The repository is an npm workspace. One `tsc -b` graph, one published package, and
+the line/factory split is a package boundary rather than a convention.
 
 ```
-src/
-  core/         THE LINE — deterministic, no generative model, no factory imports
-    models/     canonical schema, validators, JSON Schema, the 17 parliaments
-    repro/      canonical JSON, hashing, the extractor version stamp, `ka verify`
-    http/       Transport seam + fetch engine (retry, redirects, conditional requests)
-    pdf/        a dependency-free PDF reader: lexer, filters, fonts, text assembly
-    extract/    the tier stack, the frozen segmentation rules, the validators
-    perceive/   the Perceiver seam — the one place a model may run
-    store/      the corpus: blobs, records, catalog, inverted index
-    search/     keyword search and the frozen-embedding path
-    render/     JSON, JSON-LD, CSV, Markdown, Atom
-    pipeline/   discover → fetch → extract → normalize → store
-  sources/      THE CLIENTS — one adapter per parliament, plus the aggregator
-  cli/          `ka`
-  factory/      THE FACTORY — build-time only, never imported by the line
-fixtures/       golden fixtures (real PDFs + frozen records) and recorded payloads
-test/           node:test suites
+packages/
+  lib-errors/            the error hierarchy
+  lib-text/              control-character stripping and text normalisation
+  lib-repro/             canonical JSON, hashing, the extractor version stamp
+  lib-models/            canonical schema, validators, JSON Schema, the 17 parliaments
+  lib-http/              Transport seam + fetch engine (retry, redirects, conditional)
+  lib-pdf/               a dependency-free PDF reader: lexer, filters, fonts, text
+  lib-perceive/          the Perceiver seam — the one place a model may run
+  lib-extract/           the tier stack, the frozen segmentation rules, the validators
+  lib-store/             the corpus: blobs, records, catalog, inverted index
+  lib-search/            keyword search and the frozen-embedding path
+  lib-render/            JSON, JSON-LD, CSV, Markdown, Atom
+  lib-verify/            re-extract an archived record and compare — `ka verify`
+  lib-pipeline/          discover → fetch → extract → normalize → store
+  lib-source/            the Source seam and the scraping helpers connectors share
+  lib-pardok/            the PARDOK `Parlamentsspiegel Export 1.0` reader
+  lib-parlamentsspiegel/ the shared aggregator adapter
+  lib-registry/          collects every connector's ENTRY; depends on all 17
+  lib-testing/           shared test helpers (private, never shipped on the line)
+  connector-bund/        the Bundestag, and one package per Bundesland:
+  connector-berlin/ … connector-thueringen/
+  cli-ka/                `ka`
+  cli-ka-factory/        THE FACTORY — build-time only, never imported by the line
+src/index.ts             the library entry point: the line's public surface
+test/                    the cross-package integration suite
 ```
 
-`ka-factory lint` enforces the boundary: nothing under `src/core`, `src/sources`,
-`src/cli` or `src/index.ts` may import an LLM client, mention a model provider's
-host, or import from `src/factory`. It runs in CI on every push.
+Each package builds to its own `dist/src` and `dist/test`, and keeps its own tests
+and fixtures. Everything except the root is `private`; the root bundles them into a
+single published tarball with both bins.
+
+**Why `lib-verify` is not part of `lib-repro`.** Verification re-runs extraction over
+archived bytes, so it needs `lib-extract` and `lib-store` — while `lib-extract`
+needs `lib-repro` for the version stamp. In one package that is a cycle. Splitting
+the primitive (hash, canonical JSON, stamp) from the service (re-extract and
+compare) breaks it, and the dependency graph has been acyclic since.
+
+**Two TypeScript projects per package**: `tsconfig.json` for `src/`, referenced by
+other packages, and `tsconfig.test.json` for `test/`, referenced by nothing. Without
+that split, `lib-store`'s tests using `lib-testing` — which itself depends on
+`lib-store` — is a reference cycle and `tsc -b` refuses to build.
+
+`ka-factory lint` enforces the boundary: nothing in any package except
+`cli-ka-factory`, and nothing in `src/index.ts`, may import an LLM client, mention a
+model provider's host, or import the factory. The roots are discovered from
+`packages/` rather than listed, so a new connector is covered the moment it exists.
+It runs in CI on every push.
 
 ## The seams
 
 Three injection points make the whole program testable in-process. No test spawns
 a subprocess, touches the network, or reads the clock.
 
-- **`Transport`** (`src/core/http/http.ts`) — one
+- **`Transport`** (`lib-http`) — one
   `(HttpRequest) => Promise<HttpResponse>` function. Tests inject a scripted one.
-- **`Store`** (`src/core/store/store.ts`) — the corpus. `FileStore` is the real
+- **`Store`** (`lib-store`) — the corpus. `FileStore` is the real
   implementation; `MemoryStore` in `test/helpers.ts` is the test double.
 - **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factory, the engine factory, the
   environment and **the clock**. `run()` returns an exit code rather than calling
   `process.exit`.
 
-A fourth, narrower one: **`Perceiver`** (`src/core/perceive/perceiver.ts`), the only
+A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
 place a trained model may run at execution time.
 
 ## Reproducibility, concretely
@@ -66,10 +95,10 @@ place a trained model may run at execution time.
 The claim is "same input → byte-identical output". Three things make it true rather
 than aspirational:
 
-1. **Canonical JSON** (`src/core/repro/canonical.ts`). Keys sorted, two-space
+1. **Canonical JSON** (`lib-repro`). Keys sorted, two-space
    indent, trailing newline. The bytes on disk, the bytes that are hashed and the
    bytes `ka get --format json` prints are the same bytes.
-2. **Extraction is a pure function.** Nothing in `src/core/extract/` reads the
+2. **Extraction is a pure function.** Nothing in `lib-extract` reads the
    clock, the filesystem or the network. `retrieved_at` travels *with* the fetched
    document; it is recorded at fetch time, not observed during extraction.
 3. **`ka verify`** re-runs the extraction from the archived blob and compares. The
@@ -84,9 +113,9 @@ than aspirational:
 
 `extractor_version` is `pkg:<package version>+extract:<digest>` (or whatever
 `OPENKA_EXTRACTOR_VERSION` pins in a release build). The digest covers the code that
-decides what a document turns into — `src/core/extract`, `src/core/pdf`,
-`src/core/perceive` and `src/core/text.ts` — and is frozen in
-`src/core/repro/extraction-digest.ts` so the line never reads the source tree at
+decides what a document turns into — `lib-extract`, `lib-pdf`,
+`lib-perceive` and `lib-text` — and is frozen in
+`packages/lib-repro/src/extraction-digest.ts` so the line never reads the source tree at
 runtime.
 
 Two choices about *what* is hashed matter more than the hashing:
@@ -108,7 +137,7 @@ ordinary code rather than in a named constant.
 
 ## The PDF reader
 
-`src/core/pdf/` is a PDF reader written from scratch, because the alternative was a
+`lib-pdf` is a PDF reader written from scratch, because the alternative was a
 runtime dependency and because these documents need reading correctly more than
 they need reading quickly. What it does and does not do:
 
@@ -140,7 +169,7 @@ bytes of every record produced through this tier, and is an extractor-version bu
 
 ## The segmentation rules
 
-`src/core/extract/segment.ts` holds the rules that turn text into question/answer
+`packages/lib-extract/src/segment.ts` holds the rules that turn text into question/answer
 pairs. Three families, and a Land can use more than one heading style within a family. The
 first two are both present in Berlin's own corpus; the third is how the Bundestag
 prints its answer Drucksachen; a fourth reads `Frage N:` questions whose answer
@@ -420,11 +449,11 @@ question paper rather than from the answer's reprint of it.
 
 ## Adding a source
 
-1. Implement `Source` in `src/sources/<key>.ts`: `discover()` returns `DocRef`s with
+1. Implement `Source` in `packages/connector-<key>/src/index.ts`: `discover()` returns `DocRef`s with
    the metadata the upstream knows for certain and the URLs of its documents.
    Extraction is shared — an adapter never parses a document.
 2. Declare a `tier`. Use `structured` when the upstream hands you fields.
-3. Register it in `src/sources/registry.ts`.
+3. Export its `ENTRY` and add it to `packages/lib-registry/src/index.ts`.
 4. Record a payload under `fixtures/payloads/` and write tests against it. **Tests
    never touch a live parliament.**
 5. Sync a window, freeze two or three goldens

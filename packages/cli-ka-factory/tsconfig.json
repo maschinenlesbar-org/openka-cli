@@ -1,0 +1,51 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../cli-ka"
+    },
+    {
+      "path": "../connector-niedersachsen"
+    },
+    {
+      "path": "../lib-errors"
+    },
+    {
+      "path": "../lib-extract"
+    },
+    {
+      "path": "../lib-http"
+    },
+    {
+      "path": "../lib-models"
+    },
+    {
+      "path": "../lib-pdf"
+    },
+    {
+      "path": "../lib-perceive"
+    },
+    {
+      "path": "../lib-pipeline"
+    },
+    {
+      "path": "../lib-registry"
+    },
+    {
+      "path": "../lib-repro"
+    },
+    {
+      "path": "../lib-store"
+    },
+    {
+      "path": "../lib-verify"
+    }
+  ]
+}

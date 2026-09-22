@@ -1,8 +1,0 @@
-{
-  "extractor_version": "pkg:0.0.1+extract:db87cb1ac73d",
-  "human_verified": false,
-  "id": "schleswig-holstein-20-3153",
-  "note": "Schleswig-Holstein: one Drucksache holding Kleine Anfrage und Antwort, numbered questions with a bare Antwort: heading",
-  "source": "schleswig-holstein",
-  "tier": "text_layer"
-}

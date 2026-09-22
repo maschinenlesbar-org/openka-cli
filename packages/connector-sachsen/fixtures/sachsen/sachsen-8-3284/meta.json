@@ -1,0 +1,8 @@
+{
+  "extractor_version": "pkg:0.0.1+extract:0c6b4abc448b",
+  "human_verified": false,
+  "id": "sachsen-8-3284",
+  "note": "Sächsischer Landtag: the EDAS viewer holds question and answer at two document positions; the answer is a scanned ministry letter with an OCR text layer and Frage N: headings whose answers follow directly",
+  "source": "sachsen",
+  "tier": "text_layer"
+}

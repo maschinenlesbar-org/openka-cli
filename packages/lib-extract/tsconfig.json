@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../lib-models"
+    },
+    {
+      "path": "../lib-pdf"
+    },
+    {
+      "path": "../lib-perceive"
+    },
+    {
+      "path": "../lib-repro"
+    }
+  ]
+}

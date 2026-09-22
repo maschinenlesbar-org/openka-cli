@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "test/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.json"
+    },
+    {
+      "path": "../cli-ka-factory"
+    },
+    {
+      "path": "../lib-http"
+    },
+    {
+      "path": "../lib-store"
+    },
+    {
+      "path": "../lib-testing"
+    }
+  ]
+}

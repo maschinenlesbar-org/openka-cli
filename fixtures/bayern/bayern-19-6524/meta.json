@@ -1,8 +1,0 @@
-{
-  "extractor_version": "pkg:0.0.1+extract:db87cb1ac73d",
-  "human_verified": false,
-  "id": "bayern-19-6524",
-  "note": "Bayern: hierarchical 1.1 numbering, and one document holding the question list, a standalone Antwort divider, then the questions again with the replies",
-  "source": "bayern",
-  "tier": "text_layer"
-}

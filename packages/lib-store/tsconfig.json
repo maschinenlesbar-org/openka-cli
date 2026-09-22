@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../lib-errors"
+    },
+    {
+      "path": "../lib-models"
+    },
+    {
+      "path": "../lib-repro"
+    }
+  ]
+}

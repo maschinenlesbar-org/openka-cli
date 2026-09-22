@@ -1,8 +1,0 @@
-{
-  "extractor_version": "pkg:0.0.1+extract:db87cb1ac73d",
-  "human_verified": false,
-  "id": "berlin-19-10006",
-  "note": "Frage N: / Antwort zu N: headings, one PDF holding question and answer",
-  "source": "berlin",
-  "tier": "text_layer"
-}

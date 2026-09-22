@@ -1,0 +1,81 @@
+{
+  "answered_by": {
+    "ministry": "Senatsverwaltung für Umwelt, Verkehr und Klimaschutz"
+  },
+  "askers": [
+    {
+      "name": "Andreas Otto",
+      "party": "Grüne"
+    }
+  ],
+  "dates": {
+    "answered": "2021-11-12",
+    "submitted": "2021-11-04"
+  },
+  "document_type": "schriftliche_anfrage",
+  "extraction": {
+    "abstained_fields": [],
+    "extractor_version": "pkg:0.0.1+extract:0c6b4abc448b",
+    "input_sha256": "7d0515afe6e596c8913c4353b6b89dbbb4da5c5ae4092a2cecb2a8660bf774ad",
+    "model_artifacts": [],
+    "parse_complete": true,
+    "reproducible": true,
+    "review_status": "ok",
+    "tier": "text_layer"
+  },
+  "full_text": "Drucksache 19 /10 006\nSchriftliche Anfrage\n19. Wahlperiode\nSchriftliche Anfrage\ndes Abgeordneten Andreas Otto (GRÜNE)\nvom 04. November 2021 (Eingang beim Abgeordnetenhaus am 04. November 2021)\nzum Thema:\nWann kommen die Solaranlagen nach Pankow?\nund Antwort vom 12. November 2021 (Eingang beim Abgeordnetenhaus am 16. Nov. 2021)\fSenatsverwaltung für\nUmwelt, Verkehr und Klimaschutz\nHerrn Abgeordneten Andreas Otto (GRÜNE)\nüber\nden Präsidenten des Abgeordnetenhauses von Berlin\nüber Senatskanzlei - G Sen -\nA n t w o r t\nauf die Schriftliche Anfrage Nr. 19/10006\nvom 04.11.2021\nüber Wann kommen die Solaranlagen nach Pankow?\nIm Namen des Senats von Berlin beantworte ich Ihre Schriftliche Anfrage wie folgt:\nVorbemerkung der Verwaltung:\nDie Schriftliche Anfrage betrifft Sachverhalte, die der Senat nicht aus eigener\nZuständigkeit und Kenntnis beantworten kann. Er ist gleichwohl bemüht, Ihnen eine\nAntwort auf Ihre Anfrage zukommen zu lassen und hat daher das Bezirksamt Pankow um\nStellungnahme gebeten, die von dort in eigener Verantwortung erstellt und dem Senat\nübermittelt wurde. Sie wird in der Antwort an den entsprechend gekennzeichneten Stellen\nwiedergegeben.\nFrage 1:\nWie ist der Arbeitsstand bei der Umsetzung der Forderung aus dem § 19 des Berliner Klimaschutz- und\nEnergiewendegesetzes (EWG Bln), auf Dächern öffentlicher Gebäude spätestens bis zum 31. Dezember\n2024 Solaranlagen auf der gesamten technisch nutzbaren Dachfläche zu errichten, im Bezirk Pankow?\nAntwort zu 1:\nDas Bezirksamt Pankow teilt hierzu mit:\n„Bei allen Maßnahmen werden entsprechende Vorbereitungen für eine nachträgliche\nInstallation einer PV-Anlage (PV-Readiness) geplant und innerhalb eines Jahres nach\nBauabnahme werden die entsprechend geeigneten Dachflächen mit einer Solaranlage\nversehen. Vereinzelte Maßnahmen werden bereits mit einer PV-Anlage geplant, so dass\nmit der Bauabnahme auch die PV-Anlage in Betrieb genommen ist.“\n1\fFrage 2:\nWelche öffentlichen Gebäude im Sinne des o.g. §19 EWG Bln befinden sich im Bezirk Pankow?\nAntwort zu 2:\nDas Bezirksamt Pankow teilt hierzu mit:\n„Es gibt ca. 257 öffentliche Gebäude im Sinne des § 19 EWG Bln im Bezirk Pankow.“\nFrage 3:\nWelche Verfügungsberechtigten (z.B. Senatsverwaltungen, Bezirksamt, Bundesinstitutionen, landeseigene\nUnternehmen) sind konkret zuständig für die Umsetzung der Solarpflicht nach §19 EWG Bln im Bezirk\nPankow?\nAntwort zu 3:\nNeben dem Bezirksamt Pankow gibt es eine Reihe weiterer öffentlicher Einrichtungen, die\nGebäude im Bezirk Pankow betreiben und unter die Anwendungspflicht des § 19 EWG Bln\nfallen. Nähere Angaben hierzu liegen dem Senat jedoch nicht vor, zumal diese ihre\nGebäude üblicherweise nicht nach Bezirken aufteilen.\nFrage 4:\nWie groß schätzt der Senat die Summe der o.g. Dachflächen und wie groß die daraus resultierende\ntechnisch nutzbare Fläche?\nAntwort zu 4:\nDas Bezirksamt Pankow teilt hierzu mit:\n„Eine genaue Dachflächengröße kann gegenwärtig nicht beziffert werden.“\nFrage 5:\nWelcher Anteil der o.g. Dachflächen ist bereits heute mit Solaranlagen belegt?\nAntwort zu 5:\nDas Bezirksamt Pankow teilt hierzu mit:\n„Es wurden bisher ca. 29.000 m² der Dachflächen mit Solaranlagen belegt.“\nFrage 6:\nWelcher Anteil der o.g. Dachflächen soll jeweils in den Jahren 2022/2023/2024 mit Solaranlagen belegt\nwerden?\n2\fAntwort zu 6:\nDas Bezirksamt Pankow teilt hierzu mit:\n„Im Bezirk wurden 2021 Verträge über die Errichtung von 24 PV-Anlagen für die Jahre\n2021 und 2022 geschlossen. Parallel dazu werden weitere geeignete Dachflächen eruiert.“\nBerlin, den 12.11.2021\nIn Vertretung\nStefan Tidow\nSenatsverwaltung für\nUmwelt, Verkehr und Klimaschutz\n3",
+  "id": "berlin-19-10006",
+  "legislative_period": 19,
+  "markers": {
+    "attachments_referenced": [
+      "Anlage i"
+    ],
+    "classified": false,
+    "contains_tables": false
+  },
+  "parliament": "berlin",
+  "qa": [
+    {
+      "answer": "Das Bezirksamt Pankow teilt hierzu mit:\n„Bei allen Maßnahmen werden entsprechende Vorbereitungen für eine nachträgliche\nInstallation einer PV-Anlage (PV-Readiness) geplant und innerhalb eines Jahres nach\nBauabnahme werden die entsprechend geeigneten Dachflächen mit einer Solaranlage\nversehen. Vereinzelte Maßnahmen werden bereits mit einer PV-Anlage geplant, so dass\nmit der Bauabnahme auch die PV-Anlage in Betrieb genommen ist.“\n1",
+      "number": "1",
+      "question": "Wie ist der Arbeitsstand bei der Umsetzung der Forderung aus dem § 19 des Berliner Klimaschutz- und\nEnergiewendegesetzes (EWG Bln), auf Dächern öffentlicher Gebäude spätestens bis zum 31. Dezember\n2024 Solaranlagen auf der gesamten technisch nutzbaren Dachfläche zu errichten, im Bezirk Pankow?"
+    },
+    {
+      "answer": "Das Bezirksamt Pankow teilt hierzu mit:\n„Es gibt ca. 257 öffentliche Gebäude im Sinne des § 19 EWG Bln im Bezirk Pankow.“",
+      "number": "2",
+      "question": "Welche öffentlichen Gebäude im Sinne des o.g. §19 EWG Bln befinden sich im Bezirk Pankow?"
+    },
+    {
+      "answer": "Neben dem Bezirksamt Pankow gibt es eine Reihe weiterer öffentlicher Einrichtungen, die\nGebäude im Bezirk Pankow betreiben und unter die Anwendungspflicht des § 19 EWG Bln\nfallen. Nähere Angaben hierzu liegen dem Senat jedoch nicht vor, zumal diese ihre\nGebäude üblicherweise nicht nach Bezirken aufteilen.",
+      "number": "3",
+      "question": "Welche Verfügungsberechtigten (z.B. Senatsverwaltungen, Bezirksamt, Bundesinstitutionen, landeseigene\nUnternehmen) sind konkret zuständig für die Umsetzung der Solarpflicht nach §19 EWG Bln im Bezirk\nPankow?"
+    },
+    {
+      "answer": "Das Bezirksamt Pankow teilt hierzu mit:\n„Eine genaue Dachflächengröße kann gegenwärtig nicht beziffert werden.“",
+      "number": "4",
+      "question": "Wie groß schätzt der Senat die Summe der o.g. Dachflächen und wie groß die daraus resultierende\ntechnisch nutzbare Fläche?"
+    },
+    {
+      "answer": "Das Bezirksamt Pankow teilt hierzu mit:\n„Es wurden bisher ca. 29.000 m² der Dachflächen mit Solaranlagen belegt.“",
+      "number": "5",
+      "question": "Welcher Anteil der o.g. Dachflächen ist bereits heute mit Solaranlagen belegt?"
+    },
+    {
+      "answer": "Das Bezirksamt Pankow teilt hierzu mit:\n„Im Bezirk wurden 2021 Verträge über die Errichtung von 24 PV-Anlagen für die Jahre\n2021 und 2022 geschlossen. Parallel dazu werden weitere geeignete Dachflächen eruiert.“\nBerlin, den 12.11.2021\nIn Vertretung\nStefan Tidow\nSenatsverwaltung für\nUmwelt, Verkehr und Klimaschutz\n3",
+      "number": "6",
+      "question": "Welcher Anteil der o.g. Dachflächen soll jeweils in den Jahren 2022/2023/2024 mit Solaranlagen belegt\nwerden?\n2"
+    }
+  ],
+  "reference": "19/10006",
+  "schema_version": "1.0",
+  "source_documents": [
+    {
+      "retrieved_at": "2026-09-21T21:20:33Z",
+      "role": "combined_pdf",
+      "sha256": "7d0515afe6e596c8913c4353b6b89dbbb4da5c5ae4092a2cecb2a8660bf774ad",
+      "url": "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-10006.pdf",
+      "url_stable": true
+    }
+  ],
+  "title": "Wann kommen die Solaranlagen nach Pankow?"
+}

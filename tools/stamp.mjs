@@ -6,10 +6,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { computeExtractionDigest, extractionSourceFiles } from "../dist/src/factory/lib/stamp.js";
+import { computeExtractionDigest, extractionSourceFiles } from "../packages/cli-ka-factory/dist/src/lib/stamp.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const target = join(root, "src/core/repro/extraction-digest.ts");
+const target = join(root, "packages/lib-repro/src/extraction-digest.ts");
 const digest = computeExtractionDigest(root);
 const before = readFileSync(target, "utf8");
 const after = before.replace(/export const EXTRACTION_DIGEST = "[0-9a-f]*";/, `export const EXTRACTION_DIGEST = "${digest}";`);

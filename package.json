@@ -1,11 +1,11 @@
 {
   "name": "@maschinenlesbar.org/openka-cli",
   "version": "0.0.1",
-  "description": "OpenKA — German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
+  "description": "OpenKA \u2014 German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
   "type": "module",
   "bin": {
-    "ka": "dist/src/cli/index.js",
-    "ka-factory": "dist/src/factory/cli/index.js"
+    "ka": "dist/src/bin/ka.js",
+    "ka-factory": "dist/src/bin/ka-factory.js"
   },
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -26,16 +26,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"const {rmSync,readdirSync}=require('fs');rmSync('dist',{recursive:true,force:true});for(const p of readdirSync('packages'))rmSync('packages/'+p+'/dist',{recursive:true,force:true})\"",
+    "build": "tsc -b tsconfig.json tsconfig.test.json",
     "stamp": "npm run build && node tools/stamp.mjs",
     "prepack": "npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -b tsconfig.json tsconfig.test.json",
     "pretest": "npm run build",
-    "test": "node --test dist/test/*.test.js",
-    "lint:line": "node dist/src/factory/cli/index.js lint",
+    "test": "npm test --workspaces --if-present && node --test dist/test/*.test.js",
+    "lint:line": "node packages/cli-ka-factory/dist/src/cli/index.js lint",
     "docs": "node tools/docs/node_modules/typedoc/bin/typedoc src/index.ts --out out",
-    "start": "node dist/src/cli/index.js"
+    "start": "node packages/cli-ka/dist/src/index.js"
   },
   "keywords": [
     "kleine-anfrage",
@@ -46,7 +46,7 @@
     "reproducible",
     "cli"
   ],
-  "author": "Sebastian Schürmann <sebs@2xs.org>",
+  "author": "Sebastian Sch\u00fcrmann <sebs@2xs.org>",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
@@ -64,7 +64,42 @@
     "access": "public"
   },
   "dependencies": {
-    "commander": "15.0.0"
+    "@maschinenlesbar.org/openka-cli-ka": "0.0.1",
+    "@maschinenlesbar.org/openka-cli-ka-factory": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-baden-wuerttemberg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bayern": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-berlin": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-brandenburg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bremen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-bund": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-hamburg": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-hessen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-mecklenburg-vorpommern": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-niedersachsen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-nordrhein-westfalen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-rheinland-pfalz": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-saarland": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-sachsen": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-sachsen-anhalt": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-schleswig-holstein": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-thueringen": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-errors": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-extract": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-models": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pardok": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pdf": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-perceive": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pipeline": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-registry": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-render": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-repro": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-search": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-source": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-store": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-text": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-verify": "0.0.1"
   },
   "peerDependencies": {
     "tesseract.js": ">=5"
@@ -77,5 +112,46 @@
   "devDependencies": {
     "@types/node": "^26.5.1",
     "typescript": "7.0.2"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "bundleDependencies": [
+    "@maschinenlesbar.org/openka-cli-ka",
+    "@maschinenlesbar.org/openka-cli-ka-factory",
+    "@maschinenlesbar.org/openka-connector-baden-wuerttemberg",
+    "@maschinenlesbar.org/openka-connector-bayern",
+    "@maschinenlesbar.org/openka-connector-berlin",
+    "@maschinenlesbar.org/openka-connector-brandenburg",
+    "@maschinenlesbar.org/openka-connector-bremen",
+    "@maschinenlesbar.org/openka-connector-bund",
+    "@maschinenlesbar.org/openka-connector-hamburg",
+    "@maschinenlesbar.org/openka-connector-hessen",
+    "@maschinenlesbar.org/openka-connector-mecklenburg-vorpommern",
+    "@maschinenlesbar.org/openka-connector-niedersachsen",
+    "@maschinenlesbar.org/openka-connector-nordrhein-westfalen",
+    "@maschinenlesbar.org/openka-connector-rheinland-pfalz",
+    "@maschinenlesbar.org/openka-connector-saarland",
+    "@maschinenlesbar.org/openka-connector-sachsen",
+    "@maschinenlesbar.org/openka-connector-sachsen-anhalt",
+    "@maschinenlesbar.org/openka-connector-schleswig-holstein",
+    "@maschinenlesbar.org/openka-connector-thueringen",
+    "@maschinenlesbar.org/openka-lib-errors",
+    "@maschinenlesbar.org/openka-lib-extract",
+    "@maschinenlesbar.org/openka-lib-http",
+    "@maschinenlesbar.org/openka-lib-models",
+    "@maschinenlesbar.org/openka-lib-pardok",
+    "@maschinenlesbar.org/openka-lib-parlamentsspiegel",
+    "@maschinenlesbar.org/openka-lib-pdf",
+    "@maschinenlesbar.org/openka-lib-perceive",
+    "@maschinenlesbar.org/openka-lib-pipeline",
+    "@maschinenlesbar.org/openka-lib-registry",
+    "@maschinenlesbar.org/openka-lib-render",
+    "@maschinenlesbar.org/openka-lib-repro",
+    "@maschinenlesbar.org/openka-lib-search",
+    "@maschinenlesbar.org/openka-lib-source",
+    "@maschinenlesbar.org/openka-lib-store",
+    "@maschinenlesbar.org/openka-lib-text",
+    "@maschinenlesbar.org/openka-lib-verify"
+  ]
 }

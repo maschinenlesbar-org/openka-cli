@@ -116,7 +116,7 @@ bundled. The Bundestag publishes a public DIP key on
 | Tier | Source shape | What runs |
 |------|-------------|-----------|
 | `structured` | API / XML export | field mapping; highest trust |
-| `text_layer` | PDF with a text layer | the PDF reader in `src/core/pdf/`, then frozen segmentation rules |
+| `text_layer` | PDF with a text layer | the PDF reader in `packages/lib-pdf`, then frozen segmentation rules |
 | `ocr` | scanned / image-only PDF | a pinned, hashed OCR model — or an abstention |
 
 OCR is **off by default** (strict mode: no model on the line at all, at the cost of

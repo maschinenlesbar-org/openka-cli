@@ -1,0 +1,96 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "test/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.json"
+    },
+    {
+      "path": "packages/cli-ka/tsconfig.test.json"
+    },
+    {
+      "path": "packages/cli-ka-factory/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-berlin/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-bund/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-niedersachsen/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-nordrhein-westfalen/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-saarland/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-sachsen/tsconfig.test.json"
+    },
+    {
+      "path": "packages/connector-thueringen/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-extract/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-http/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-models/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-pardok/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-parlamentsspiegel/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-pdf/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-registry/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-render/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-search/tsconfig.test.json"
+    },
+    {
+      "path": "packages/lib-source/tsconfig.test.json"
+    },
+    {
+      "path": "packages/cli-ka-factory"
+    },
+    {
+      "path": "packages/connector-berlin"
+    },
+    {
+      "path": "packages/lib-models"
+    },
+    {
+      "path": "packages/lib-pipeline"
+    },
+    {
+      "path": "packages/lib-repro"
+    },
+    {
+      "path": "packages/lib-source"
+    },
+    {
+      "path": "packages/lib-testing"
+    },
+    {
+      "path": "packages/lib-verify"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "extractor_version": "pkg:0.0.1+extract:0c6b4abc448b",
+  "human_verified": false,
+  "id": "niedersachsen-19-7659",
+  "note": "Niedersachsen: the answer is a separate Drucksache recovered by the factory sweep; question paper plus the combined answer edition",
+  "source": "niedersachsen",
+  "tier": "text_layer"
+}

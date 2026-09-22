@@ -5,9 +5,9 @@ first — it is the spec — then [DEVELOPING.md](DEVELOPING.md) for the impleme
 
 ## The one rule everything else follows from
 
-**No generative model may run on the line.** `src/core`, `src/sources`, `src/cli`
-and `src/index.ts` are the line. They may not import an LLM client, reach a model
-provider's host, or import anything from `src/factory`. `ka-factory lint` enforces
+**No generative model may run on the line.** Every workspace package except
+`packages/cli-ka-factory`, plus `src/index.ts`, is the line. They may not import an LLM client, reach a model
+provider's host, or import anything from the factory package. `ka-factory lint` enforces
 this and runs in CI.
 
 You live on the factory plane. You write and repair the deterministic extractors,
@@ -26,17 +26,50 @@ When you widen a rule, widen it on evidence (a real document that the rule shoul
 have read), add the document as a golden, and check the abstention rate did not rise
 elsewhere.
 
+## Workspace layout
+
+npm workspaces, one `tsc -b` build graph, three kinds of package under `packages/`:
+
+- **`lib-*`** — the shared engine, one package per seam: `lib-models`, `lib-repro`,
+  `lib-errors`, `lib-text`, `lib-http`, `lib-pdf`, `lib-perceive`, `lib-extract`,
+  `lib-store`, `lib-search`, `lib-render`, `lib-verify`, `lib-pipeline`,
+  `lib-source`, `lib-pardok`, `lib-parlamentsspiegel`, `lib-registry`, plus
+  `lib-testing` for the shared test helpers.
+- **`connector-*`** — one per parliament: the Bund and all sixteen Länder. A Land's
+  adapter, its `ENTRY` for the registry, its tests and its fixtures live together.
+  Ten Länder have no adapter of their own yet and their package holds only the
+  entry that says so — that is the gap `ka sources list` shows.
+- **`cli-*`** — `cli-ka` (the `ka` bin) and `cli-ka-factory` (the `ka-factory` bin).
+
+Only the root package is published; every workspace package is `private` and is
+bundled into the tarball. Each package builds to its own `dist/src` and `dist/test`.
+
+**Each package has two TypeScript projects**: `tsconfig.json` for `src/`, which other
+packages reference, and `tsconfig.test.json` for `test/`, which nothing references.
+That is what lets `lib-store`'s tests use `lib-testing` even though `lib-testing`
+depends on `lib-store` — without the split the references form a cycle and `tsc -b`
+refuses to build.
+
+**A test belongs to the package it exercises.** Where a test would have to reach
+*up* — a connector asserting it is in the registry, which depends on it — the
+assertion belongs to the package above instead; the registry's own test checks that
+every connector is registered. Fixtures follow provenance: a Land's goldens and its
+upstream payloads live in its connector, a Parlamentsspiegel result row lives in
+`lib-parlamentsspiegel`, and a test that needs another package's fixture borrows it
+with `fixturesOf(...)` rather than keeping a second copy of the bytes.
+
 ## Commands
 
 ```bash
-npm run build && npm test     # 271 tests, node:test, no network
+npm run build && npm test     # 467 tests across the workspace, node:test, no network
 npm run typecheck
 npm run lint:line             # the guardrail
-node dist/src/factory/cli/index.js goldens verify
+node packages/cli-ka-factory/dist/src/cli/index.js goldens verify
 ```
 
 Tests hit recorded fixtures, **never live parliaments**. If you need a new upstream
-payload, record one under `fixtures/payloads/` and trim it.
+payload, record one under the `fixtures/payloads/` of the package that parses it and
+trim it.
 
 ## What needs review before you do it
 
@@ -60,10 +93,10 @@ You may **not** without asking:
 - **Nothing on the line reads the clock** except the pipeline, which stamps
   `retrieved_at` at fetch time and injects its clock through `CliDeps.now`.
 - **Changing extraction bumps the extractor version.** `extractor_version` carries
-  a digest of the extraction sources (`src/core/extract`, `src/core/pdf`,
-  `src/core/perceive`, `src/core/text.ts`), so *any* change to what a document turns
+  a digest of the extraction sources (`packages/lib-extract`, `packages/lib-pdf`,
+  `packages/lib-perceive`, `packages/lib-text`), so *any* change to what a document turns
   into moves it — not just the named constants like `WORD_GAP_EM` or
-  `MIN_NUMBER_DENSITY`. The digest is frozen in `src/core/repro/extraction-digest.ts`;
+  `MIN_NUMBER_DENSITY`. The digest is frozen in `packages/lib-repro/src/extraction-digest.ts`;
   after changing extraction code run **`npm run stamp`** and re-freeze the goldens. A
   test fails until you do. Comments and indentation are excluded, so improving a
   comment does not invalidate a corpus.
