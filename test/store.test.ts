@@ -8,7 +8,7 @@ import { after, describe, it } from "node:test";
 import { FileStore } from "../src/core/store/file-store.js";
 import type { CatalogStore, EmbeddingStore } from "../src/core/store/store.js";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "../src/core/store/fts.js";
-import { indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "../src/core/store/indexer.js";
+import { indexableFields, indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "../src/core/store/indexer.js";
 import { makeSnippet, matchesFilters, search } from "../src/core/search/search.js";
 import { cosine, searchLike } from "../src/core/search/semantic.js";
 import { canonicalJsonLine } from "../src/core/repro/canonical.js";
@@ -70,6 +70,36 @@ describe("query syntax", () => {
   });
 });
 
+describe("rebuilding the index", () => {
+  it("writes each shard once for the whole corpus, not once per record", () => {
+    // Indexing a record at a time read-modify-writes one file per shard its
+    // tokens touch, and a real record touches 130–182 of the 256. Batching took
+    // 200 records from ~10 s to ~0.2 s; this pins the shape rather than the time.
+    const store = new MemoryStore();
+    const records = Array.from({ length: 5 }, (_, i) =>
+      sampleRecord({ id: `berlin-19-1000${i}`, reference: `19/1000${i}` }),
+    );
+    for (const record of records) store.putRecord(record);
+
+    let shardWrites = 0;
+    const realSave = store.saveShard.bind(store);
+    store.saveShard = (shard, data) => {
+      shardWrites++;
+      realSave(shard, data);
+    };
+    const count = reindexAll(store);
+
+    strictEqual(count, 5);
+    // One clearing pass plus one write per distinct shard — never 5 × the shards.
+    const distinctShards = new Set(
+      records.flatMap((record) => [...termFrequencies(indexableFields(record)).keys()]).map(shardOf),
+    );
+    ok(shardWrites <= distinctShards.size * 2, `${shardWrites} writes for ${distinctShards.size} shards`);
+    // And the index still answers.
+    strictEqual(search(store, "brücken").total, 5);
+  });
+});
+
 describe("the store's roles", () => {
   it("lets a consumer depend on the part it uses", () => {
     // The point of the split: a catalog-and-embeddings consumer compiles against
@@ -83,6 +113,7 @@ describe("the store's roles", () => {
         ? toCatalogEntry(sampleRecord(), 1)
         : undefined,
       putCatalogEntry: () => undefined,
+      putCatalogEntries: () => undefined,
       removeCatalogEntry: () => undefined,
     };
     const hits = searchLike(tiny, "a");

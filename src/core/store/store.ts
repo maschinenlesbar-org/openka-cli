@@ -77,6 +77,14 @@ export interface CatalogStore {
   catalog(): CatalogEntry[];
   catalogEntry(id: string): CatalogEntry | undefined;
   putCatalogEntry(entry: CatalogEntry): void;
+  /**
+   * Insert or replace many rows and persist once.
+   *
+   * `putCatalogEntry` rewrites the whole catalog on every call, so building an
+   * index a record at a time wrote it N times — 5.6 MiB to land a 153 KiB file
+   * for 200 records, quadratic in the corpus.
+   */
+  putCatalogEntries(entries: readonly CatalogEntry[]): void;
   removeCatalogEntry(id: string): void;
 }
 

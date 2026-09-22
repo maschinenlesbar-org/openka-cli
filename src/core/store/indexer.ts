@@ -6,6 +6,7 @@
 
 import type { KaRecord } from "../models/schema.js";
 import type { CatalogEntry, CatalogStore, IndexStore, RecordStore } from "./store.js";
+import type { IndexShard } from "./fts.js";
 import { shardOf, termFrequencies, type Posting } from "./fts.js";
 
 /** The text of a record that is worth searching, as one string per field group. */
@@ -117,16 +118,44 @@ export function unindexRecord(store: IndexTarget, id: string): void {
   store.removeCatalogEntry(id);
 }
 
-/** Drop and rebuild the whole index from the records on disk. */
+/**
+ * Drop and rebuild the whole index from the records on disk.
+ *
+ * Batched, because doing it a record at a time is what made indexing expensive:
+ * `indexRecord` reads, parses, serialises and atomically writes one file per shard
+ * the record's tokens touch, and a real record touches 130–182 of the 256. Two
+ * hundred records took ten seconds, 96% of it shard I/O. Grouping every record's
+ * postings first turns that into one write per shard for the whole corpus, and one
+ * catalog write instead of one per record.
+ */
 export function reindexAll(store: IndexTarget): number {
   for (const shard of store.shardNames()) store.saveShard(shard, {});
   for (const entry of store.catalog()) store.removeCatalogEntry(entry.id);
+
+  const byShard = new Map<string, IndexShard>();
+  const rows: CatalogEntry[] = [];
   let count = 0;
   for (const id of store.recordIds()) {
     const record = store.getRecord(id);
     if (record === undefined) continue;
-    indexRecord(store, record);
+    const counts = termFrequencies(indexableFields(record));
+    for (const [token, tf] of counts) {
+      const shard = shardOf(token);
+      const data = byShard.get(shard) ?? {};
+      (data[token] ??= []).push([record.id, tf]);
+      byShard.set(shard, data);
+    }
+    rows.push(toCatalogEntry(record, counts.size));
     count++;
   }
+
+  for (const [shard, data] of [...byShard].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    // Postings stay sorted by document id, as the incremental path leaves them.
+    for (const token of Object.keys(data)) {
+      (data[token] as Posting[]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    }
+    store.saveShard(shard, data);
+  }
+  store.putCatalogEntries(rows);
   return count;
 }

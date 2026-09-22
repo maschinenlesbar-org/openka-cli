@@ -97,6 +97,9 @@ export class MemoryStore implements Store {
   putCatalogEntry(entry: CatalogEntry): void {
     this.rows.set(entry.id, entry);
   }
+  putCatalogEntries(entries: readonly CatalogEntry[]): void {
+    for (const entry of entries) this.rows.set(entry.id, entry);
+  }
   removeCatalogEntry(id: string): void {
     this.rows.delete(id);
   }

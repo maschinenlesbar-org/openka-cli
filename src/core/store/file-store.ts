@@ -183,6 +183,13 @@ export class FileStore implements Store {
     this.flushCatalog();
   }
 
+  putCatalogEntries(entries: readonly CatalogEntry[]): void {
+    if (entries.length === 0) return;
+    const catalog = this.loadCatalog();
+    for (const entry of entries) catalog.set(entry.id, entry);
+    this.flushCatalog();
+  }
+
   removeCatalogEntry(id: string): void {
     if (this.loadCatalog().delete(id)) this.flushCatalog();
   }
