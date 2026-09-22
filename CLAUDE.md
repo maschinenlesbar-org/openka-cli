@@ -70,6 +70,7 @@ npm run build && npm test     # 467 tests across the workspace, node:test, no ne
 npm run typecheck
 npm run coverage              # the suite with an enforced 80% line/function floor
 npm run lint:line             # the guardrail
+npm run goldens               # every golden re-extracts to its frozen record
 node packages/cli-ka-factory/dist/src/cli/index.js goldens verify
 ```
 

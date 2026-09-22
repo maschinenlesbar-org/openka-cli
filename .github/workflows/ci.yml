@@ -50,9 +50,15 @@ jobs:
       # The guardrail from CONCEPT.md §8: no code on the line may be able to reach
       # a generative model. A violation fails the build, not a review.
       - name: No generative model on the line
-        run: node dist/src/factory/cli/index.js lint
+        run: npm run lint:line
 
       # The determinism claim, checked on every push: every golden fixture must
       # re-extract from its frozen bytes to exactly the record that was frozen.
+      # Each Land's goldens live in its own connector, so there is no single
+      # fixture directory to point at any more.
       - name: Golden fixtures reproduce
-        run: node dist/src/factory/cli/index.js goldens verify --dir fixtures
+        run: npm run goldens
+
+      # The coverage floor: 80% of lines and functions across the workspace.
+      - name: Coverage
+        run: npm run coverage

@@ -242,3 +242,47 @@ export function lintLine(projectRoot: string): LintReport {
   }
   return { filesChecked: files.length, violations };
 }
+
+/** A command a workflow runs that this repository has to be able to satisfy. */
+export interface WorkflowCommand {
+  workflow: string;
+  line: number;
+  /** `script` for `npm run <name>`, `path` for `node <file>`. */
+  kind: "script" | "path";
+  value: string;
+}
+
+/**
+ * Every `npm run <script>` and `node <path>` the CI workflows invoke.
+ *
+ * This exists because the workspace refactor broke CI twice in a row and nothing
+ * caught it: the workflows still ran `node dist/src/factory/cli/index.js lint` and
+ * read the version out of the root `package.json`, both of which moved. A stale
+ * path in a workflow is invisible until a push fails, and it fails after the build
+ * and the tests have already passed — the slowest possible feedback.
+ */
+export function workflowCommands(projectRoot: string): WorkflowCommand[] {
+  const directory = join(projectRoot, ".github", "workflows");
+  let names: string[];
+  try {
+    names = readdirSync(directory).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
+  } catch {
+    return [];
+  }
+  const found: WorkflowCommand[] = [];
+  for (const name of names.sort()) {
+    const lines = readFileSync(join(directory, name), "utf8").split(/\r?\n/);
+    lines.forEach((text, index) => {
+      const script = /\bnpm run ([a-z][\w:-]*)/.exec(text);
+      if (script !== null) {
+        found.push({ workflow: name, line: index + 1, kind: "script", value: script[1] as string });
+      }
+      // `node <path>`, but not `node -p`, `node -e` or a `node-version:` key.
+      const path = /\bnode\s+((?:packages|dist|tools|scripts)\/[\w./-]+)/.exec(text);
+      if (path !== null) {
+        found.push({ workflow: name, line: index + 1, kind: "path", value: path[1] as string });
+      }
+    });
+  }
+  return found;
+}

@@ -59,13 +59,13 @@ jobs:
             exit 1
           fi
 
-      - name: Verify package.json matches the requested version
+      - name: Verify the published package matches the requested version
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          pkg="$(node -p "require('./package.json').version")"
+          pkg="$(node -p "require('./packages/openka-cli/package.json').version")"
           if [ "$pkg" != "$VERSION" ]; then
-            echo "::error::package.json version ('$pkg') does not match requested version ('$VERSION')."
+            echo "::error::packages/openka-cli/package.json version ('$pkg') does not match requested version ('$VERSION')."
             exit 1
           fi
 
@@ -79,4 +79,4 @@ jobs:
       # No NPM_TOKEN: OIDC provides the short-lived credential, and provenance
       # is generated from this workflow run.
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm run publish:npm

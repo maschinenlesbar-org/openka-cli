@@ -2,11 +2,11 @@
 // and the frozen embeddings.
 
 import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
-import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, lineFiles, lineRoots, lintLine, lintSource, stripComments } from "../src/lib/lint.js";
+import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, buildEmbeddings, importEmbeddings } from "../src/lib/embed.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
@@ -294,4 +294,63 @@ describe("temporary directories", () => {
   const dir = mkdtempSync(join(tmpdir(), "openka-noop-"));
   after(() => rmSync(dir, { recursive: true, force: true }));
   it("exists", () => ok(dir.length > 0));
+});
+
+describe("the CI workflows", () => {
+  // The workspace refactor broke CI twice: the workflows still ran
+  // `node dist/src/factory/cli/index.js lint` and read the version from the root
+  // `package.json`, both of which had moved. A stale reference is invisible until a
+  // push fails, and it fails *after* the build and the tests pass — the slowest
+  // feedback there is. This turns it into a unit test.
+  const commands = workflowCommands(PROJECT_ROOT);
+
+  it("finds the commands the workflows run", () => {
+    ok(commands.length >= 5, `only found ${commands.length}`);
+    ok(commands.some((command) => command.kind === "script"));
+  });
+
+  it("runs only npm scripts this repository defines", () => {
+    const defined = new Set(
+      Object.keys(JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")).scripts ?? {}),
+    );
+    for (const command of commands.filter((entry) => entry.kind === "script")) {
+      ok(defined.has(command.value), `${command.workflow}:${command.line} runs missing script "${command.value}"`);
+    }
+  });
+
+  it("references only files that exist", () => {
+    for (const command of commands.filter((entry) => entry.kind === "path")) {
+      // `dist/` is built, so only its source counterpart can be checked here; a
+      // path under `dist/` that no package owns is the exact bug this caught.
+      const target = join(PROJECT_ROOT, command.value);
+      ok(
+        existsSync(target) || existsSync(target.replace("/dist/src/", "/src/")),
+        `${command.workflow}:${command.line} references missing path "${command.value}"`,
+      );
+    }
+  });
+
+  it("packs and publishes the published package, not the private root", () => {
+    // The root is `openka-workspace` and `private: true`. A bare `npm pack` or
+    // `npm publish` there produces nothing useful and npm refuses to publish it.
+    const text = ["release.yml", "publish.yml"]
+      .map((name) => readFileSync(join(PROJECT_ROOT, ".github", "workflows", name), "utf8"))
+      .join("\n");
+    for (const line of text.split(/\r?\n/)) {
+      if (/^\s*#/.test(line)) continue; // a comment, not a command
+      if (/\bnpm (pack|publish)\b/.test(line) && !/npm run /.test(line)) {
+        match(line, /--workspace @maschinenlesbar\.org\/openka-cli/, `bare npm pack/publish: ${line.trim()}`);
+      }
+    }
+  });
+
+  it("reads the version from the published package", () => {
+    // The root carries a version too, and they can drift; the one that ships is
+    // the only one a tag should be checked against.
+    const text = ["release.yml", "publish.yml"]
+      .map((name) => readFileSync(join(PROJECT_ROOT, ".github", "workflows", name), "utf8"))
+      .join("\n");
+    ok(!/require\('\.\/package\.json'\)/.test(text), "a workflow still reads the root package.json version");
+    ok(/packages\/openka-cli\/package\.json/.test(text));
+  });
 });

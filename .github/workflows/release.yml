@@ -41,17 +41,17 @@ jobs:
           # No cache restoration on tag-triggered runs (cache-poisoning hardening).
           package-manager-cache: false
 
-      - name: Read version from package.json
+      - name: Read version from the published package
         id: ver
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./packages/openka-cli/package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Verify tag matches package.json version
+      - name: Verify tag matches packages/openka-cli/package.json version
         env:
           PKG_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           tag="${GITHUB_REF_NAME#v}"
           if [ "$tag" != "$PKG_VERSION" ]; then
-            echo "::error::Tag '$GITHUB_REF_NAME' does not match package.json version '$PKG_VERSION'."
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match packages/openka-cli/package.json version '$PKG_VERSION'."
             exit 1
           fi
 
@@ -79,7 +79,7 @@ jobs:
       - name: Pack npm tarball
         run: |
           mkdir -p dist-artifacts
-          npm pack --pack-destination dist-artifacts
+          npm pack --workspace @maschinenlesbar.org/openka-cli --pack-destination dist-artifacts
           ls -la dist-artifacts
 
       # CycloneDX SBOMs with exact, pinned versions and the full transitive
