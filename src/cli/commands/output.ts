@@ -36,7 +36,14 @@ function addSelectionOptions(command: Command): Command {
     .option("--query <terms>", "restrict to records matching these search terms", parseNonEmpty);
 }
 
-/** Pull the selected records out of the corpus, ordered by id. */
+/**
+ * Pull the selected records out of the corpus.
+ *
+ * Ordered by id when there is no `--query`, and by relevance when there is —
+ * `search` ranks, and `--limit` therefore means "the most relevant N", not "the
+ * first N by id". Saying so matters for a paged export: the order is stable for a
+ * given corpus and query, but it is not the id order the rest of the CLI uses.
+ */
 function selectRecords(
   store: ReturnType<CliDeps["createStore"]>,
   opts: Record<string, unknown>,
@@ -57,7 +64,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       .command("export")
       .description("export the corpus (or a selection of it) in bulk")
       .addOption(choiceOption("--format <format>", "output format", EXPORT_FORMATS))
-      .option("--limit <n>", "maximum records to export", parseBoundedInt(1, 1_000_000))
+      .option("--limit <n>", "maximum records to export (most relevant first with --query)", parseBoundedInt(1, 1_000_000))
       .option("-o, --out <file>", "write to this file instead of stdout", parseNonEmpty),
   ).action(
     action(deps, async (ctx) => {
