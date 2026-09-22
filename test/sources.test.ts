@@ -59,6 +59,18 @@ describe("XML reader", () => {
   });
 });
 
+describe("source registry", () => {
+  it("gives every adapter the key the registry lists it under", () => {
+    // The pipeline persists sync state under `source.key`; `ka sources list` and
+    // the health report read it back by the registry key. When they disagreed,
+    // every aggregator-backed Land reported "never synced" right after a sync.
+    for (const entry of SOURCE_REGISTRY) {
+      if (entry.factory === undefined) continue;
+      strictEqual(createSource(entry.key).key, entry.key, `adapter key differs for ${entry.key}`);
+    }
+  });
+});
+
 describe("Parlamentsspiegel export format", () => {
   const xml = readFixtureText("payloads", "pardok-sample.xml");
 

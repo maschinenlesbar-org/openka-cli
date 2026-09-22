@@ -68,7 +68,12 @@ export class ParlamentsspiegelSource implements Source {
     if (entry?.herkunft === undefined) {
       throw new OpenKaError(`${parliament} does not deliver to the Parlamentsspiegel`);
     }
-    this.key = `parlamentsspiegel-${parliament}`;
+    // The key must be the one the registry lists this Land under, because the
+    // pipeline stores sync state under `source.key` while `ka sources list` and the
+    // health report read it back by the registry key. A prefixed key here meant
+    // every aggregator-backed Land reported "never synced" straight after a sync,
+    // and its `last_error` could never surface as `degraded`.
+    this.key = parliament;
     this.parliament = parliament;
     this.label = `Parlamentsspiegel (${entry.label})`;
     this.herkunft = entry.herkunft;
