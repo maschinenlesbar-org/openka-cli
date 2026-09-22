@@ -45,6 +45,7 @@ import {
 } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import { decodeEntities } from "@maschinenlesbar.org/openka-lib-source";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 
 export const PARLIAMENT = "bayern" as const;
 export const LABEL = "Bayerischer Landtag";
@@ -139,6 +140,18 @@ export class BayernFeedSource implements Source {
     "request and differs in its bytes every time.";
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    // The feed says when an entry appeared, not when the Anfrage was asked, and
+    // this adapter claims no dates for that reason. So a date window cannot be
+    // applied here — and silently returning everything the feed holds is the
+    // dropped constraint this CLI refuses to produce. The dates the paper states
+    // are extracted from it, so the window is answered by the corpus instead.
+    if (options.since !== undefined || options.until !== undefined) {
+      throw new UsageError(
+        "Bayern's Anfragen feed carries no submission dates, so --since/--until cannot be applied to it. " +
+          "Sync without a window (the feed holds only the newest Drucksachen) and filter the corpus " +
+          "afterwards with --from/--to; the extractor reads the dates from each paper.",
+      );
+    }
     const warnings: string[] = [];
     const period = options.period ?? BAYERN_LATEST_PERIOD;
 

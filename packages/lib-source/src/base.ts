@@ -7,6 +7,7 @@
 // one Landtag from turning into a rewrite.
 
 import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { DEFAULT_USER_AGENT } from "@maschinenlesbar.org/openka-lib-http";
 import { NO_RULES, isAllowed, parseRobots } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
@@ -223,7 +224,10 @@ export interface SourceEntry {
  *
  * It does **not** trigger on zero refs. An empty window is a legitimate answer, and
  * a Land that published nothing in March must not be quietly backfilled from
- * somewhere else. That distinction is the same one `ApiReading` draws in the
+ * somewhere else. Nor does it trigger on a `UsageError`: that is the primary saying
+ * the *request* cannot be honoured as typed — a window on a feed that carries no
+ * dates — and answering it from somewhere else would honour a request the operator
+ * was just told is not answerable here. That distinction is the same one `ApiReading` draws in the
  * Thüringen client: "there is nothing" and "I do not understand this" are different
  * facts, and only one of them is a reason to go looking elsewhere.
  *
@@ -268,6 +272,7 @@ export class FallbackSource implements Source {
       if (result.unreadable === undefined) return result;
       reason = result.unreadable;
     } catch (err) {
+      if (err instanceof UsageError) throw err;
       reason = err instanceof Error ? err.message : String(err);
     }
     const result = await this.fallback.discover(options);

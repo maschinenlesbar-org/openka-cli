@@ -13,6 +13,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@maschinenlesbar.org/openka-lib-errors": "0.0.1",
     "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
     "@maschinenlesbar.org/openka-lib-source": "0.0.1"
   },

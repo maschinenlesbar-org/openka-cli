@@ -4,7 +4,7 @@
 // zum Plenum — 19/12540, 19/12945 and 19/13141, three items each — because telling
 // those apart from a Schriftliche Anfrage is the whole problem this adapter solves.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   BAYERN_LATEST_PERIOD,
@@ -16,6 +16,7 @@ import {
   toRef,
 } from "../src/index.js";
 import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 
 const { readFixtureText } = fixtures(import.meta.url);
 const FEED = readFixtureText("payloads", "rss-anfragen.xml");
@@ -109,6 +110,23 @@ describe("Bayern source", () => {
     const [item] = parseFeed(FEED);
     ok(item?.published !== undefined);
     deepStrictEqual(toRef(item!, "https://x.invalid/a.pdf").dates, {});
+  });
+
+  it("refuses a date window rather than ignoring it", async () => {
+    // The feed carries no dates and the refs claim none, so a window could not be
+    // applied even after the fact. It used to return everything the feed held and
+    // say nothing — exactly the dropped constraint the CLI is built to refuse.
+    const { transport, requests } = landtag();
+    await rejects(
+      () => new BayernFeedSource().discover({ engine: testEngine(transport), state, since: "2026-09-01" }),
+      UsageError,
+    );
+    await rejects(
+      () => createSource().discover({ engine: testEngine(transport), state, until: "2026-09-07" }),
+      UsageError,
+    );
+    // And neither the feed nor the aggregator was asked.
+    strictEqual(requests.length, 0);
   });
 
   it("reports a non-RSS answer as unreadable, not as an empty Land", async () => {

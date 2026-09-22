@@ -6,7 +6,7 @@
 // window that has not moved therefore does nothing, costs one conditional request
 // per feed, and leaves the corpus byte-identical.
 
-import { OpenKaApiError, OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
@@ -102,6 +102,9 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
     };
     discovered = await source.discover(discoverOptions);
   } catch (err) {
+    // A usage error is the source saying the *request* cannot be honoured as
+    // typed. That is the operator's to fix, not a degraded source to record.
+    if (err instanceof UsageError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     report.errors.push(message);
     store.putSourceState({ ...state, last_sync: startedAt, last_error: message });

@@ -1,13 +1,14 @@
 // The pipeline, reproducibility verification and the golden fixtures — the parts
 // that carry the "same input, same bytes, forever" claim.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isoInstant, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { listAllGoldens, verifyGolden } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
@@ -200,6 +201,26 @@ describe("sync pipeline", () => {
     deepStrictEqual(report.errors, ["upstream is down"]);
     strictEqual(store.getSourceState("berlin").last_error, "upstream is down");
     strictEqual(store.getSourceState("berlin").last_success, undefined);
+  });
+
+  it("lets a usage error out instead of filing it as a degraded source", async () => {
+    // Bayern refuses a date window it cannot apply. That must reach the operator
+    // as a usage error (exit 2), not sit in `last_error` as if the Land were down.
+    const store = new MemoryStore();
+    const source: Source = {
+      key: "bayern",
+      parliament: "bayern",
+      tier: "text_layer",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => {
+        throw new UsageError("this source cannot apply --since");
+      },
+    };
+    const { transport } = scriptedTransport([]);
+    await rejects(() => sync({ source, store, engine: testEngine(transport) }), UsageError);
+    strictEqual(store.getSourceState("bayern").last_error, undefined);
   });
 
   it("reports an unchanged upstream without doing any work", async () => {

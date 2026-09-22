@@ -3,9 +3,10 @@
 // The rule these tests pin down is the one that is easy to get wrong: an empty
 // window is an answer, and must not be backfilled from somewhere else.
 
-import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { FallbackSource, type DiscoverOptions, type DiscoverResult, type Source } from "../src/index.js";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 
 function source(key: string, discover: () => Promise<DiscoverResult>): Source {
   return {
@@ -80,6 +81,24 @@ describe("FallbackSource", () => {
     ok(result.warnings[0]?.includes("came from the aggregator"));
     // The fallback's own warnings survive.
     ok(result.warnings.includes("aggregator note"));
+  });
+
+  it("lets a usage error through instead of answering it from the aggregator", async () => {
+    // Bayern's feed carries no dates, so a `--since` on it is a UsageError. The
+    // aggregator would honour the window — and the operator would get records from
+    // a source they were just told cannot answer the question they asked.
+    let aggregatorCalls = 0;
+    const composed = new FallbackSource(
+      source("own", async () => {
+        throw new UsageError("the feed carries no dates");
+      }),
+      source("aggregator", async () => {
+        aggregatorCalls++;
+        return { refs: [ref("1/1")], warnings: [] };
+      }),
+    );
+    await rejects(() => composed.discover(options), UsageError);
+    strictEqual(aggregatorCalls, 0);
   });
 
   it("falls back when the interface answered in a shape it could not read", async () => {
