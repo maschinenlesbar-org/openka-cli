@@ -2,7 +2,7 @@
 // with conditional requests, the declared tier, then store and index.
 
 import type { Command } from "commander";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { abstainingPerceiver, type Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { TesseractCliPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
@@ -98,7 +98,22 @@ export function registerSync(program: Command, deps: CliDeps): void {
           (ctx.opts["apiKey"] as string | undefined) ??
           (source.apiKeyEnv === undefined ? undefined : ctx.deps.env[source.apiKeyEnv]);
 
-        const perceiver = await buildPerceiver((ctx.opts["ocr"] as OcrMode | undefined) ?? "off", {
+        // The three OCR sub-options describe a model that only runs with --ocr.
+        // Accepting them without it ran strict mode and said nothing, so a
+        // corpus meant to pin tesseract 5.3.4 was built with no OCR at all.
+        const ocrMode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
+        const ocrOnly = (["ocrLanguage", "ocrVersion", "ocrTraineddata"] as const).filter(
+          (key) => ctx.opts[key] !== undefined,
+        );
+        if (ocrMode === "off" && ocrOnly.length > 0) {
+          const flags = ocrOnly.map((key) => `--${key.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`)}`);
+          throw new UsageError(
+            `${flags.join(", ")} only appl${flags.length === 1 ? "ies" : "y"} with --ocr tesseract or --ocr tesseract-js; ` +
+              "without --ocr no model runs and the option would be ignored",
+          );
+        }
+
+        const perceiver = await buildPerceiver(ocrMode, {
           ...(ctx.opts["ocrLanguage"] === undefined ? {} : { language: ctx.opts["ocrLanguage"] as string }),
           ...(ctx.opts["ocrVersion"] === undefined ? {} : { requireVersion: ctx.opts["ocrVersion"] as string }),
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddata: ctx.opts["ocrTraineddata"] as string }),

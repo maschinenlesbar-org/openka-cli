@@ -286,6 +286,20 @@ describe("ka", () => {
     harness.cleanup();
   });
 
+  it("refuses an OCR sub-option without --ocr rather than ignoring it", async () => {
+    // `--ocr-version 5.3.4` on its own used to run strict mode silently.
+    const { transport, requests } = berlinTransport();
+    const harness = cliHarness({ transport });
+    const code = await run(
+      ["--corpus", harness.corpus, "sync", "--source", "berlin", "--ocr-language", "deu", "--ocr-version", "5.3.4"],
+      harness.deps,
+    );
+    strictEqual(code, EXIT_USAGE);
+    match(harness.stderr(), /--ocr-language, --ocr-version only apply with --ocr/);
+    strictEqual(requests.length, 0);
+    harness.cleanup();
+  });
+
   it("refuses --ocr tesseract-js when the optional package is absent", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     const code = await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--ocr", "tesseract-js"], harness.deps);
