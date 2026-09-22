@@ -464,6 +464,12 @@ describe("metadata rules", () => {
     strictEqual(periodFromReference("19/10006"), 19);
   });
 
+  it("does not weld a reference together across a line break", () => {
+    // `\s` spanned newlines, so two unrelated lines of a PDF text layer read as
+    // one Drucksachennummer — a fabricated identity is worse than no reference.
+    strictEqual(findReference("Drucksache 19/10\n006 vom heute"), "19/10");
+  });
+
   it("splits a PARDOK Urheber field into askers", () => {
     deepStrictEqual(parseUrheber("Otto, Andreas (Grüne)"), [{ name: "Andreas Otto", party: "Grüne" }]);
     deepStrictEqual(parseUrheber("Goldner, Antonia-Katharina, Dr., CDU; CDU"), [

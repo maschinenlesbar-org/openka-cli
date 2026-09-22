@@ -57,10 +57,14 @@ export function findDate(text: string): string | undefined {
  * looks like.
  */
 export function findReference(text: string): string | undefined {
-  const match = /(\d{1,2})\s*\/\s*((?:\d[\d\s]{0,10}\d|\d))/.exec(text);
+  // Spaces and tabs only, never a newline: `\s` let the pattern weld two lines of
+  // a PDF text layer together, so "19/10" followed by "006" on the next line read
+  // as Drucksache 19/10006 — a fabricated document identity, which is worse than
+  // no reference at all.
+  const match = /(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))/.exec(text);
   if (match === null) return undefined;
   const period = match[1] as string;
-  const number = (match[2] as string).replace(/\s+/g, "");
+  const number = (match[2] as string).replace(/[ \t]+/g, "");
   if (number === "") return undefined;
   return `${period}/${number}`;
 }
