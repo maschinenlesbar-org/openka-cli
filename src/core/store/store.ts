@@ -40,17 +40,28 @@ export interface SourceState {
   documents_seen?: number;
 }
 
-export interface Store {
-  /** Absolute path of the corpus root, for messages and `ka open`. */
-  readonly root: string;
-
+/**
+ * The corpus, as the roles that make it up.
+ *
+ * `Store` is their intersection and nothing in the codebase has to change because
+ * of the split — but a consumer that only reads the catalog can now say so, and a
+ * test double for it does not have to implement blob addressing, index sharding
+ * and artifact storage to compile. `DiscoverOptions` already took this shape by
+ * hand (`Pick<Store, "loadArtifact">`); these are the seams it was reaching for.
+ *
+ * The file store draws exactly these lines with section separators, which is the
+ * class saying out loud that it is nine concerns wearing one name.
+ */
+export interface BlobStore {
   hasBlob(sha256: string): boolean;
   /** Store bytes under their own digest; returns the digest. Idempotent. */
   putBlob(data: Buffer): string;
   getBlob(sha256: string): Buffer;
   /** Filesystem path of a stored blob — what `ka open` hands to the OS. */
   blobPath(sha256: string): string;
+}
 
+export interface RecordStore {
   hasRecord(id: string): boolean;
   getRecord(id: string): KaRecord | undefined;
   /** Canonical bytes of a stored record, exactly as they sit on disk. */
@@ -59,18 +70,24 @@ export interface Store {
   deleteRecord(id: string): void;
   /** Every record id in the corpus, sorted. */
   recordIds(): string[];
+}
 
+export interface CatalogStore {
   /** Every catalog row, ordered by id. */
   catalog(): CatalogEntry[];
   catalogEntry(id: string): CatalogEntry | undefined;
   putCatalogEntry(entry: CatalogEntry): void;
   removeCatalogEntry(id: string): void;
+}
 
+export interface IndexStore {
   loadShard(shard: string): IndexShard;
   saveShard(shard: string, data: IndexShard): void;
   /** Every index shard present, sorted. */
   shardNames(): string[];
+}
 
+export interface SourceStateStore {
   getSourceState(source: string): SourceState;
   putSourceState(state: SourceState): void;
   /**
@@ -80,17 +97,33 @@ export interface Store {
    * (discovery returned nothing) is the case that leaves no trace.
    */
   sourceStateKeys(): string[];
+}
 
+export interface ArtifactStore {
   /**
    * A frozen artifact the factory built and the line consumes — see CONCEPT.md §0.
    * Named, JSON, and written once by a build-time job rather than by a sync.
    */
   loadArtifact<T>(name: string): T | undefined;
   saveArtifact(name: string, value: unknown): void;
+}
 
+export interface EmbeddingStore {
   /** Frozen embeddings produced by the factory, if any were shipped. */
   loadEmbeddings(): EmbeddingSet | undefined;
   saveEmbeddings(set: EmbeddingSet): void;
+}
+
+export interface Store
+  extends BlobStore,
+    RecordStore,
+    CatalogStore,
+    IndexStore,
+    SourceStateStore,
+    ArtifactStore,
+    EmbeddingStore {
+  /** Absolute path of the corpus root, for messages and `ka open`. */
+  readonly root: string;
 }
 
 /**

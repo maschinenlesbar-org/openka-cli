@@ -5,7 +5,7 @@
 // deletion never has to scan all 256 of them.
 
 import type { KaRecord } from "../models/schema.js";
-import type { CatalogEntry, Store } from "./store.js";
+import type { CatalogEntry, CatalogStore, IndexStore, RecordStore } from "./store.js";
 import { shardOf, termFrequencies, type Posting } from "./fts.js";
 
 /** The text of a record that is worth searching, as one string per field group. */
@@ -61,8 +61,11 @@ function yearOf(date: string | undefined): number | undefined {
   return Number.isInteger(year) ? year : undefined;
 }
 
+/** The three roles indexing touches: the catalog, the shards and the records. */
+export type IndexTarget = CatalogStore & IndexStore & RecordStore;
+
 /** Add or replace a record's postings and catalog row. */
-export function indexRecord(store: Store, record: KaRecord): void {
+export function indexRecord(store: IndexTarget, record: KaRecord): void {
   unindexRecord(store, record.id);
   const counts = termFrequencies(indexableFields(record));
   const byShard = new Map<string, [string, number][]>();
@@ -90,7 +93,7 @@ export function indexRecord(store: Store, record: KaRecord): void {
  * when the record is already gone, falls back to scanning every shard, which is
  * slower but keeps the index honest rather than leaving dangling postings behind.
  */
-export function unindexRecord(store: Store, id: string): void {
+export function unindexRecord(store: IndexTarget, id: string): void {
   if (store.catalogEntry(id) === undefined) return;
   const record = store.getRecord(id);
   const shards =
@@ -115,7 +118,7 @@ export function unindexRecord(store: Store, id: string): void {
 }
 
 /** Drop and rebuild the whole index from the records on disk. */
-export function reindexAll(store: Store): number {
+export function reindexAll(store: IndexTarget): number {
   for (const shard of store.shardNames()) store.saveShard(shard, {});
   for (const entry of store.catalog()) store.removeCatalogEntry(entry.id);
   let count = 0;

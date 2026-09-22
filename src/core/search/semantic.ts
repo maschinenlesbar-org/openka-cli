@@ -8,7 +8,7 @@
 // the execution path, which §0 of the concept rules out.
 
 import { OpenKaError } from "../errors.js";
-import type { Store } from "../store/store.js";
+import type { CatalogStore, EmbeddingStore } from "../store/store.js";
 import { matchesFilters, type SearchFilters, type SearchHit } from "./search.js";
 
 /** Cosine similarity of two equal-length vectors. */
@@ -39,7 +39,11 @@ export interface SemanticOptions extends SearchFilters {
  * frozen embeddings, rather than silently degrading to keyword search — a caller
  * asking for semantic results should learn that it did not get them.
  */
-export function searchLike(store: Store, id: string, options: SemanticOptions = {}): SearchHit[] {
+export function searchLike(
+  store: EmbeddingStore & CatalogStore,
+  id: string,
+  options: SemanticOptions = {},
+): SearchHit[] {
   const set = store.loadEmbeddings();
   if (set === undefined) {
     throw new OpenKaError(

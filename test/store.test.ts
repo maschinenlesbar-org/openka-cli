@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FileStore } from "../src/core/store/file-store.js";
+import type { CatalogStore, EmbeddingStore } from "../src/core/store/store.js";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "../src/core/store/fts.js";
 import { indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "../src/core/store/indexer.js";
 import { makeSnippet, matchesFilters, search } from "../src/core/search/search.js";
@@ -66,6 +67,27 @@ describe("query syntax", () => {
   it("confirms a phrase only when the words are adjacent", () => {
     ok(containsPhrase("eine marode Brücke", ["marode", "bruecke"]));
     strictEqual(containsPhrase("eine Brücke, marode", ["marode", "bruecke"]), false);
+  });
+});
+
+describe("the store's roles", () => {
+  it("lets a consumer depend on the part it uses", () => {
+    // The point of the split: a catalog-and-embeddings consumer compiles against
+    // a double that implements neither blobs nor shards nor artifacts.
+    const vectors = { a: [1, 0], b: [0.9, 0.1] };
+    const tiny: EmbeddingStore & CatalogStore = {
+      loadEmbeddings: () => ({ model: "test", dimensions: 2, vectors }),
+      saveEmbeddings: () => undefined,
+      catalog: () => [],
+      catalogEntry: (id) => toCatalogEntry(sampleRecord({ id: "berlin-19-12345" }), 1) && id === "b"
+        ? toCatalogEntry(sampleRecord(), 1)
+        : undefined,
+      putCatalogEntry: () => undefined,
+      removeCatalogEntry: () => undefined,
+    };
+    const hits = searchLike(tiny, "a");
+    strictEqual(hits.length, 1);
+    strictEqual(hits[0]?.entry.id, "berlin-19-12345");
   });
 });
 

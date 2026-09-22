@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { canonicalJsonLine } from "../../core/repro/canonical.js";
-import type { Store } from "../../core/store/store.js";
+import type { CatalogStore, RecordStore, SourceStateStore } from "../../core/store/store.js";
 import { SOURCE_REGISTRY } from "../../sources/registry.js";
 
 export interface SourceHealth {
@@ -37,7 +37,10 @@ function spanningSources(): Set<string> {
 }
 
 /** Measure the corpus as it stands. */
-export function measureHealth(store: Store, takenAt: string): HealthSnapshot {
+export function measureHealth(
+  store: CatalogStore & RecordStore & SourceStateStore,
+  takenAt: string,
+): HealthSnapshot {
   const perSource = new Map<string, { records: number; complete: number; qa: number; tiers: Map<string, number> }>();
 
   // Seed from the sources that have sync state, not only from the catalog. A
