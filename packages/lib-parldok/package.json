@@ -14,5 +14,8 @@
   },
   "files": [
     "dist/src"
-  ]
+  ],
+  "dependencies": {
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1"
+  }
 }

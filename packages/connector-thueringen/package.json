@@ -23,6 +23,7 @@
     "test": "node --test dist/test/*.test.js"
   },
   "devDependencies": {
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1",
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
   },
   "files": [

@@ -114,6 +114,22 @@ describe("Bremen source", () => {
     strictEqual(result.unreadable, undefined);
   });
 
+  it("says so when PARiS matched more than the page shows", async () => {
+    // "Anzeige: 1 - 11 von 11" is the whole answer; "1 - 11 von 250" is not, and a
+    // sync that reports 8 records for a window that held 250 has to say which.
+    const { transport: scripted } = scriptedTransport([
+      { match: "path=paris%2FLISSH.web", body: FORM },
+      { match: "servlet.starweb", body: RESULTS.replace("von&nbsp; 11 Vorg", "von&nbsp; 250 Vorg") },
+    ]);
+    const result = await new BremenParisSource().discover({ engine: testEngine(scripted), state });
+    strictEqual(result.refs.length, 8);
+    ok(result.warnings.some((warning) => /matched 250 Vorgänge but showed 11/.test(warning)), result.warnings.join("\n"));
+    // And the complete page carries no such warning.
+    const { transport: whole } = transport();
+    const complete = await new BremenParisSource().discover({ engine: testEngine(whole), state });
+    ok(!complete.warnings.some((warning) => /matched/.test(warning)));
+  });
+
   it("skips a row that links no PDF, and says so", () => {
     const warnings: string[] = [];
     strictEqual(toRef("Drs 21/1 , Kleine Anfrage vom 01.01.2026 BIW", warnings), undefined);

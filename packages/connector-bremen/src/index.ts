@@ -37,6 +37,7 @@ import {
   pdfHref,
   recordBlocks,
   runSearch,
+  totalHits,
   type StarwebEndpoint,
 } from "@maschinenlesbar.org/openka-lib-starweb";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
@@ -159,6 +160,17 @@ export class BremenParisSource implements Source {
       // Neither hits nor the "keine Treffer" message: the template changed, or the
       // session was not accepted. Either way this is not an empty Wahlperiode.
       return { refs: [], warnings, unreadable: "the PARiS result page held neither records nor a no-hits message" };
+    }
+
+    // PARiS shows at most one page ("max. Trefferanzeige 200") and says how many
+    // it matched. A window that matched more than it showed must not read as a
+    // window that held exactly that many.
+    const total = totalHits(html);
+    if (total !== undefined && total > blocks.length) {
+      warnings.push(
+        `PARiS matched ${total} Vorgänge but showed ${blocks.length}; the rest were not read — ` +
+          "narrow the window with --since/--until to reach them",
+      );
     }
 
     const refs: DocRef[] = [];

@@ -13,6 +13,9 @@
     },
     {
       "path": "../lib-testing"
+    },
+    {
+      "path": "../lib-http"
     }
   ]
 }

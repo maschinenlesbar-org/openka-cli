@@ -39,8 +39,7 @@ import {
   KIND_KLEINE_ANFRAGE,
   answerPosition,
   processBody,
-  searchDocumentsBody,
-  searchResults,
+  searchDocuments,
 } from "@maschinenlesbar.org/openka-lib-parldok";
 export * from "@maschinenlesbar.org/openka-lib-parldok";
 
@@ -79,20 +78,14 @@ export class ThueringenParldokSource implements Source {
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const warnings: string[] = [];
     const period = options.period ?? THUERINGEN_LATEST_PERIOD;
-    const body = searchDocumentsBody({
+    const reading = await searchDocuments(options.engine, PARLDOK_API, {
       tags: [
         { type: FACET_KIND, id: KIND_KLEINE_ANFRAGE, label: "Kleine Anfrage" },
         { type: FACET_LP, id: period, label: String(period) },
         ...timeTags(options),
       ],
-      length: options.limit ?? 200,
+      ...(options.limit === undefined ? {} : { limit: options.limit }),
     });
-
-    const response = await options.engine.post(`${PARLDOK_API}/Fulltext/Search`, {
-      body: `data=${encodeURIComponent(body)}`,
-      headers: { accept: "application/json" },
-    });
-    const reading = searchResults(response.body.toString("utf8"));
     if (reading.kind === "unrecognised") {
       return {
         refs: [],
@@ -103,10 +96,10 @@ export class ThueringenParldokSource implements Source {
     if (reading.kind === "absent") return { refs: [], warnings };
 
     const refs: DocRef[] = [];
-    for (const doc of reading.value.docs) {
+    for (const { doc, queryId } of reading.value) {
       const ref = toRef(doc, warnings);
       if (ref === undefined) continue;
-      const answer = await this.findAnswer(doc, reading.value.queryId, ref.reference, options, warnings);
+      const answer = await this.findAnswer(doc, queryId, ref.reference, options, warnings);
       if (answer === undefined) {
         refs.push(ref);
         continue;

@@ -19,6 +19,8 @@
 // stay different facts — a distinction the callers need, because only the second
 // is a reason to go looking somewhere else.
 
+import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
+
 /** The two addresses a Parldok installation has. */
 export interface ParldokEndpoint {
   /** The API host the application posts to. */
@@ -206,6 +208,8 @@ export interface SearchHits {
    * per ref.
    */
   queryId: number;
+  /** How many documents the search matched in all, when the page says. */
+  total?: number;
 }
 
 /**
@@ -223,5 +227,57 @@ export function searchResults(body: string): ApiReading<SearchHits> {
   if (docs.length === 0) return { kind: "absent" };
   const queryId = data["queryid"];
   if (typeof queryId !== "number") return { kind: "unrecognised", reason: "a result with no queryid" };
-  return { kind: "found", value: { docs, queryId } };
+  const hits: SearchHits = { docs, queryId };
+  if (typeof data["count"] === "number") hits.total = data["count"];
+  return { kind: "found", value: hits };
+}
+
+/** One hit of a listing, with the query id of the page it came from. */
+export interface SearchHit {
+  doc: Record<string, unknown>;
+  queryId: number;
+}
+
+/** The most hits one page may carry; the application's own listing size. */
+export const PAGE_LENGTH = 200;
+
+/** Pages a listing may run to before this client stops asking. */
+export const MAX_SEARCH_PAGES = 500;
+
+/**
+ * Every hit of a listing search, page by page.
+ *
+ * A page carries at most `PAGE_LENGTH` hits and says how many the search matched
+ * in all (`count`). Both connectors used to ask for one page and stop, so a
+ * Wahlperiode with more than 200 Kleine Anfragen came back as exactly 200 with no
+ * sign that any were missing. This asks again with `Start` moved until the count is
+ * reached, the page comes back short, or `limit` is met.
+ *
+ * Each hit keeps the query id of *its* page: `Process/Document` wants the id of the
+ * query the document was found by, and a later page is a later query.
+ */
+export async function searchDocuments(
+  engine: FetchEngine,
+  api: string,
+  options: { tags: SearchTag[]; limit?: number },
+): Promise<ApiReading<SearchHit[]>> {
+  const hits: SearchHit[] = [];
+  const wanted = options.limit ?? Number.POSITIVE_INFINITY;
+  for (let page = 0; page < MAX_SEARCH_PAGES && hits.length < wanted; page++) {
+    const length = Math.min(PAGE_LENGTH, wanted - hits.length);
+    const body = searchDocumentsBody({ tags: options.tags, length, start: hits.length });
+    const response = await engine.post(`${api}/Fulltext/Search`, {
+      body: `data=${encodeURIComponent(body)}`,
+      headers: { accept: "application/json" },
+    });
+    const reading = searchResults(response.body.toString("utf8"));
+    if (reading.kind === "unrecognised") return reading;
+    if (reading.kind === "absent") break;
+    for (const doc of reading.value.docs) hits.push({ doc, queryId: reading.value.queryId });
+    const total = reading.value.total;
+    if (total !== undefined && hits.length >= total) break;
+    if (total === undefined && reading.value.docs.length < length) break;
+  }
+  if (hits.length === 0) return { kind: "absent" };
+  return { kind: "found", value: hits.slice(0, options.limit) };
 }

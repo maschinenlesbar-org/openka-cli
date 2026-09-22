@@ -37,8 +37,7 @@ import {
   FACET_KIND_MV,
   FACET_LP,
   FACET_TIME,
-  searchDocumentsBody,
-  searchResults,
+  searchDocuments,
   type ParldokEndpoint,
 } from "@maschinenlesbar.org/openka-lib-parldok";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
@@ -146,20 +145,14 @@ export class MecklenburgVorpommernParldokSource implements Source {
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const warnings: string[] = [];
     const period = options.period ?? MV_LATEST_PERIOD;
-    const body = searchDocumentsBody({
+    const reading = await searchDocuments(options.engine, PARLDOK.api, {
       tags: [
         { type: FACET_KIND_MV, id: TYPE_KLEINE_ANFRAGE_UND_ANTWORT, label: "Kleine Anfrage und Antwort" },
         { type: FACET_LP, id: period, label: String(period) },
         ...timeTags(options),
       ],
-      length: options.limit ?? 200,
+      ...(options.limit === undefined ? {} : { limit: options.limit }),
     });
-
-    const response = await options.engine.post(`${PARLDOK.api}/Fulltext/Search`, {
-      body: `data=${encodeURIComponent(body)}`,
-      headers: { accept: "application/json" },
-    });
-    const reading = searchResults(response.body.toString("utf8"));
     if (reading.kind === "unrecognised") {
       // Not an empty Land: the API answered in a shape this adapter does not know,
       // which is exactly the case a fallback exists for.
@@ -172,7 +165,7 @@ export class MecklenburgVorpommernParldokSource implements Source {
     if (reading.kind === "absent") return withDiscoveryState({ refs: [], warnings }, [], warnings);
 
     const refs: DocRef[] = [];
-    for (const doc of reading.value.docs) {
+    for (const { doc } of reading.value) {
       const ref = toRef(doc, warnings);
       if (ref !== undefined) refs.push(ref);
     }

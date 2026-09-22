@@ -23,6 +23,7 @@
     "dist/src"
   ],
   "devDependencies": {
+    "@maschinenlesbar.org/openka-lib-http": "0.0.1",
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
   },
   "scripts": {

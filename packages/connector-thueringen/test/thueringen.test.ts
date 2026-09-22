@@ -22,6 +22,7 @@ import {
   successPayload,
 } from "../src/index.js";
 import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
+import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 
 const { readFixtureText } = fixtures(import.meta.url);
 
@@ -157,6 +158,46 @@ describe("Thüringen source", () => {
     });
     strictEqual(requests.filter((request) => request.url.includes("Fulltext/Search")).length, 1);
     strictEqual(requests.filter((request) => request.url.includes("Process/Document")).length, 13);
+  });
+
+
+  it("pages through a listing longer than one page", async () => {
+    // One page carries at most 200 hits and the count says how many there are.
+    // Asking once and stopping turned a Wahlperiode of 2 000 Kleine Anfragen into
+    // exactly 200 with no sign of the rest.
+    const first = JSON.parse(LISTING) as { data: string };
+    const inner = JSON.parse(first.data) as { count: number; docs: Record<string, unknown>[] };
+    const total = inner.docs.length * 2;
+    const page = (docs: Record<string, unknown>[], queryid: number): string =>
+      JSON.stringify({ ...first, data: JSON.stringify({ ...inner, queryid, count: total, docs }) });
+    const second = inner.docs.map((doc) => ({ ...doc, id: (doc["id"] as number) + 100000, number: `9${String(doc["number"])}` }));
+    const starts: number[] = [];
+    const processQueryIds: number[] = [];
+    const transport: Transport = async (request) => {
+      if (!request.url.includes("Fulltext/Search")) {
+        const asked = JSON.parse(decodeURIComponent(String(request.body).replace(/^data=/, ""))) as { queryid: number };
+        processQueryIds.push(asked.queryid);
+        return { status: 200, headers: {}, body: Buffer.from(PROCESS, "utf8") };
+      }
+      const body = JSON.parse(decodeURIComponent(String(request.body).replace(/^data=/, ""))) as { limit: { Start: number } };
+      starts.push(body.limit.Start);
+      const text = body.limit.Start === 0 ? page(inner.docs, 1) : page(second, 2);
+      return { status: 200, headers: {}, body: Buffer.from(text, "utf8") };
+    };
+    const result = await new ThueringenParldokSource().discover({ engine: testEngine(transport), state: { source: "thueringen", http_cache: {} } });
+    strictEqual(result.refs.length, total);
+    deepStrictEqual(starts, [0, inner.docs.length]);
+    strictEqual(new Set(result.refs.map((ref) => ref.key)).size, total);
+    // Each hit keeps the query id of its own page for the Vorgang lookup.
+    const lookups = processQueryIds;
+    deepStrictEqual([...new Set(lookups)].sort(), [1, 2]);
+  });
+
+  it("stops paging at --limit", async () => {
+    const { transport: scripted, requests } = transport();
+    const result = await new ThueringenParldokSource().discover({ engine: testEngine(scripted), state: { source: "thueringen", http_cache: {} }, limit: 5 });
+    strictEqual(result.refs.length, 5);
+    strictEqual(requests.filter((request) => request.url.includes("Fulltext/Search")).length, 1);
   });
 
   it("asks for the Kleine Anfrage Dokumentart, the Wahlperiode and the window", async () => {
