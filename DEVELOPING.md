@@ -53,8 +53,10 @@ src/index.ts             the library entry point: the line's public surface
 test/                    the cross-package integration suite
 ```
 
-Each package builds to its own `dist/src` and `dist/test`, and keeps its own tests
-and fixtures. Everything except the root is `private`; the root bundles them into a
+**Every package has a README** — what it does, its public surface, what it depends on
+and why, the tests it runs and the fixtures it holds. That folder is meant to be
+enough on its own; this file is the map between them. Each package builds to its own
+`dist/src` and `dist/test`, and keeps its own tests and fixtures beside its code. Everything except the root is `private`; the root bundles them into a
 single published tarball with both bins.
 
 **Why `lib-verify` is not part of `lib-repro`.** Verification re-runs extraction over
@@ -73,6 +75,48 @@ that split, `lib-store`'s tests using `lib-testing` — which itself depends on
 model provider's host, or import the factory. The roots are discovered from
 `packages/` rather than listed, so a new connector is covered the moment it exists.
 It runs in CI on every push.
+
+## Package index
+
+| package | |
+|---|---|
+| [`cli-ka-factory`](packages/cli-ka-factory/README.md) | `ka-factory` — build-time tooling, deliberately unreachable from the line. |
+| [`cli-ka`](packages/cli-ka/README.md) | `ka` — the read/write CLI over a corpus. |
+| [`connector-baden-wuerttemberg`](packages/connector-baden-wuerttemberg/README.md) | Landtag Baden-Württemberg — reachable today, no adapter of its own yet. |
+| [`connector-bayern`](packages/connector-bayern/README.md) | Bayerischer Landtag — reachable today, no adapter of its own yet. |
+| [`connector-berlin`](packages/connector-berlin/README.md) | Berlin publishes its parliamentary documentation as open data — the only Land that does. |
+| [`connector-brandenburg`](packages/connector-brandenburg/README.md) | Landtag Brandenburg — reachable today, no adapter of its own yet. |
+| [`connector-bremen`](packages/connector-bremen/README.md) | Bremische Bürgerschaft — reachable today, no adapter of its own yet. |
+| [`connector-bund`](packages/connector-bund/README.md) | The Bundestag, through DIP — the cleanest source in the project. |
+| [`connector-hamburg`](packages/connector-hamburg/README.md) | Hamburgische Bürgerschaft — reachable today, no adapter of its own yet. |
+| [`connector-hessen`](packages/connector-hessen/README.md) | Hessischer Landtag — reachable today, no adapter of its own yet. |
+| [`connector-mecklenburg-vorpommern`](packages/connector-mecklenburg-vorpommern/README.md) | Landtag Mecklenburg-Vorpommern — reachable today, no adapter of its own yet. |
+| [`connector-niedersachsen`](packages/connector-niedersachsen/README.md) | The Land where the answer is a different Drucksache and nothing links the two. |
+| [`connector-nordrhein-westfalen`](packages/connector-nordrhein-westfalen/README.md) | The largest Landtag, and the one that runs the Parlamentsspiegel for all sixteen. |
+| [`connector-rheinland-pfalz`](packages/connector-rheinland-pfalz/README.md) | Landtag Rheinland-Pfalz — reachable today, no adapter of its own yet. |
+| [`connector-saarland`](packages/connector-saarland/README.md) | A Land that looked like a source of scanned PDFs, and was not. |
+| [`connector-sachsen-anhalt`](packages/connector-sachsen-anhalt/README.md) | Landtag von Sachsen-Anhalt — reachable today, no adapter of its own yet. |
+| [`connector-sachsen`](packages/connector-sachsen/README.md) | Documents behind EDAS, a frameset viewer. |
+| [`connector-schleswig-holstein`](packages/connector-schleswig-holstein/README.md) | Schleswig-Holsteinischer Landtag — reachable today, no adapter of its own yet. |
+| [`connector-thueringen`](packages/connector-thueringen/README.md) | Question and answer in one Vorgang, published as two unrelated Drucksachen. |
+| [`lib-errors`](packages/lib-errors/README.md) | The error types the whole project throws. |
+| [`lib-extract`](packages/lib-extract/README.md) | The deterministic tier stack, the frozen segmentation rules, and the last gate before a record is published. |
+| [`lib-http`](packages/lib-http/README.md) | Every HTTP request the project makes, and the rules it makes them under. |
+| [`lib-models`](packages/lib-models/README.md) | The canonical record — the standardized format at the heart of the project. |
+| [`lib-pardok`](packages/lib-pardok/README.md) | The `Parlamentsspiegel Export 1.0` XML format. |
+| [`lib-parlamentsspiegel`](packages/lib-parlamentsspiegel/README.md) | The Länder's shared research portal — and the fallback for every Land without an adapter. |
+| [`lib-pdf`](packages/lib-pdf/README.md) | A PDF reader written from scratch, because the alternative was a dependency that guesses. |
+| [`lib-perceive`](packages/lib-perceive/README.md) | The only place a trained model may run on the line. |
+| [`lib-pipeline`](packages/lib-pipeline/README.md) | discover → fetch → extract → normalize → store. |
+| [`lib-registry`](packages/lib-registry/README.md) | Every parliament OpenKA covers, and the honest state of its adapter. |
+| [`lib-render`](packages/lib-render/README.md) | Renderings of the one canonical record: JSON, JSON-LD, CSV, Markdown and Atom. |
+| [`lib-repro`](packages/lib-repro/README.md) | The byte-level foundation of the reproducibility guarantee. |
+| [`lib-search`](packages/lib-search/README.md) | Keyword search over the index, and semantic search over vectors the factory froze. |
+| [`lib-source`](packages/lib-source/README.md) | The `Source` protocol, and the scraping helpers the connectors share. |
+| [`lib-store`](packages/lib-store/README.md) | The corpus: content-addressed blobs, canonical records, a catalog and an inverted index. |
+| [`lib-testing`](packages/lib-testing/README.md) | The seams, pre-wired: an in-memory store, a scripted transport, and fixture access. |
+| [`lib-text`](packages/lib-text/README.md) | One implementation of text hygiene, with three intentions. |
+| [`lib-verify`](packages/lib-verify/README.md) | Proving reproducibility on demand. |
 
 ## The seams
 

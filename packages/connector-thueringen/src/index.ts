@@ -1,11 +1,17 @@
 // Thüringen: the Thüringer Landtag, whose Parlamentsdatenbank keeps the question
 // and the answer in one Vorgang but publishes them as two unrelated Drucksachen.
 //
-// The Parlamentsspiegel knows an answer exists — its row says "1 weiteres Dokument"
-// — and does not render it, so the aggregator alone yields question-only records.
-// Nothing in the question document names the answer either; it is published weeks
-// later under a Drucksachennummer with no relation to the Kleine Anfrage's (8/979
-// is answered by 8/1715).
+// The answer's Drucksachennummer has no relation to the Kleine Anfrage's — 8/979 is
+// answered by 8/1715 — and nothing in the question document names it; it is
+// published weeks later.
+//
+// The Parlamentsspiegel does list it, as a follow-up document. This comment used to
+// say it did not, which was an artefact of the aggregator parser splitting a result
+// block on the `ps-folge` class: the portal emits that class only when the search
+// filtered some of a Vorgang's follow-ups away, and every Thüringen row is
+// unfiltered. Since that was fixed the row yields the answer's Parldok link, its
+// date and the answering ministry, and the API below confirms the paper rather than
+// being the only route to it.
 //
 // Parldok is a single-page application whose search runs over a JSON API. This
 // adapter uses two of its endpoints, in the same way the application does:
