@@ -3,7 +3,7 @@
 // catalog rows. No record is loaded from disk unless a phrase has to be confirmed
 // or a snippet is requested.
 
-import { containsPhrase, parseQuery, scoreTerm, shardOf, type Posting } from "../store/fts.js";
+import { containsPhrase, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "../store/fts.js";
 import type { CatalogEntry, Store } from "../store/store.js";
 
 export interface SearchFilters {
@@ -66,10 +66,15 @@ export function search(store: Store, query: string, options: SearchOptions = {})
   const offset = options.offset ?? 0;
 
   let ranked: SearchHit[];
-  if (parsed.required.length === 0 && parsed.excluded.length === 0) {
+  if (parsed.required.length === 0) {
+    // Nothing to rank by, so the catalog is the candidate set. A query that is
+    // only exclusions (`-sanierung`) still has to remove what it excludes —
+    // answering it with nothing would read as "no such records exist", which is
+    // the opposite of what was asked.
+    const excluded = excludedIds(store, parsed);
     ranked = store
       .catalog()
-      .filter((entry) => matchesFilters(entry, options))
+      .filter((entry) => !excluded.has(entry.id) && matchesFilters(entry, options))
       .map((entry) => ({ entry, score: 0 }));
   } else {
     ranked = rank(store, parsed, options);
@@ -85,7 +90,7 @@ export function search(store: Store, query: string, options: SearchOptions = {})
   return { total: ranked.length, hits: page };
 }
 
-function rank(store: Store, parsed: ReturnType<typeof parseQuery>, filters: SearchFilters): SearchHit[] {
+function rank(store: Store, parsed: ParsedQuery, filters: SearchFilters): SearchHit[] {
   const total = store.catalog().length;
   const scores = new Map<string, number>();
   const matchedTerms = new Map<string, number>();
@@ -98,10 +103,7 @@ function rank(store: Store, parsed: ReturnType<typeof parseQuery>, filters: Sear
     }
   }
 
-  const excluded = new Set<string>();
-  for (const term of parsed.excluded) {
-    for (const [id] of postingsFor(store, term)) excluded.add(id);
-  }
+  const excluded = excludedIds(store, parsed);
 
   const hits: SearchHit[] = [];
   for (const [id, score] of scores) {
@@ -117,6 +119,15 @@ function rank(store: Store, parsed: ReturnType<typeof parseQuery>, filters: Sear
   // Ties break on id so that two runs over the same corpus print the same order.
   hits.sort((a, b) => b.score - a.score || (a.entry.id < b.entry.id ? -1 : a.entry.id > b.entry.id ? 1 : 0));
   return hits;
+}
+
+/** Every document id carrying one of the query's `-term`s. */
+function excludedIds(store: Store, parsed: ParsedQuery): Set<string> {
+  const excluded = new Set<string>();
+  for (const term of parsed.excluded) {
+    for (const [id] of postingsFor(store, term)) excluded.add(id);
+  }
+  return excluded;
 }
 
 function postingsFor(store: Store, term: string): Posting[] {

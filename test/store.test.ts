@@ -156,6 +156,14 @@ describe("indexing and search", () => {
     deepStrictEqual(result.hits.map((hit) => hit.entry.id), ["berlin-19-12345"]);
   });
 
+  it("answers a query that is only exclusions with everything else", () => {
+    // `-bund` is a real constraint, not an empty query: it means "everything that
+    // does not mention it", never "nothing".
+    const result = search(corpus(), "-bund");
+    strictEqual(result.total, 2);
+    ok(!result.hits.some((hit) => hit.entry.id === "bund-21-7563"));
+  });
+
   it("filters by parliament, party and year", () => {
     const store = corpus();
     strictEqual(search(store, "", { parliament: ["bund"] }).total, 1);
