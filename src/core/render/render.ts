@@ -9,6 +9,7 @@
 import { canonicalJson, canonicalJsonLine } from "../repro/canonical.js";
 import type { KaRecord } from "../models/schema.js";
 import { parliamentByKey } from "../models/parliaments.js";
+import { stripControlCharacters } from "../text.js";
 
 export const RENDER_FORMATS = ["json", "jsonld", "csv", "md", "text"] as const;
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
@@ -87,7 +88,8 @@ const CSV_FORMULA_LEAD = /^[=+\-@\t\r]/;
  * carry every value exactly as extracted.
  */
 export function csvCell(value: string): string {
-  const safe = CSV_FORMULA_LEAD.test(value) ? `'${value}` : value;
+  const clean = stripControlCharacters(value);
+  const safe = CSV_FORMULA_LEAD.test(clean) ? `'${clean}` : clean;
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
@@ -141,7 +143,15 @@ export function renderCsvRow(record: KaRecord): string {
   return CSV_COLUMNS.map((column) => csvCell(cells[column])).join(",");
 }
 
-/** A readable rendering for a terminal or a repository. */
+/**
+ * A readable rendering for a terminal or a repository.
+ *
+ * Human-facing renderings strip control characters; `json` and `jsonld` do not,
+ * deliberately — those must stay byte-identical to what is on disk, which is what
+ * `ka verify` compares, and the store refuses to write a record carrying one in
+ * the first place. This is the belt to that braces, for a corpus an older build
+ * wrote.
+ */
 export function renderMarkdown(record: KaRecord): string {
   const parliament = parliamentByKey(record.parliament);
   const lines: string[] = [];
@@ -189,17 +199,18 @@ export function renderMarkdown(record: KaRecord): string {
   for (const source of record.source_documents) {
     lines.push(`- source (${source.role}): ${source.url}${source.url_stable ? "" : " _(link expires upstream)_"}`);
   }
-  return lines.join("\n") + "\n";
+  return stripControlCharacters(lines.join("\n")) + "\n";
 }
 
 /** A plain-text rendering: the full text if there is one, else the Q/A pairs. */
 export function renderText(record: KaRecord): string {
-  if (record.full_text !== undefined && record.full_text !== "") return record.full_text + "\n";
-  return (
+  if (record.full_text !== undefined && record.full_text !== "") {
+    return stripControlCharacters(record.full_text) + "\n";
+  }
+  return stripControlCharacters(
     record.qa
       .map((pair) => `Frage ${pair.number}:\n${pair.question ?? "(abstained)"}\n\nAntwort zu ${pair.number}:\n${pair.answer ?? "(abstained)"}`)
-      .join("\n\n") + "\n"
-  );
+      .join("\n\n")) + "\n";
 }
 
 export function renderRecord(record: KaRecord, format: RenderFormat): string {

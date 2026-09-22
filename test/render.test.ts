@@ -64,6 +64,10 @@ describe("CSV", () => {
     strictEqual(csvCell("Brücken im Bund"), '"Brücken im Bund"');
   });
 
+  it("strips a control character from a cell", () => {
+    strictEqual(csvCell("Titel\u009b31m"), '"Titel 31m"');
+  });
+
   it("has a header matching its columns", () => {
     strictEqual(csvHeader().split(",").length, CSV_COLUMNS.length);
     strictEqual(renderCsvRow(sampleRecord()).split('","').length, CSV_COLUMNS.length);
@@ -104,6 +108,18 @@ describe("Markdown", () => {
     match(text, /Als Verschlusssache gekennzeichnet/);
     match(text, /Anlagen: Anlage 1/);
     match(text, /_\(link expires upstream\)_/);
+  });
+});
+
+describe("human-facing renderings and control characters", () => {
+  it("strips them from markdown and text but not from json", () => {
+    // json must stay byte-identical to what is on disk — that is what `ka verify`
+    // compares — and the store refuses to write a record carrying one anyway.
+    // These renderings are the belt to that braces, for an older corpus.
+    const dirty = sampleRecord({ title: "Titel\u009b31m" });
+    strictEqual(renderMarkdown(dirty).includes("\u009b"), false);
+    strictEqual(renderText(dirty).includes("\u009b"), false);
+    strictEqual(renderJson(dirty).includes("\u009b"), true);
   });
 });
 
