@@ -2,6 +2,7 @@
 // "we have some text" and "we have a record".
 
 import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { parseReference } from "../src/core/models/reference.js";
 import { describe, it } from "node:test";
 import {
   ANTWORT_FOLGT,
@@ -20,7 +21,6 @@ import {
   findMarkers,
   findMinistry,
   findReference,
-  parseReference,
   parseGermanDate,
   parseUrheber,
   periodFromReference,
@@ -494,10 +494,12 @@ describe("metadata rules", () => {
 
   it("normalises a string that is already a reference, without a label", () => {
     // Whole-string, the way `parseGermanDate` is to `findDate`.
-    strictEqual(parseReference("19 / 10 006"), "19/10006");
-    strictEqual(parseReference(" 18/27064 "), "18/27064");
+    deepStrictEqual(parseReference("19 / 10 006"), { period: 19, number: "10006" });
+    deepStrictEqual(parseReference(" 18/27064 "), { period: 18, number: "27064" });
     strictEqual(parseReference("Drucksache 19/10006"), undefined);
     strictEqual(parseReference("2/3 der Stimmen"), undefined);
+    // Leading zeros are how a Land prints it and are not ours to drop.
+    deepStrictEqual(parseReference("08/980"), { period: 8, number: "980" });
   });
 
   it("splits a PARDOK Urheber field into askers", () => {

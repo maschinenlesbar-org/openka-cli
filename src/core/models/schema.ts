@@ -9,6 +9,8 @@
 //   * `abstained_fields` is a first-class output. A record may publish with holes.
 //     Holes are honest; invented content is not.
 
+import { referenceSlug } from "./reference.js";
+
 import type { ParliamentKey } from "./parliaments.js";
 
 /** Bumped only by a reviewed decision — never by an agent (CONCEPT.md §8). */
@@ -130,12 +132,5 @@ export interface KaRecord {
  * the same id — the printed form stays in `reference`.
  */
 export function makeRecordId(parliament: string, period: number, reference: string): string {
-  const tail = reference.includes("/") ? reference.slice(reference.indexOf("/") + 1) : reference;
-  const slug = tail
-    .replace(/\s+/g, "")
-    .replace(/[^0-9A-Za-z-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
-  return `${parliament}-${period}-${slug}`;
+  return `${parliament}-${period}-${referenceSlug(reference)}`;
 }

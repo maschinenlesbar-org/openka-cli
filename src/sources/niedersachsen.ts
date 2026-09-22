@@ -15,6 +15,7 @@
 // reachable from outside. DEVELOPING.md records what was tried.
 
 import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
+import { parseReference } from "../core/models/reference.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
 export const LANDTAG_NDS = "https://www.landtag-niedersachsen.de";
@@ -90,9 +91,8 @@ export function niedersachsenUrl(period: number, number: number): string {
 
 /** The numeric part of a Drucksachennummer, or `undefined` if it is not one. */
 export function numberOf(reference: string): number | undefined {
-  const match = /^\s*(\d{1,2})\s*\/\s*(\d{1,6})\s*$/.exec(reference);
-  if (match === null) return undefined;
-  return Number(match[2]);
+  const parsed = parseReference(reference);
+  return parsed === undefined ? undefined : Number(parsed.number);
 }
 
 /**

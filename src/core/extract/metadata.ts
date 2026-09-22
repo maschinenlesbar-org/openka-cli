@@ -5,6 +5,7 @@
 // does not match. Callers turn that into an abstention.
 
 import { isCalendarDate } from "../models/validate.js";
+import { formatReference, parseReference } from "../models/reference.js";
 
 const MONTHS: Record<string, number> = {
   januar: 1, februar: 2, "märz": 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7,
@@ -73,18 +74,6 @@ const REFERENCE_BODY = String.raw`(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\
 const REFERENCE_LABEL = String.raw`(?:(?:[A-Za-zÄÖÜäöü]{1,4}-)?(?:Drucksachen?|Drucks\.?|Drs\.?)|(?:Kleine|Schriftliche|Gro(?:ß|ss)e)[ \t]+Anfrage)[ \t]*(?:Nr\.?[ \t]*)?`;
 
 /**
- * Normalise a string that *is* a reference. The spaces Berlin's cover page inserts
- * for legibility are removed from the numeric part; the printed slash form is kept,
- * because that is what a citation looks like.
- *
- * Whole-string, like `parseGermanDate` — use `findReference` to look inside prose.
- */
-export function parseReference(value: string): string | undefined {
-  const match = new RegExp(`^[ \\t]*${REFERENCE_BODY}[ \\t]*$`).exec(value);
-  return match === null ? undefined : normaliseReference(match);
-}
-
-/**
  * Find the Drucksachennummer in a document's text.
  *
  * The number has to be introduced by its label. A bare `a/b` is not evidence of a
@@ -101,17 +90,14 @@ export function findReference(text: string): string | undefined {
 }
 
 function normaliseReference(match: RegExpExecArray): string | undefined {
-  const period = match[1] as string;
-  const number = (match[2] as string).replace(/[ \t]+/g, "");
-  return number === "" ? undefined : `${period}/${number}`;
+  const parsed = parseReference(`${match[1]}/${match[2]}`);
+  return parsed === undefined ? undefined : formatReference(parsed);
 }
 
 /** The legislative period from a reference such as `19/10006`. */
 export function periodFromReference(reference: string): number | undefined {
-  const match = /^(\d{1,2})\s*\//.exec(reference);
-  if (match === null) return undefined;
-  const period = Number(match[1]);
-  return Number.isInteger(period) && period > 0 ? period : undefined;
+  const period = parseReference(reference)?.period;
+  return period !== undefined && period > 0 ? period : undefined;
 }
 
 export interface ParsedAsker {

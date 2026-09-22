@@ -20,6 +20,7 @@
 // sync — and the Landtag publishing a documented interface would let all of this
 // be deleted.
 
+import { parseReference } from "../core/models/reference.js";
 import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "./base.js";
 import { ParlamentsspiegelSource } from "./parlamentsspiegel.js";
 
@@ -168,7 +169,7 @@ export class ThueringenSource implements Source {
     options: DiscoverOptions,
     warnings: string[],
   ): Promise<{ url: string; reference?: string } | undefined> {
-    const number = ref.reference.includes("/") ? ref.reference.split("/")[1] : ref.reference;
+    const number = parseReference(ref.reference)?.number ?? ref.reference;
     if (number === undefined || number === "") return undefined;
     try {
       const search = await options.engine.post(`${PARLDOK_API}/Fulltext/Search`, {
