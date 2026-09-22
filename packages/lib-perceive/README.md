@@ -16,6 +16,14 @@ a 10 MB WASM module.
 This package is part of the **extraction digest**: changing it changes what a
 document turns into, so `npm run stamp` and a golden re-freeze are required.
 
+**These tests never touch the host's Tesseract, and no test anywhere should.** The
+suite drives a stub `tesseract` written to a temp directory and an injected
+`tesseract.js` module. `lib-extract` used to carry two tests against the real binary
+instead: one passed only on a machine that happened to have Tesseract installed and
+failed in CI, the other guarded itself with `t.skip` and therefore never ran there at
+all. A test whose result depends on what is installed is either a false failure or
+dead coverage wearing a green tick.
+
 ## What is in here
 
 - **`src/perceiver.ts`** — The only place a trained model may run on the line (CONCEPT.md §6).

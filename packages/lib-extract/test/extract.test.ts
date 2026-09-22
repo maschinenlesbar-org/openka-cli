@@ -1,7 +1,7 @@
 // Segmentation, metadata rules, validators and the tier stack — everything between
 // "we have some text" and "we have a record".
 
-import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { formatReference, parseReference, periodNumber, type Reference } from "@maschinenlesbar.org/openka-lib-models";
 import { describe, it } from "node:test";
 import {
@@ -29,7 +29,6 @@ import {
 import { validateExtractedRecord } from "../src/validators.js";
 import { extract } from "../src/tiers.js";
 import { abstainingPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
-import { TesseractCliPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { normalizeSpaces } from "@maschinenlesbar.org/openka-lib-pdf";
 import { sampleRecord, questionPaper, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
@@ -1087,24 +1086,3 @@ describe("the tier stack", () => {
   });
 });
 
-describe("OCR provenance", () => {
-  it("refuses to describe a run whose weights it cannot hash", () => {
-    // Tesseract's output depends entirely on the traineddata — two `deu` builds
-    // give different text — so a record naming only the binary version claims a
-    // provenance it does not have, and `ka verify` could not tell the model had
-    // changed. `--ocr-traineddata` was optional, so that was the default.
-    const perceiver = new TesseractCliPerceiver({ traineddataPath: "/nonexistent.traineddata" });
-    throws(() => perceiver.artifact(), /Traineddata not found/);
-  });
-
-  it("hashes the weights it found into the artifact", (t) => {
-    const perceiver = new TesseractCliPerceiver({ language: "eng" });
-    if (!perceiver.available()) {
-      t.skip("tesseract is not on PATH here");
-      return;
-    }
-    const artifact = perceiver.artifact();
-    match(artifact.version, /^tesseract-/);
-    match(artifact.weights_sha256 ?? "", /^[0-9a-f]{64}$/);
-  });
-});
