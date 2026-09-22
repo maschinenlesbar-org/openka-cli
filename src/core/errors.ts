@@ -40,6 +40,13 @@ export class ParseError extends OpenKaError {}
 export class StoreError extends OpenKaError {}
 
 /**
+ * A combination of options that cannot be honoured. Exits 2, like a parse error,
+ * because the alternative — running anyway and ignoring what was asked — is the
+ * silently-dropped constraint this CLI refuses to produce.
+ */
+export class UsageError extends OpenKaError {}
+
+/**
  * An extractor refused to produce a value it could not derive with certainty.
  * Carrying this as an error type (rather than a null) keeps "we do not know" from
  * being mistaken for "there is nothing there" anywhere on the line.

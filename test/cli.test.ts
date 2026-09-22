@@ -338,6 +338,20 @@ describe("ka-factory", () => {
     deepStrictEqual(spread(ids, 100), ids);
   });
 
+  it("refuses --like combined with options it cannot honour", async () => {
+    // Accepting them and quietly dropping them is the silently-ignored constraint
+    // this CLI refuses everywhere else.
+    const harness = cliHarness();
+    for (const argv of [
+      ["search", "solaranlagen", "--like", "berlin-19-10006"],
+      ["search", "--like", "berlin-19-10006", "--offset", "5"],
+      ["search", "--like", "berlin-19-10006", "--snippet"],
+    ]) {
+      strictEqual(await run([...argv, "--corpus", harness.corpus], harness.deps), EXIT_USAGE, argv.join(" "));
+    }
+    match(harness.stderr(), /--like cannot be combined with/);
+  });
+
   it("verifies the committed goldens", async () => {
     const harness = cliHarness();
     strictEqual(await runFactory(["goldens", "verify", "--dir", "fixtures"], harness.deps), EXIT_OK);

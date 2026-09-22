@@ -3,7 +3,7 @@
 // captured output and the exit code.
 
 import { CommanderError, type Command } from "commander";
-import { AbstainError, OpenKaApiError, OpenKaError, StoreError } from "../core/errors.js";
+import { AbstainError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "../core/errors.js";
 import { buildProgram, defaultDeps } from "./program.js";
 import type { CliDeps } from "./io.js";
 
@@ -51,6 +51,10 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     if (err instanceof OpenKaApiError) {
       deps.io.err(`Error: ${err.message}`);
       return err.status === 404 ? EXIT_NOT_FOUND : EXIT_ERROR;
+    }
+    if (err instanceof UsageError) {
+      deps.io.err(`Error: ${err.message}`);
+      return EXIT_USAGE;
     }
     if (err instanceof StoreError) {
       deps.io.err(`Error: ${err.message}`);

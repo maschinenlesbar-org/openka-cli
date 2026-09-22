@@ -1,7 +1,7 @@
 // The read side: `search`, `get`, `show` and `open`.
 
 import type { Command } from "commander";
-import { OpenKaError } from "../../core/errors.js";
+import { OpenKaError, UsageError } from "../../core/errors.js";
 import { parliamentByKey, ParliamentKeys } from "../../core/models/parliaments.js";
 import { ReviewStatuses } from "../../core/models/schema.js";
 import { search } from "../../core/search/search.js";
@@ -74,6 +74,21 @@ export function registerQuery(program: Command, deps: CliDeps): void {
       const limit = (ctx.opts["limit"] as number | undefined) ?? 20;
 
       if (ctx.opts["like"] !== undefined) {
+        // The semantic path honours the filters and --limit, and nothing else.
+        // Accepting the rest and quietly dropping them is the failure this CLI
+        // refuses elsewhere: a search that ignores what it was asked for and
+        // answers something different.
+        const ignored = [
+          positionals[0] !== undefined && positionals[0] !== "" ? "a query argument" : undefined,
+          ctx.opts["offset"] !== undefined ? "--offset" : undefined,
+          ctx.opts["snippet"] === true ? "--snippet" : undefined,
+        ].filter((name): name is string => name !== undefined);
+        if (ignored.length > 0) {
+          throw new UsageError(
+            `--like cannot be combined with ${ignored.join(", ")}. Semantic search ranks by ` +
+              "similarity to one record; it has no query terms to offset or to highlight.",
+          );
+        }
         const hits = searchLike(store, ctx.opts["like"] as string, { ...filters, limit });
         if (ctx.opts["json"] === true) {
           printJson(ctx, { total: hits.length, hits });
