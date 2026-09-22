@@ -44,6 +44,24 @@ export interface PardokOptions {
 }
 
 /**
+ * The key discovery dedupes and orders refs by.
+ *
+ * PARDOK identifies a Vorgang three ways and not every export carries all of them,
+ * so this falls through `VID`, `VNr`, then the Drucksachennummer. Which field it
+ * came from is part of the identity: unprefixed, a `VNr` of "1234" and a `VID` of
+ * "1234" from different Vorgänge are the same key, and a reference used as the
+ * last resort collides with any other Vorgang sharing that Drucksachennummer.
+ * Naming the field makes those distinct and makes the key say where it came from.
+ */
+function discoveryKey(vorgang: XmlNode, reference: string): string {
+  const vid = childText(vorgang, "VID");
+  if (vid !== undefined) return `VID:${vid}`;
+  const vnr = childText(vorgang, "VNr");
+  if (vnr !== undefined) return `VNr:${vnr}`;
+  return `ref:${reference}`;
+}
+
+/**
  * Convert one `<Vorgang>` into a DocRef, or `undefined` when it is not an Anfrage,
  * is a deletion marker, or lacks the fields a record needs to have an identity.
  */
@@ -83,7 +101,7 @@ export function pardokVorgangToRef(vorgang: XmlNode, options: PardokOptions = {}
   const refDocuments = collectDocuments(question, answer);
 
   const ref: DocRef = {
-    key: childText(vorgang, "VID") ?? childText(vorgang, "VNr") ?? reference,
+    key: discoveryKey(vorgang, reference),
     reference,
     legislative_period: period,
     title: childText(question, "Titel") ?? "",

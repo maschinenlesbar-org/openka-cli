@@ -110,6 +110,19 @@ describe("Parlamentsspiegel export format", () => {
     strictEqual(pardokVorgangToRef(parseXml(other)), undefined);
   });
 
+  it("namespaces the discovery key by the field it came from", () => {
+    const doc = `<Dokument><DokTyp>SchrAnfr</DokTyp><DokNr>19/1234</DokNr><Wp>19</Wp></Dokument>`;
+    const keyOf = (head: string): string | undefined =>
+      pardokVorgangToRef(parseXml(`<Vorgang>${head}${doc}</Vorgang>`))?.key;
+
+    strictEqual(keyOf("<VID>1234</VID><VNr>7</VNr>"), "VID:1234");
+    strictEqual(keyOf("<VNr>1234</VNr>"), "VNr:1234");
+    strictEqual(keyOf(""), "ref:19/1234");
+    // Unprefixed these three were the same string, so a Vorgang identified by its
+    // VNr shadowed an unrelated one whose VID happened to carry the same digits.
+    strictEqual(new Set([keyOf("<VID>1234</VID>"), keyOf("<VNr>1234</VNr>"), keyOf("")]).size, 3);
+  });
+
   it("filters by Herkunft so an aggregated feed yields one Land", () => {
     strictEqual([...parsePardokExport(xml, { herkunft: "XX" })].length, 0);
   });
