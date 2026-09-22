@@ -11,6 +11,7 @@ import {
   applyRules,
   expandNumbers,
   normaliseNumber,
+  RULE_SETS,
   segmentQa,
   groupedAnswerNumbers,
   splitAtAnswerDivider,
@@ -524,6 +525,38 @@ describe("metadata rules", () => {
     const markers = findMarkers("siehe Anlage 2 und Anlage 10.\nVS-NUR FÜR DEN DIENSTGEBRAUCH");
     strictEqual(markers.classified, true);
     deepStrictEqual(markers.attachments_referenced, ["Anlage 2", "Anlage 10"]);
+  });
+});
+
+describe("a question number that appears twice", () => {
+  const doc = (lines: string[]) => lines.join("\n");
+
+  it("abstains when the two occurrences ask different things", () => {
+    // Keeping the first is right for a restatement and wrong for a contradiction,
+    // and from here they are indistinguishable — so the question abstains rather
+    // than one of them being picked silently.
+    const result = segmentQa(
+      doc(["Frage 1:", "ERSTE FRAGE?", "Antwort zu 1:", "X.", "Frage 1:", "GANZ ANDERE FRAGE?", "Antwort zu 1:", "Y."]),
+      RULE_SETS,
+    );
+    strictEqual(result.segments.length, 1);
+    strictEqual(result.segments[0]?.question, undefined);
+    strictEqual(result.segments[0]?.answer, "X.");
+  });
+
+  it("keeps the question for every restatement shape the corpus actually contains", () => {
+    const cases: [string, string[]][] = [
+      ["verbatim", ["Frage 1:", "Wie viele?", "Frage 1:", "Wie viele?", "Antwort zu 1:", "X."]],
+      ["one copy truncated", ["Frage 1:", "Wie viele Brücken sind marode?", "Frage 1:", "Wie viele Brücken", "Antwort zu 1:", "X."]],
+      // Baden-Württemberg's text layer inserts a space mid-word ("W elche"),
+      ["a space inside a word", ["Frage 1:", "W elche Träger?", "Frage 1:", "Welche Träger?", "Antwort zu 1:", "X."]],
+      // and breaks a word across a line ("Land-\nkreis" vs "Landkreis").
+      ["a hyphenated line break", ["Frage 1:", "Im Land-", "kreis Karlsruhe?", "Frage 1:", "Im Landkreis Karlsruhe?", "Antwort zu 1:", "X."]],
+    ];
+    for (const [label, lines] of cases) {
+      const result = segmentQa(doc(lines), RULE_SETS);
+      ok(result.segments[0]?.question !== undefined, `${label}: the question was dropped`);
+    }
   });
 });
 

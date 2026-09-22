@@ -526,6 +526,30 @@ export function applyRules(
   const order: string[] = [];
   const questions = new Map<string, string>();
   const answers = new Map<string, string>();
+  // Question numbers whose two occurrences ask different things. Keeping the first
+  // is right for a restatement and wrong for a contradiction, and from here the two
+  // are indistinguishable — so a contradiction abstains instead of picking a winner.
+  const contested = new Set<string>();
+  /**
+   * Whether a repeated heading restates the same question or asks a different one.
+   *
+   * Taken from the corpus, not assumed. Real restatements are *prefix*-identical:
+   * Bayern reprints its whole question list after the "Antwort" divider and the
+   * two copies agree until one of them stops, and Baden-Württemberg's differ only
+   * by a space the text layer inserted mid-word ("W elche" for "Welche"). So
+   * whitespace and hyphens are removed entirely rather than collapsed, and one
+   * text being the start of the other counts as the same question. The hyphens
+   * matter: Baden-Württemberg's two copies of question 6 agree for 131 characters
+   * and then read "Land-\nkreis" against "Landkreis", because one copy broke the
+   * word across a line. Requiring exact equality abstained on five correct Bayern
+   * questions and two Baden-Württemberg ones.
+   */
+  const restates = (a: string, b: string): boolean => {
+    const bare = (value: string): string => value.replace(/[\s\u00ad-]+/g, "").toLowerCase();
+    const x = bare(a);
+    const y = bare(b);
+    return x.startsWith(y) || y.startsWith(x);
+  };
 
   markers.forEach((marker, i) => {
     const whole = bodyBetween(lines, marker, markers[i + 1]);
@@ -537,11 +561,20 @@ export function applyRules(
       if (marker.kind === "question") {
         if (!order.includes(number)) order.push(number);
         if (split?.answer !== undefined && !answers.has(number)) answers.set(number, split.answer);
-        // A number repeated as a question heading means the document restates it
-        // (once in the question part, again above the answer); the first occurrence
-        // is the question as asked.
-        if (!questions.has(number)) questions.set(number, body);
+        // A number repeated as a question heading usually means the document
+        // restates it — once in the question part, again above the answer — and the
+        // first occurrence is the question as asked. When the restatement says
+        // something *different*, it is not a restatement, and which one is the
+        // question is not knowable from here.
+        const seenQuestion = questions.get(number);
+        if (seenQuestion === undefined) questions.set(number, body);
+        else if (!restates(seenQuestion, body)) contested.add(number);
       } else if (!answers.has(number)) {
+        // First occurrence wins, and unlike a question this is not negotiable on
+        // text: a real answer heading recurs mid-answer across a page break, and
+        // the Saarland reply to 17/1331 picks number 4 up again with "dargelegt,
+        // sind Konzeptvergaben …" — a continuation, not a second answer. Treating
+        // that as a contradiction abstained on three goldens' worth of correct text.
         answers.set(number, body);
         if (!order.includes(number)) order.push(number);
       }
@@ -562,7 +595,7 @@ export function applyRules(
     const segment: QaSegment = { number };
     const question = questions.get(number);
     const answer = answers.get(number);
-    if (question !== undefined && question !== "") segment.question = question;
+    if (question !== undefined && question !== "" && !contested.has(number)) segment.question = question;
     if (answer !== undefined && answer !== "") segment.answer = answer;
     return segment;
   });

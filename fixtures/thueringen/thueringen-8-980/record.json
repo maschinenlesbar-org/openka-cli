@@ -12,7 +12,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.1+extract:16001f42d847",
+    "extractor_version": "pkg:0.0.1+extract:0401d40b231a",
     "input_sha256": "df1cf65c008bf7bc81628768bebb70af4762d001c4c147779d60006907356f4c",
     "model_artifacts": [],
     "parse_complete": true,
