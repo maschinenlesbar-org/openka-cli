@@ -91,6 +91,8 @@ own interface; *aggregator* means the [Parlamentsspiegel](https://www.parlaments
 the Länder's shared portal run by the Landtag NRW. **Fallback** is what runs when the
 own interface throws or answers in a shape the connector does not recognise — never
 when it simply returns nothing. **Tier** is the extraction path the record declares.
+Whatever the source, every document is checked against its host's `robots.txt` before
+it is fetched; `--ignore-robots` overrides that, never silently.
 
 | `--source` | Parliament | Discovery | Tier | Documents per record | Fallback | Specific to this Land |
 | --- | --- | --- | --- | --- | --- | --- |

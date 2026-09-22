@@ -31,6 +31,15 @@ Everything is re-exported from the package root:
 DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements
 ```
 
+## robots.txt
+
+`RobotsPolicy` reads a host's `robots.txt` once per run and answers, per URL, whether it
+may be fetched — matched against the engine's User-Agent, with a 404 meaning nothing is
+disallowed. The pipeline asks it before every document fetch; a connector whose document
+server disallows everyone asks the one-shot `robotsGate` before discovering anything, so
+it produces nothing rather than metadata-only records. Under `--ignore-robots` both fetch
+anyway, say so in a warning, and slow the host to `ROBOTS_OVERRIDE_INTERVAL_MS`.
+
 ## Depends on
 
 - `lib-errors` — the shared error hierarchy

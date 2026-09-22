@@ -16,7 +16,7 @@ import { canonicalJson } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
-import type { DocRef, Source } from "@maschinenlesbar.org/openka-lib-source";
+import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 
 export interface SyncOptions {
   source: Source;
@@ -35,7 +35,9 @@ export interface SyncOptions {
   /**
    * Fetch from a server whose robots.txt disallows it. Two Länder publish their
    * Drucksachen openly and disallow every client; this is the operator's decision
-   * to make, and the sources that honour it warn on every record.
+   * to make. The pipeline checks every document URL against its host's robots.txt
+   * before fetching it, whichever source produced the URL, and the override is
+   * never silent: the report warns once per host.
    */
   ignoreRobots?: boolean;
   /** Called after each record, for progress output. */
@@ -119,6 +121,11 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
   // the end, so an interrupted sync cannot leave a validator recorded for bytes
   // that were never stored.
   const httpCache = { ...(discovered.state ?? state).http_cache };
+  const run: RunContext = {
+    robots: new RobotsPolicy(engine, options.ignoreRobots === true),
+    warnings: report.warnings,
+    notedOrigins: new Set(),
+  };
 
   // One catalog write for the whole run rather than one per record: the catalog
   // grows with the corpus, and rewriting it per record made a sync quadratic in
@@ -129,7 +136,7 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
     for (const ref of discovered.refs) {
       index++;
       try {
-        const outcome = await syncRef(ref, options, now, httpCache);
+        const outcome = await syncRef(ref, options, now, httpCache, run);
         if (outcome.action === "stored") {
           report.stored++;
           if (outcome.record !== undefined && outcome.record.extraction.abstained_fields.length > 0) {
@@ -166,6 +173,14 @@ export async function sync(options: SyncOptions): Promise<SyncReport> {
   return report;
 }
 
+/** What every document fetch of one run shares: the robots.txt verdicts and where to say so. */
+interface RunContext {
+  robots: RobotsPolicy;
+  warnings: string[];
+  /** Hosts already warned about, so a hundred documents on one host warn once. */
+  notedOrigins: Set<string>;
+}
+
 interface RefOutcome {
   id: string;
   action: "stored" | "unchanged";
@@ -178,6 +193,7 @@ async function syncRef(
   options: SyncOptions,
   now: () => Date,
   httpCache: SourceState["http_cache"],
+  run: RunContext,
 ): Promise<RefOutcome> {
   const { source, store, engine } = options;
   // A source pinned to one Land names it; one covering several leaves it to the
@@ -195,7 +211,7 @@ async function syncRef(
 
   if (!options.metadataOnly) {
     for (const wanted of ref.documents) {
-      const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache);
+      const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run);
       if (fetched === undefined) continue;
       bytesFetched += fetched.fromCache ? 0 : fetched.bytes.length;
       documents.push({
@@ -305,8 +321,9 @@ interface FetchedBytes {
 
 /**
  * Fetch a document, or take it from the blob store when the upstream says it has
- * not changed. Returns `undefined` for a document the upstream no longer serves;
- * that is a gap in the record, not a reason to abort the whole sync.
+ * not changed. Returns `undefined` for a document the upstream no longer serves,
+ * or one its host's robots.txt disallows and the operator did not override; either
+ * is a gap in the record, not a reason to abort the whole sync.
  *
  * Two things keep this polite. The conditional request means an unchanged PDF costs
  * one 304 and no bytes. And because the blob store is content-addressed, a document
@@ -320,7 +337,21 @@ async function fetchDocument(
   url: string,
   now: () => Date,
   httpCache: SourceState["http_cache"],
+  run: RunContext,
 ): Promise<FetchedBytes | undefined> {
+  // CONCEPT.md §7, at the one place every document URL passes through. A blob
+  // already archived under a validator is still re-asked: the rule is about
+  // requests, and a 304 is a request.
+  const verdict = await run.robots.decide(url);
+  if (verdict.note !== undefined) {
+    const origin = new URL(url).origin;
+    if (!run.notedOrigins.has(origin)) {
+      run.notedOrigins.add(origin);
+      run.warnings.push(verdict.note);
+    }
+  }
+  if (!verdict.allowed) return undefined;
+
   const cached = httpCache[url];
   const validators: { etag?: string; last_modified?: string } = {};
   if (cached?.etag !== undefined) validators.etag = cached.etag;

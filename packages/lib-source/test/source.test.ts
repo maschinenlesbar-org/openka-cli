@@ -1,10 +1,11 @@
 // The scraping helpers every connector shares: the XML reader, the HTML region
 // helpers, and the discovery window that decides which refs a sync fetches.
 
-import { deepStrictEqual, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { applyWindow, blocksWithClass, childText, decodeEntities, decodeHtml, firstHref, parseXml, parseXmlFragment, regionWithClass, spanTexts, streamElements, textOf, visibleTextOf } from "../src/index.js";
-import { testEngine } from "@maschinenlesbar.org/openka-lib-testing";
+import { scriptedTransport, testEngine } from "@maschinenlesbar.org/openka-lib-testing";
+import { ROBOTS_OVERRIDE_INTERVAL_MS, RobotsPolicy, robotsGate } from "../src/index.js";
 
 describe("XML reader", () => {
   it("parses elements, attributes and text", () => {
@@ -107,5 +108,59 @@ describe("discovery windows", () => {
 
   it("applies the limit after sorting", () => {
     deepStrictEqual(applyWindow(refs, { ...base, limit: 1 }).map((ref) => ref.key), ["a"]);
+  });
+});
+
+describe("robots policy", () => {
+  const DISALLOW_DOCS = "User-agent: *\nDisallow: /docs/\n";
+
+  it("reads a host's robots.txt once and applies it to every URL on it", async () => {
+    const { transport, requests } = scriptedTransport([{ match: "robots.txt", body: DISALLOW_DOCS }]);
+    const policy = new RobotsPolicy(testEngine(transport));
+    const first = await policy.decide("https://land.invalid/docs/1.pdf");
+    const second = await policy.decide("https://land.invalid/docs/2.pdf?x=1");
+    const open = await policy.decide("https://land.invalid/open/3.pdf");
+    strictEqual(first.allowed, false);
+    strictEqual(second.allowed, false);
+    strictEqual(open.allowed, true);
+    strictEqual(requests.filter((request) => request.url.endsWith("/robots.txt")).length, 1);
+    ok(first.note?.includes("--ignore-robots"));
+  });
+
+  it("fetches under override, says so, and slows the host down", async () => {
+    const { transport } = scriptedTransport([{ match: "robots.txt", body: DISALLOW_DOCS }]);
+    const engine = testEngine(transport);
+    const slowed: [string, number][] = [];
+    engine.slowDown = (host, ms) => slowed.push([host, ms]);
+    const verdict = await new RobotsPolicy(engine, true).decide("https://land.invalid/docs/1.pdf");
+    strictEqual(verdict.allowed, true);
+    strictEqual(verdict.overridden, true);
+    ok(verdict.note?.includes("the operator's"));
+    deepStrictEqual(slowed, [["land.invalid", ROBOTS_OVERRIDE_INTERVAL_MS]]);
+  });
+
+  it("treats a missing or unreadable robots.txt as permission", async () => {
+    const { transport } = scriptedTransport([{ match: "robots.txt", status: 404, body: "" }]);
+    const verdict = await new RobotsPolicy(testEngine(transport)).decide("https://land.invalid/docs/1.pdf");
+    deepStrictEqual(verdict, { allowed: true, overridden: false });
+    // An unmatched host throws in the scripted transport; that is not a prohibition either.
+    const { transport: silent } = scriptedTransport([]);
+    strictEqual((await new RobotsPolicy(testEngine(silent)).decide("https://other.invalid/x")).allowed, true);
+  });
+
+  it("matches the rules against the User-Agent the engine sends", async () => {
+    const { transport } = scriptedTransport([
+      { match: "robots.txt", body: "User-agent: openka-cli\nDisallow: /\n\nUser-agent: *\nDisallow:\n" },
+    ]);
+    strictEqual((await new RobotsPolicy(testEngine(transport)).decide("https://land.invalid/a")).allowed, false);
+    const other = testEngine(transport, { userAgent: "somebody-else/1.0" });
+    strictEqual((await new RobotsPolicy(other).decide("https://land.invalid/a")).allowed, true);
+  });
+
+  it("keeps the one-shot gate a connector uses", async () => {
+    const { transport } = scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]);
+    const gate = await robotsGate(testEngine(transport), { origin: "https://land.invalid", path: "/cgi-bin/x.pl" });
+    strictEqual(gate.allowed, false);
+    ok(gate.note?.includes("https://land.invalid disallows /cgi-bin/x.pl"));
   });
 });

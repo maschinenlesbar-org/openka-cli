@@ -79,6 +79,39 @@ describe("sync pipeline", () => {
     strictEqual(store.catalogEntry("berlin-19-10006")?.parliament, "berlin");
   });
 
+  it("does not fetch a document its host's robots.txt disallows, and says so once", async () => {
+    // The gated connectors check their own server, but the same PDF reaches the
+    // pipeline through `--source parlamentsspiegel`. The rule has to hold at the
+    // fetch, whichever source produced the URL.
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", body: "User-agent: *\nDisallow: /\n" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const report = await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+    strictEqual(report.stored, 1);
+    ok(!requests.some((request) => request.url.endsWith(".pdf")));
+    strictEqual(report.warnings.filter((warning) => warning.includes("robots.txt")).length, 1);
+    ok(report.warnings[0]?.includes("--ignore-robots"));
+    // The record exists, with the hole named, rather than not at all.
+    const record = store.getRecord("berlin-19-10006");
+    deepStrictEqual(record?.source_documents, []);
+    ok(record?.extraction.abstained_fields.includes("full_text"));
+  });
+
+  it("fetches under --ignore-robots and records that it did", async () => {
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", body: "User-agent: *\nDisallow: /\n" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const report = await sync({ source: new StubSource(), store, engine: testEngine(transport), ignoreRobots: true });
+    strictEqual(report.stored, 1);
+    ok(requests.some((request) => request.url.endsWith(".pdf")));
+    ok(report.warnings.some((warning) => warning.includes("--ignore-robots was given")));
+    strictEqual(store.getRecord("berlin-19-10006")?.qa.length, 6);
+  });
+
   it("indexes the whole run inside one catalog batch", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);

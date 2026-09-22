@@ -82,7 +82,8 @@ export interface FetchResult {
 export class FetchEngine {
   private readonly baseUrl: string | undefined;
   private readonly timeoutMs: number;
-  private readonly userAgent: string;
+  /** The User-Agent every request carries — what a robots.txt rule is matched against. */
+  readonly userAgent: string;
   private readonly maxRetries: number;
   private readonly maxResponseBytes: number;
   private readonly maxRedirects: number;
@@ -91,6 +92,8 @@ export class FetchEngine {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly lastRequestAt = new Map<string, number>();
+  /** Per-host floors raised during a run, above the engine-wide minimum. */
+  private readonly hostIntervals = new Map<string, number>();
 
   constructor(options: EngineOptions = {}) {
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -302,14 +305,24 @@ export class FetchEngine {
     throw lastError instanceof Error ? lastError : new NetworkError(String(lastError));
   }
 
-  /** Keep at least `minHostIntervalMs` between two requests to the same host. */
+  /**
+   * Go no faster than `ms` between requests to `host` from now on. Only ever raises
+   * the floor: a host that asked not to be crawled and is fetched anyway is
+   * slowed to the rate the override policy names, whatever the global setting.
+   */
+  slowDown(host: string, ms: number): void {
+    this.hostIntervals.set(host, Math.max(ms, this.hostIntervals.get(host) ?? 0));
+  }
+
+  /** Keep at least the host's interval between two requests to the same host. */
   private async throttle(url: string): Promise<void> {
-    if (this.minHostIntervalMs <= 0) return;
     const host = new URL(url).host;
+    const interval = Math.max(this.minHostIntervalMs, this.hostIntervals.get(host) ?? 0);
+    if (interval <= 0) return;
     const last = this.lastRequestAt.get(host);
     const now = this.now();
     if (last !== undefined) {
-      const wait = last + this.minHostIntervalMs - now;
+      const wait = last + interval - now;
       if (wait > 0) await this.sleep(wait);
     }
     this.lastRequestAt.set(host, this.now());

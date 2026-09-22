@@ -8,8 +8,7 @@
 
 import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { DEFAULT_USER_AGENT } from "@maschinenlesbar.org/openka-lib-http";
-import { NO_RULES, isAllowed, parseRobots } from "@maschinenlesbar.org/openka-lib-robots";
+import { NO_RULES, isAllowed, parseRobots, type RobotsRules } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
   AnsweredBy,
   Asker,
@@ -288,43 +287,101 @@ export class FallbackSource implements Source {
 }
 
 
+/** What a robots.txt check decided about one URL. */
+export interface RobotsVerdict {
+  allowed: boolean;
+  /** True when the rules said no and `--ignore-robots` said fetch anyway. */
+  overridden: boolean;
+  /** Why, when the answer was not a plain yes — for the operator, once per host. */
+  note?: string;
+}
+
 /**
- * Ask a server's robots.txt whether we may fetch from it.
+ * How slowly to go on a host whose robots.txt the operator overrode: one request
+ * every four seconds, against a default of 500 ms. A server that asked not to be
+ * crawled at all gets the slowest rate this tool offers.
+ */
+export const ROBOTS_OVERRIDE_INTERVAL_MS = 4000;
+
+/**
+ * Ask a server's robots.txt whether we may fetch a URL, once per host per run.
+ *
+ * This is where CONCEPT.md §7 is enforced for *documents*. The two gated
+ * connectors check their document server before discovering anything, but a
+ * Brandenburg PDF also reaches the pipeline through `--source parlamentsspiegel`,
+ * and until this existed that route fetched it with no flag and no warning. The
+ * pipeline now asks here before every document request, so the rule holds for
+ * whichever door a URL came in by.
  *
  * The file is read at run time rather than baked into a connector, so a Land that
  * lifts its `Disallow: /` stops blocking us the same day — and one that adds a rule
  * starts being honoured the same day. A server with no robots.txt allows
- * everything, which is what a 404 there means.
+ * everything, which is what a 404 there means. The rules are matched against the
+ * User-Agent the engine actually sends, and a host that is fetched under override
+ * is slowed to `ROBOTS_OVERRIDE_INTERVAL_MS` for the rest of the run.
+ */
+export class RobotsPolicy {
+  private readonly rules = new Map<string, Promise<RobotsRules>>();
+
+  constructor(
+    private readonly engine: FetchEngine,
+    private readonly ignoreRobots = false,
+  ) {}
+
+  async decide(url: string): Promise<RobotsVerdict> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      // Not ours to judge: the fetch will fail on its own terms.
+      return { allowed: true, overridden: false };
+    }
+    const path = `${parsed.pathname}${parsed.search}`;
+    const rules = await this.rulesFor(parsed.origin);
+    if (isAllowed(rules, this.engine.userAgent, path)) return { allowed: true, overridden: false };
+    if (this.ignoreRobots) {
+      this.engine.slowDown(parsed.host, ROBOTS_OVERRIDE_INTERVAL_MS);
+      return {
+        allowed: true,
+        overridden: true,
+        note:
+          `${parsed.origin} disallows ${path} in its robots.txt, and --ignore-robots was given, ` +
+          "so these documents were fetched anyway — the decision and its consequences are the operator's",
+      };
+    }
+    return {
+      allowed: false,
+      overridden: false,
+      note:
+        `${parsed.origin} disallows ${path} in its robots.txt, so its documents were not fetched. ` +
+        "The records exist and are public; pass --ignore-robots to fetch them anyway, and read " +
+        "the connector's README first — it says what is known about this Land's position.",
+    };
+  }
+
+  /** The origin's rules, fetched once and shared by every URL on it. */
+  private rulesFor(origin: string): Promise<RobotsRules> {
+    let pending = this.rules.get(origin);
+    if (pending === undefined) {
+      pending = this.engine
+        .get(`${origin}/robots.txt`, { headers: { accept: "text/plain" } })
+        .then((response) => parseRobots(response.body.toString("utf8")))
+        // No robots.txt, or it could not be read. Neither is a prohibition, and
+        // inventing one would block a server that never asked to be left alone.
+        .catch(() => NO_RULES);
+      this.rules.set(origin, pending);
+    }
+    return pending;
+  }
+}
+
+/**
+ * One-shot form of `RobotsPolicy`, for a connector asking about its document
+ * server before it discovers anything.
  */
 export async function robotsGate(
   engine: FetchEngine,
   options: { origin: string; path: string; ignoreRobots?: boolean },
-): Promise<{ allowed: boolean; overridden: boolean; note?: string }> {
-  let rules = NO_RULES;
-  try {
-    const response = await engine.get(`${options.origin}/robots.txt`, { headers: { accept: "text/plain" } });
-    rules = parseRobots(response.body.toString("utf8"));
-  } catch {
-    // No robots.txt, or it could not be read. Neither is a prohibition, and
-    // inventing one would block a server that never asked to be left alone.
-    rules = NO_RULES;
-  }
-  if (isAllowed(rules, DEFAULT_USER_AGENT, options.path)) return { allowed: true, overridden: false };
-  if (options.ignoreRobots === true) {
-    return {
-      allowed: true,
-      overridden: true,
-      note:
-        `${options.origin} disallows ${options.path} in its robots.txt, and --ignore-robots was given, ` +
-        "so these documents were fetched anyway — the decision and its consequences are the operator's",
-    };
-  }
-  return {
-    allowed: false,
-    overridden: false,
-    note:
-      `${options.origin} disallows ${options.path} in its robots.txt, so its documents were not fetched. ` +
-      "The records exist and are public; pass --ignore-robots to fetch them anyway, and read " +
-      "the connector's README first — it says what is known about this Land's position.",
-  };
+): Promise<RobotsVerdict> {
+  return new RobotsPolicy(engine, options.ignoreRobots === true).decide(`${options.origin}${options.path}`);
 }
