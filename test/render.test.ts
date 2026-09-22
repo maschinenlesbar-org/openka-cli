@@ -8,6 +8,7 @@ import {
   csvCell,
   csvHeader,
   escapeXml,
+  atomEntryUpdated,
   renderAtom,
   renderCsvRow,
   renderJson,
@@ -130,6 +131,21 @@ describe("Atom feed", () => {
 
   it("dates an entry from the answer date", () => {
     match(feed, /<updated>2024-03-28T00:00:00Z<\/updated>/);
+  });
+
+  it("dates an undated entry from the archive, not from the clock", () => {
+    // "now" would change on every regeneration, so every reader would be
+    // re-notified about the same entry forever.
+    const undated = sampleRecord({ dates: {} });
+    const first = atomEntryUpdated(undated, "2026-01-02T03:04:05Z");
+    const second = atomEntryUpdated(undated, "2027-11-12T13:14:15Z");
+    strictEqual(first, second);
+    strictEqual(first, undated.source_documents[0]?.retrieved_at);
+  });
+
+  it("falls back to the feed instant only when nothing else is recorded", () => {
+    const bare = sampleRecord({ dates: {}, source_documents: [] });
+    strictEqual(atomEntryUpdated(bare, "2026-01-02T03:04:05Z"), "2026-01-02T03:04:05Z");
   });
 
   it("gives every entry an author, naming the parliament when the askers are unknown", () => {

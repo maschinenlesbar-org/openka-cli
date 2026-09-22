@@ -5,7 +5,7 @@ import { OpenKaError } from "../../core/errors.js";
 import { RECORD_JSON_SCHEMA } from "../../core/models/json-schema.js";
 import { canonicalJsonLine } from "../../core/repro/canonical.js";
 import { search, type SearchFilters } from "../../core/search/search.js";
-import { csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "../../core/render/render.js";
+import { atomEntryUpdated, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "../../core/render/render.js";
 import { isoInstant } from "../../core/pipeline/pipeline.js";
 import { ParliamentKeys } from "../../core/models/parliaments.js";
 import type { KaRecord } from "../../core/models/schema.js";
@@ -86,11 +86,17 @@ export function registerOutput(program: Command, deps: CliDeps): void {
   ).action(
     action(deps, async (ctx) => {
       const limit = (ctx.opts["limit"] as number | undefined) ?? 50;
+      const updated = isoInstant(ctx.deps.now());
+      // Order on exactly the instant each entry will print, so "newest first" is
+      // true of the feed a reader sees rather than only of the dates. Plain string
+      // comparison, not localeCompare: these are ISO instants, and the ordering of
+      // a published feed must not depend on the locale of the machine that built it.
       const records = selectRecords(ctx.store(), ctx.opts, 100_000)
         .sort((a, b) => {
-          const left = a.dates.answered ?? a.dates.submitted ?? "";
-          const right = b.dates.answered ?? b.dates.submitted ?? "";
-          return right.localeCompare(left) || (a.id < b.id ? -1 : 1);
+          const left = atomEntryUpdated(a, updated);
+          const right = atomEntryUpdated(b, updated);
+          if (left !== right) return left < right ? 1 : -1;
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
         })
         .slice(0, limit);
       if (records.length === 0) throw new OpenKaError("Nothing selected — no feed to build.");
@@ -98,7 +104,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       const text = renderAtom(records, {
         title: (ctx.opts["title"] as string | undefined) ?? "OpenKA — Kleine Anfragen",
         id: (ctx.opts["id"] as string | undefined) ?? "urn:openka:feed",
-        updated: isoInstant(ctx.deps.now()),
+        updated,
       });
       emit(ctx, text, ctx.opts["out"] as string | undefined);
     }),

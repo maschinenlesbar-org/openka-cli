@@ -240,6 +240,26 @@ export interface FeedOptions {
 }
 
 /**
+ * The instant an entry claims it was last updated.
+ *
+ * A dated paper uses its own date. An undated one must not fall back to "now":
+ * that value changes on every regeneration, so the entry looks freshly updated
+ * each time the feed is built and every subscriber is re-notified forever. It
+ * falls back instead to when the bytes were archived, which is recorded in the
+ * record and therefore stable. `fallback` is the last resort for a record that
+ * carries neither.
+ */
+export function atomEntryUpdated(record: KaRecord, fallback: string): string {
+  const dated = record.dates.answered ?? record.dates.submitted;
+  if (dated !== undefined) return `${dated}T00:00:00Z`;
+  const retrieved = record.source_documents
+    .map((document) => document.retrieved_at)
+    .filter((value): value is string => value !== undefined)
+    .sort();
+  return retrieved[retrieved.length - 1] ?? fallback;
+}
+
+/**
  * The `<author>` elements of one entry.
  *
  * RFC 4287 §4.1.2 requires every entry to carry an author unless the feed does,
@@ -261,7 +281,7 @@ function atomAuthors(record: KaRecord): string[] {
 export function renderAtom(records: KaRecord[], options: FeedOptions): string {
   const entries = records.map((record) => {
     const link = record.source_documents[0]?.url ?? options.siteUrl ?? options.id;
-    const updated = record.dates.answered ?? record.dates.submitted;
+    const updated = atomEntryUpdated(record, options.updated);
     const summary = [
       record.answered_by.ministry === undefined ? undefined : `Beantwortet von ${record.answered_by.ministry}.`,
       `${record.qa.length} Frage(n).`,
@@ -276,7 +296,7 @@ export function renderAtom(records: KaRecord[], options: FeedOptions): string {
       `    <id>urn:openka:${escapeXml(record.id)}</id>`,
       `    <title>${escapeXml(record.title || record.reference)}</title>`,
       `    <link rel="alternate" href="${escapeXml(link)}"/>`,
-      `    <updated>${escapeXml(updated === undefined ? options.updated : `${updated}T00:00:00Z`)}</updated>`,
+      `    <updated>${escapeXml(updated)}</updated>`,
       ...atomAuthors(record),
       `    <category term="${escapeXml(record.parliament)}"/>`,
       `    <summary>${escapeXml(summary)}</summary>`,
