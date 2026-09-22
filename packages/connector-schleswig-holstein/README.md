@@ -20,6 +20,27 @@ state.
 
 It does have **goldens** here: records produced through the aggregator, frozen and verified by `ka-factory goldens verify` like any other. A Land needing no adapter of its own is not the same as a Land nobody has read.
 
+**Researched 2026-09-22 — same software as Rheinland-Pfalz, same obstacle.**
+
+Schleswig-Holstein runs e-LISSH, and Bremen's PARiS templates are literally named
+`LISSH.web`, which is why this Land looked cheap. It is not:
+
+- The **classic STARWEB servlet** answers 503 on every path tried
+  (`e-lissh.landtag.ltsh.de/starweb/lissh/servlet.starweb`, and the variants).
+- `e-lissh.landtag.ltsh.de/` redirects to `/portal/browse.tt.html` — the same
+  client-side "ESearch" application Rheinland-Pfalz serves, which renders its results
+  in the browser rather than on the server.
+- The root carries `<meta name="robots" content="noindex,nofollow">`. That is aimed at
+  search engines rather than at a user-invoked client, but it is a clear signal and
+  worth weighing before building anything that fetches in bulk.
+
+So `lib-starweb` does not apply here either. An adapter needs the ESearch client that
+Rheinland-Pfalz also needs; doing it once would cover both Länder.
+
+**Schleswig-Holstein has goldens here already**, produced through the aggregator.
+Note that its combined row names the answering minister in the same `Urheber` field as
+the asker — see `lib-source`'s `parseUrheber`, which keeps offices out of `askers`.
+
 **Writing the adapter.** Implement `Source` in `src/index.ts`, change this package's `ENTRY` to `status: "implemented"` and a factory, and put its tests and recorded
 payloads in this folder. Nothing else in the workspace has to change: the registry
 already imports this package. Look at `connector-sachsen` for a Land whose documents
