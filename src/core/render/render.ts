@@ -68,9 +68,27 @@ export function renderJsonLd(record: KaRecord): string {
   return canonicalJsonLine(document);
 }
 
-/** RFC 4180 quoting: always quote, so a field containing a newline stays one field. */
+/**
+ * Characters that make a spreadsheet read a cell as a formula rather than as text.
+ * Quoting does not stop it: Excel and LibreOffice both evaluate `=HYPERLINK(...)`
+ * inside a quoted CSV field on open.
+ */
+const CSV_FORMULA_LEAD = /^[=+\-@\t\r]/;
+
+/**
+ * RFC 4180 quoting: always quote, so a field containing a newline stays one field.
+ *
+ * A cell that would start a formula additionally gets a leading apostrophe, the
+ * conventional way to force a spreadsheet to treat it as text. That does alter the
+ * value, which this project otherwise never does — but a title is upstream text we
+ * do not control, and the same reasoning that strips terminal escapes out of server
+ * responses applies to handing a parliament's text to Excel as executable. CSV is
+ * already the lossy rendering (it drops the Q/A text); `json`, `jsonl` and `jsonld`
+ * carry every value exactly as extracted.
+ */
 export function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+  const safe = CSV_FORMULA_LEAD.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 export const CSV_COLUMNS = [

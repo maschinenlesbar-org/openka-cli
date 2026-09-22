@@ -55,6 +55,14 @@ describe("CSV", () => {
     strictEqual(csvCell('a "b", c'), '"a ""b"", c"');
   });
 
+  it("neutralises a cell a spreadsheet would run as a formula", () => {
+    strictEqual(csvCell('=HYPERLINK("http://evil","click")'), `"'=HYPERLINK(""http://evil"",""click"")"`);
+    strictEqual(csvCell("=cmd|'/c calc'!A1"), `"'=cmd|'/c calc'!A1"`);
+    for (const lead of ["+", "-", "@"]) strictEqual(csvCell(`${lead}x`).startsWith(`"'${lead}`), true);
+    // Ordinary text is untouched — the apostrophe is not sprinkled on everything.
+    strictEqual(csvCell("Brücken im Bund"), '"Brücken im Bund"');
+  });
+
   it("has a header matching its columns", () => {
     strictEqual(csvHeader().split(",").length, CSV_COLUMNS.length);
     strictEqual(renderCsvRow(sampleRecord()).split('","').length, CSV_COLUMNS.length);
