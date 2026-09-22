@@ -15,7 +15,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.1+extract:8d9a3240b685",
+    "extractor_version": "pkg:0.0.1+extract:63573894590f",
     "input_sha256": "bf74b9820782f8b96f1cb658ddd4da0d70d575ed6903377e8892d20981893132",
     "model_artifacts": [],
     "parse_complete": true,

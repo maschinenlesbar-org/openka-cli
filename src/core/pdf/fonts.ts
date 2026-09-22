@@ -125,6 +125,10 @@ export class FontCache {
       for (const value of widthArray) widths.push(doc.num(value) ?? 0);
     }
     const descriptor = doc.dict(dict.get("FontDescriptor"));
+    // ISO 32000-1 makes MissingWidth default to 0. We deliberately use 500 instead:
+    // a width of 0 for every code a broken font left out of /Widths stacks those
+    // glyphs at one x, and `assemble` then reads the whole run as a single word.
+    // Half an em is wrong too, but wrong in a way that keeps the words apart.
     const missingWidth = (descriptor === undefined ? undefined : doc.num(descriptor.get("MissingWidth"))) ?? 500;
 
     return {
@@ -136,9 +140,13 @@ export class FontCache {
         return unicode === undefined ? undefined : String.fromCodePoint(unicode);
       },
       width: (code) => {
+        // Only a code outside /Widths is missing. A declared width of 0 is a real
+        // width — combining marks and the soft hyphen have one — and treating it as
+        // absent handed those glyphs half an em of advance, which is exactly the
+        // amount that invents a word break where the font said there is none.
         const index = code - firstChar;
         const width = index >= 0 && index < widths.length ? (widths[index] as number) : undefined;
-        return width === undefined || width === 0 ? missingWidth : width;
+        return width ?? missingWidth;
       },
       unmappable: false,
     };
