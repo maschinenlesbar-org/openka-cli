@@ -53,6 +53,15 @@ describe("source registry", () => {
     strictEqual(sourceEntry("sachsen")?.status, "implemented");
   });
 
+  it("lists every key exactly once", () => {
+    // `BY_KEY` is a Map, so a duplicate entry was invisible to every lookup and to
+    // every test — and printed twice by `ka sources list`, which iterates the
+    // array. Brandenburg sat in both the implemented block and the aggregator
+    // block after it moved from one to the other.
+    const keys = SOURCE_REGISTRY.map((entry) => entry.key);
+    strictEqual(new Set(keys).size, keys.length, `duplicate keys: ${keys.filter((key, i) => keys.indexOf(key) !== i).join(", ")}`);
+  });
+
   it("builds a source for every registered key", () => {
     for (const key of sourceKeys()) ok(createSource(key).key.length > 0);
   });
