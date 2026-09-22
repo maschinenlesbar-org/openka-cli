@@ -32,6 +32,13 @@ import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "../../cli/commands/sync.js";
 
 export const DEFAULT_FIXTURES = "fixtures";
+/**
+ * Where `health --save-baseline` writes and `drift` reads by default.
+ *
+ * Generated, not shipped — it measures one machine's corpus, so the repository
+ * gitignores it rather than committing someone else's numbers. Its absence is the
+ * "first run" case `drift` reports and does not treat as an error.
+ */
 export const DEFAULT_BASELINE = "fixtures/health-baseline.json";
 
 export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
