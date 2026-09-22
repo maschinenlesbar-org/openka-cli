@@ -165,16 +165,23 @@ export class FontCache {
   /** Byte -> code point for a simple font: base encoding plus /Differences. */
   private simpleEncodingTable(dict: PdfDict): (number | undefined)[] | undefined {
     const encoding = this.doc.get(dict, "Encoding");
-    if (isName(encoding)) return [...baseEncoding(encoding.name)];
+    if (isName(encoding)) {
+      const named = baseEncoding(encoding.name);
+      return named === undefined ? undefined : [...named];
+    }
     if (!isDict(encoding)) {
       // A symbolic font with no /Encoding uses the encoding built into its font
       // program, which this reader does not parse. Only /ToUnicode can rescue such
       // a font; without one the caller abstains rather than printing noise.
       if (isName(this.doc.get(dict, "Subtype"), "Type3")) return undefined;
-      return [...baseEncoding(undefined)];
+      return [...(baseEncoding(undefined) as (number | undefined)[])];
     }
     const base = this.doc.get(encoding, "BaseEncoding");
-    const table = [...baseEncoding(isName(base) ? base.name : undefined)];
+    // An unmodelled base still leaves /Differences usable: those entries name their
+    // glyphs, so they resolve. Everything the list does not name stays unmapped
+    // rather than being read through the wrong table.
+    const modelled = baseEncoding(isName(base) ? base.name : undefined);
+    const table: (number | undefined)[] = modelled === undefined ? new Array(256).fill(undefined) : [...modelled];
     const differences = this.doc.get(encoding, "Differences");
     if (Array.isArray(differences)) {
       let code = 0;

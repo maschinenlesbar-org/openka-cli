@@ -10,7 +10,7 @@ import { Lexer, isKeyword } from "../src/core/pdf/lexer.js";
 import { ParseError } from "../src/core/errors.js";
 import { isDict, isName, isRef, isString, type PdfDict } from "../src/core/pdf/objects.js";
 import { ascii85Decode, asciiHexDecode, decodeStream, inflate, lzwDecode, runLengthDecode } from "../src/core/pdf/filters.js";
-import { glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/core/pdf/encoding.js";
+import { baseEncoding, glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/core/pdf/encoding.js";
 import { multiply, assemble, normalizeSpaces } from "../src/core/pdf/text.js";
 import { PdfDocument, extractPdfImages, extractPdfText } from "../src/core/pdf/index.js";
 import { readFixture } from "./helpers.js";
@@ -415,5 +415,56 @@ describe("glyph widths", () => {
 
   it("still substitutes for a code the font left out of /Widths", () => {
     strictEqual(extractPdfText(fontWith("[]")).text, "AB");
+  });
+});
+
+describe("an encoding the reader does not model", () => {
+  const withEncoding = (encoding: string): Buffer => {
+    const content = "BT /F1 12 Tf 72 720 Td (Hallo) Tj ET";
+    return Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj",
+        `4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
+        `5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /X ${encoding} >> endobj`,
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+  };
+
+  it("abstains on MacExpertEncoding rather than reading it as WinAnsi", () => {
+    // The expert set puts small caps, oldstyle figures and fractions at the code
+    // points WinAnsi uses for ordinary letters, so the old "least-wrong fallback"
+    // produced confident nonsense.
+    strictEqual(baseEncoding("MacExpertEncoding"), undefined);
+    const result = extractPdfText(withEncoding("/Encoding /MacExpertEncoding"));
+    strictEqual(result.text, "");
+    match(result.problems[0] ?? "", /no usable encoding for font/);
+  });
+
+  it("still uses a /Differences list on top of an unmodelled base", () => {
+    // Those entries name their glyphs, so they resolve; the rest stay unmapped.
+    const result = extractPdfText(
+      withEncoding("/Encoding << /BaseEncoding /MacExpertEncoding /Differences [72 /H] >>"),
+    );
+    strictEqual(result.text, "H");
+    match(result.problems[0] ?? "", /have no mapping in the selected font/);
+  });
+
+  it("distinguishes no font from a font that cannot map the code", () => {
+    match(
+      extractPdfText(rawContentPdf("BT 72 720 Td (Hallo) Tj ET")).problems[0] ?? "",
+      /were drawn with no font selected/,
+    );
+  });
+
+  it("leaves the modelled encodings alone", () => {
+    for (const name of ["WinAnsiEncoding", "MacRomanEncoding", "StandardEncoding", undefined]) {
+      ok(baseEncoding(name) !== undefined, `${String(name)} should be modelled`);
+    }
   });
 });

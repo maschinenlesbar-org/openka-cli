@@ -84,14 +84,18 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     });
     if (extracted.unmappableFonts.length > 0) {
       problems.push(`page ${page.number}: no usable encoding for font(s) ${extracted.unmappableFonts.join(", ")}`);
+    } else if (extracted.noFontCodes > 0) {
+      // Text drawn before any font was selected — a `Tj` ahead of its `Tf`.
+      problems.push(
+        `page ${page.number}: ${extracted.noFontCodes} of ${extracted.totalCodes} character code(s) ` +
+          "were drawn with no font selected",
+      );
     } else if (extracted.unmappedCodes > 0) {
-      // Text drawn with no font selected at all — a `Tj` before any `Tf`. The
-      // codes are already counted, so the pipeline refuses the page on the
-      // unmapped ratio; saying it here too means a library caller reading only
-      // `problems` sees the same thing the CLI does.
+      // A font was selected and could not map these codes — a partly modelled
+      // encoding, say a /Differences list that names only some of them.
       problems.push(
         `page ${page.number}: ${extracted.unmappedCodes} of ${extracted.totalCodes} character code(s) ` +
-          "were drawn with no font selected",
+          "have no mapping in the selected font",
       );
     }
   }

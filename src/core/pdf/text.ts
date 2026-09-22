@@ -88,6 +88,8 @@ export interface TextExtractionResult {
   totalCodes: number;
   /** Resource names of fonts with no usable encoding at all. */
   unmappableFonts: string[];
+  /** Codes drawn before any font was selected — a different failure from an unmappable one. */
+  noFontCodes: number;
 }
 
 interface TextState {
@@ -132,12 +134,13 @@ export function extractContentText(
   cache: FontCache = new FontCache(doc),
 ): TextExtractionResult {
   const runs: Run[] = [];
-  const counters = { unmapped: 0, total: 0 };
+  const counters = { unmapped: 0, total: 0, noFont: 0 };
   interpret(doc, content, resources, cache, runs, counters, [...IDENTITY] as Matrix, 0);
   return {
     text: assemble(runs),
     unmappedCodes: counters.unmapped,
     totalCodes: counters.total,
+    noFontCodes: counters.noFont,
     unmappableFonts: [...cache.unmappable].sort(),
   };
 }
@@ -150,7 +153,7 @@ function interpret(
   resources: PdfDict,
   cache: FontCache,
   runs: Run[],
-  counters: { unmapped: number; total: number },
+  counters: { unmapped: number; total: number; noFont: number },
   initialCtm: Matrix,
   depth: number,
 ): void {
@@ -171,6 +174,8 @@ function interpret(
     if (font === undefined) {
       counters.total += bytes.length;
       counters.unmapped += bytes.length;
+      // Distinct from a code the font could not map: here there is no font at all.
+      counters.noFont += bytes.length;
       return;
     }
     const combined = multiply(state.tm, ctm);

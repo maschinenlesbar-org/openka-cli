@@ -61,15 +61,26 @@ export const STANDARD = (() => {
   return table;
 })();
 
-/** Base encodings addressable by name in a font dictionary. */
-export function baseEncoding(encodingName: string | undefined): (number | undefined)[] {
+/**
+ * Base encodings addressable by name in a font dictionary, or `undefined` for one
+ * this reader does not model.
+ *
+ * `MacExpertEncoding` is the only such name, and it used to return WinAnsi as "the
+ * least-wrong fallback". It is not least-wrong, it is wrong: the expert set is
+ * small caps, oldstyle figures and fractions at the same code points WinAnsi uses
+ * for ordinary letters, so reading one as the other produces confident nonsense —
+ * the thing this module's header says it refuses to do. Unmodelled means unmapped,
+ * and a `/ToUnicode` CMap or a `/Differences` list can still rescue the font.
+ */
+export function baseEncoding(encodingName: string | undefined): (number | undefined)[] | undefined {
   switch (encodingName) {
     case "MacRomanEncoding":
       return MAC_ROMAN;
     case "StandardEncoding":
       return STANDARD;
+    case "MacExpertEncoding":
+      return undefined;
     case "WinAnsiEncoding":
-    case "MacExpertEncoding": // not modelled; WinAnsi is the least-wrong fallback
     default:
       return WIN_ANSI;
   }
