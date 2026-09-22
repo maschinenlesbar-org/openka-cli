@@ -1,12 +1,5 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "."
-  },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "files": [],
   "references": [
     {
       "path": "packages/cli-ka"
@@ -127,6 +120,9 @@
     },
     {
       "path": "packages/lib-verify"
+    },
+    {
+      "path": "packages/openka-cli"
     }
   ]
 }

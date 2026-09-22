@@ -50,9 +50,12 @@ describe("the no-LLM-on-the-line guardrail", () => {
     deepStrictEqual(lintSource("x.ts", 'import { sha256 } from "../repro/hash.js";\nconst s = "not from openai";'), []);
   });
 
-  it("scans every package on the line, and the library entry point", () => {
+  it("scans every package on the line", () => {
     const files = lineFiles(PROJECT_ROOT);
-    ok(files.includes("src/index.ts"));
+    // The published entry point is a package now, so there is nothing outside
+    // `packages/` for this to special-case.
+    ok(files.some((file) => file.startsWith("packages/openka-cli/src/")));
+    ok(!files.some((file) => /^src\//.test(file)));
     for (const pkg of ["lib-pdf", "lib-extract", "lib-source", "cli-ka", "connector-bund"]) {
       ok(files.some((file) => file.startsWith(`packages/${pkg}/src/`)), `${pkg} is not being scanned`);
     }

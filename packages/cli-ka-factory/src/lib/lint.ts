@@ -2,9 +2,10 @@
 // rather than a promise in a document.
 //
 // CONCEPT.md §8 names this as the hardest rule to enforce. The check is blunt on
-// purpose: the line — every workspace package except the factory, plus the library
-// entry point — may not import an LLM client, may not reach a model provider's
-// host, and may not import anything from the factory. Since the split into
+// purpose: the line — every workspace package except the factory — may not import
+// an LLM client, may not reach a model provider's host, and may not import anything
+// from the factory. There is no longer a file outside `packages/` to special-case:
+// the published entry point is `packages/openka-cli` like everything else. Since the split into
 // workspaces the last of those is also a package boundary: nothing on the line
 // declares `openka-cli-ka-factory` as a dependency, so a violation fails to resolve
 // long before it fails the lint. The lint stays because a boundary that is only
@@ -20,9 +21,6 @@ import { join, relative } from "node:path";
 
 /** The one package that is not on the line: build-time tooling. */
 export const FACTORY_PACKAGE = "cli-ka-factory";
-
-/** Single files that are part of the line. */
-export const LINE_FILES = ["src/index.ts"] as const;
 
 /**
  * Every package whose sources must stay deterministic — that is, all of them except
@@ -110,13 +108,6 @@ function walk(root: string, base: string, out: string[]): void {
 export function lineFiles(projectRoot: string): string[] {
   const files: string[] = [];
   for (const root of lineRoots(projectRoot)) walk(join(projectRoot, root), projectRoot, files);
-  for (const file of LINE_FILES) {
-    try {
-      if (statSync(join(projectRoot, file)).isFile()) files.push(file);
-    } catch {
-      /* the file may not exist in a partial checkout */
-    }
-  }
   return files.sort();
 }
 

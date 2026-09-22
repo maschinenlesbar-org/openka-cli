@@ -6,7 +6,7 @@ first — it is the spec — then [DEVELOPING.md](DEVELOPING.md) for the impleme
 ## The one rule everything else follows from
 
 **No generative model may run on the line.** Every workspace package except
-`packages/cli-ka-factory`, plus `src/index.ts`, is the line. They may not import an LLM client, reach a model
+`packages/cli-ka-factory` is the line. They may not import an LLM client, reach a model
 provider's host, or import anything from the factory package. `ka-factory lint` enforces
 this and runs in CI.
 
@@ -40,9 +40,14 @@ npm workspaces, one `tsc -b` build graph, three kinds of package under `packages
   Ten Länder have no adapter of their own yet and their package holds only the
   entry that says so — that is the gap `ka sources list` shows.
 - **`cli-*`** — `cli-ka` (the `ka` bin) and `cli-ka-factory` (the `ka-factory` bin).
+- **`openka-cli`** — the one published package: the library entry point, the two bin
+  shims, and the cross-package integration suite.
 
-Only the root package is published; every workspace package is `private` and is
-bundled into the tarball. Each package builds to its own `dist/src` and `dist/test`.
+**The layout has no exceptions**: everything with source is a package under
+`packages/`, and the repository root is a workspace manifest, a build graph and the
+documents. Every package but `openka-cli` is `private` and is bundled into its
+tarball by `tools/prepack.mjs` — read that package's README before changing anything
+about packing. Each package builds to its own `dist/src` and `dist/test`.
 
 **Each package has two TypeScript projects**: `tsconfig.json` for `src/`, which other
 packages reference, and `tsconfig.test.json` for `test/`, which nothing references.

@@ -11,3 +11,9 @@ plan.md
 # The drift baseline is a measurement of one machine's corpus, not a fixture:
 # `ka-factory health --save-baseline` writes it and `ka-factory drift` reads it.
 fixtures/health-baseline.json
+
+# Generated into the published package by tools/prepack.mjs
+packages/openka-cli/LICENSING.md
+packages/openka-cli/CONTRIBUTING.md
+packages/openka-cli/DATA_LICENSE.md
+packages/openka-cli/CONCEPT.md
