@@ -20,7 +20,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.1+extract:0401d40b231a",
+    "extractor_version": "pkg:0.0.1+extract:7cab7a3fdb1b",
     "input_sha256": "81ebcfb1cc55ca11c8209e88de3cc569c4007e23720cb258f4f3364b283b71d2",
     "model_artifacts": [],
     "parse_complete": true,

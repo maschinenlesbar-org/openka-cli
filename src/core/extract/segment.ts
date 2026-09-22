@@ -511,6 +511,27 @@ export interface SegmentOptions {
 }
 
 /** Run one rule set. Returns the pairs it found plus why it is or is not usable. */
+/**
+ * Whether a repeated heading restates the same question or asks a different one.
+ *
+ * Taken from the corpus, not assumed. Real restatements are *prefix*-identical:
+ * Bayern reprints its whole question list after the "Antwort" divider and the
+ * two copies agree until one of them stops, and Baden-Württemberg's differ only
+ * by a space the text layer inserted mid-word ("W elche" for "Welche"). So
+ * whitespace and hyphens are removed entirely rather than collapsed, and one
+ * text being the start of the other counts as the same question. The hyphens
+ * matter: Baden-Württemberg's two copies of question 6 agree for 131 characters
+ * and then read "Land-\nkreis" against "Landkreis", because one copy broke the
+ * word across a line. Requiring exact equality abstained on five correct Bayern
+ * questions and two Baden-Württemberg ones.
+ */
+export function restatesSameQuestion(a: string, b: string): boolean {
+  const bare = (value: string): string => value.replace(/[\s\u00ad-]+/g, "").toLowerCase();
+  const x = bare(a);
+  const y = bare(b);
+  return x.startsWith(y) || y.startsWith(x);
+}
+
 export function applyRules(
   text: string,
   rules: SegmentationRules,
@@ -530,26 +551,7 @@ export function applyRules(
   // is right for a restatement and wrong for a contradiction, and from here the two
   // are indistinguishable — so a contradiction abstains instead of picking a winner.
   const contested = new Set<string>();
-  /**
-   * Whether a repeated heading restates the same question or asks a different one.
-   *
-   * Taken from the corpus, not assumed. Real restatements are *prefix*-identical:
-   * Bayern reprints its whole question list after the "Antwort" divider and the
-   * two copies agree until one of them stops, and Baden-Württemberg's differ only
-   * by a space the text layer inserted mid-word ("W elche" for "Welche"). So
-   * whitespace and hyphens are removed entirely rather than collapsed, and one
-   * text being the start of the other counts as the same question. The hyphens
-   * matter: Baden-Württemberg's two copies of question 6 agree for 131 characters
-   * and then read "Land-\nkreis" against "Landkreis", because one copy broke the
-   * word across a line. Requiring exact equality abstained on five correct Bayern
-   * questions and two Baden-Württemberg ones.
-   */
-  const restates = (a: string, b: string): boolean => {
-    const bare = (value: string): string => value.replace(/[\s\u00ad-]+/g, "").toLowerCase();
-    const x = bare(a);
-    const y = bare(b);
-    return x.startsWith(y) || y.startsWith(x);
-  };
+  const restates = restatesSameQuestion;
 
   markers.forEach((marker, i) => {
     const whole = bodyBetween(lines, marker, markers[i + 1]);

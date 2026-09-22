@@ -560,6 +560,43 @@ describe("a question number that appears twice", () => {
   });
 });
 
+describe("two papers that ask the same number differently", () => {
+  const page = (lines: string[]) => questionPaper(lines);
+  const meta = { reference: "19/1", legislative_period: 19, title: "T", askers: [], answered_by: {}, dates: {} };
+  const both = async (questionLines: string[]) =>
+    (
+      await extract({
+        parliament: "berlin",
+        documentType: "schriftliche_anfrage",
+        tier: "text_layer",
+        metadata: meta,
+        env: {},
+        documents: [
+          { role: "question_pdf", url: "https://x.invalid/q.pdf", bytes: page(questionLines), urlStable: true },
+          {
+            role: "combined_pdf",
+            url: "https://x.invalid/c.pdf",
+            bytes: page(["1. Wie viele Bruecken sind marode?", "Zu 1.", "Antworttext."]),
+            urlStable: true,
+          },
+        ],
+      })
+    ).record;
+
+  it("abstains on the question rather than letting the first-read paper win", async () => {
+    const record = await both(["1. GANZ ANDERE FRAGE?"]);
+    strictEqual(record.qa[0]?.question, undefined);
+    ok(record.extraction.abstained_fields.includes("qa[0].question"));
+    // The answer is not in doubt, so it stays.
+    strictEqual(record.qa[0]?.answer, "Antworttext.");
+  });
+
+  it("keeps the question when the papers agree, including a truncated copy", async () => {
+    strictEqual((await both(["1. Wie viele Bruecken sind marode?"])).qa[0]?.question, "Wie viele Bruecken sind marode?");
+    strictEqual((await both(["1. Wie viele Bruecken"])).qa[0]?.question, "Wie viele Bruecken");
+  });
+});
+
 describe("a question paper", () => {
   it("is read as questions, not refused for having no answers", async () => {
     // The guard that refuses a reading with no answers exists to reject numbered

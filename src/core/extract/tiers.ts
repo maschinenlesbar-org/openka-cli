@@ -30,6 +30,7 @@ import { findMarkers, findMinistry } from "./metadata.js";
 import {
   RULE_SETS,
   checkSegments,
+  restatesSameQuestion,
   segmentQa,
   splitAtAnswerDivider,
   type QaSegment,
@@ -482,6 +483,7 @@ function mergeReadings(
   const order: string[] = [];
   const questions = new Map<string, string>();
   const answers = new Map<string, string>();
+  const contested = new Set<string>();
   const used: string[] = [];
 
   for (const reading of readings) {
@@ -491,8 +493,16 @@ function mergeReadings(
     const givesAnswers = reading.role === "answer_pdf" || reading.role === "combined_pdf";
     for (const segment of reading.result.segments) {
       if (!order.includes(segment.number)) order.push(segment.number);
-      if (asksQuestions && segment.question !== undefined && !questions.has(segment.number)) {
-        questions.set(segment.number, segment.question);
+      if (asksQuestions && segment.question !== undefined) {
+        const seen = questions.get(segment.number);
+        if (seen === undefined) {
+          questions.set(segment.number, segment.question);
+        } else if (!restatesSameQuestion(seen, segment.question)) {
+          // The question paper and the combined paper ask this number differently.
+          // One of them is wrong and nothing here can say which, so the question
+          // abstains rather than the first-read document winning in silence.
+          contested.add(segment.number);
+        }
       }
       if (givesAnswers && segment.answer !== undefined && !answers.has(segment.number)) {
         answers.set(segment.number, segment.answer);
@@ -511,7 +521,7 @@ function mergeReadings(
     const segment: QaSegment = { number };
     const question = questions.get(number);
     const answer = answers.get(number);
-    if (question !== undefined) segment.question = question;
+    if (question !== undefined && !contested.has(number)) segment.question = question;
     if (answer !== undefined) segment.answer = answer;
     return segment;
   });
