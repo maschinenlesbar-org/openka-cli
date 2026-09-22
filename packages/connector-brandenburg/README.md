@@ -16,6 +16,25 @@ state.
 | instrument | Kleine Anfrage |
 | `document_type` | `kleine_anfrage` |
 
+**Researched 2026-09-22 — off limits, and not for technical reasons.**
+
+Brandenburg's own Parlamentsdokumentation is at
+`www.parlamentsdokumentation.brandenburg.de`, and it serves a stateless Perl CGI
+(`/cgi-bin/pardok-cache.pl?id=…`) that would have been the simplest interface of any
+Land here.
+
+Its `robots.txt` is:
+
+```
+User-agent: *
+Disallow: /
+```
+
+The whole site, for every client. So this Land stays on the Parlamentsspiegel, the
+same decision as Sachsen-Anhalt's PADOKA. Respecting robots.txt is a design
+principle here (CONCEPT.md §7), not a preference, and it applies most when the
+alternative would have been easy.
+
 **Writing the adapter.** Implement `Source` in `src/index.ts`, change this package's `ENTRY` to `status: "implemented"` and a factory, and put its tests and recorded
 payloads in this folder. Nothing else in the workspace has to change: the registry
 already imports this package. Look at `connector-sachsen` for a Land whose documents

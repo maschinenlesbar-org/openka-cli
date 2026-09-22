@@ -18,6 +18,22 @@ state.
 
 It does have **goldens** here: records produced through the aggregator, frozen and verified by `ka-factory goldens verify` like any other. A Land needing no adapter of its own is not the same as a Land nobody has read.
 
+**Researched 2026-09-22 — PARLIS, and the most promising of the three ESearch Länder.**
+
+Baden-Württemberg's own system is **PARLIS**, at `https://parlis.landtag-bw.de/parlis/`.
+`parlis.landtag-bw.de/robots.txt` is a 404, so nothing is disallowed.
+
+It is an **ESearch** portal — the same software Rheinland-Pfalz (OPAL) and
+Schleswig-Holstein (e-LISSH) run, which makes `lib-esearch` a three-Land multiplier
+rather than two. And BW looks like the way in: its search page is 196 kB with 20
+forms, where Rheinland-Pfalz serves a 4.5 MB client-side shell that renders every
+query identically. That suggests PARLIS still answers server-side.
+
+Note that the Landtag's own Parlamentsdokumentation page links to **both** PARLIS and
+the Parlamentsspiegel, describing the latter as the joint information system of the
+Länder parliaments. So the aggregator is endorsed here rather than merely tolerated —
+but PARLIS is the Land's own, and that is what this connector should use.
+
 **Writing the adapter.** Implement `Source` in `src/index.ts`, change this package's `ENTRY` to `status: "implemented"` and a factory, and put its tests and recorded
 payloads in this folder. Nothing else in the workspace has to change: the registry
 already imports this package. Look at `connector-sachsen` for a Land whose documents

@@ -18,6 +18,28 @@ state.
 
 Hamburg calls its instrument a **Schriftliche Kleine Anfrage**; it maps to `kleine_anfrage`.
 
+**Researched 2026-09-22 — the service was down, and that is all that is wrong.**
+
+Hamburg runs ParlDok at `www.buergerschaft-hh.de/parldok/`, which means
+`lib-parldok` — the client Thüringen and Mecklenburg-Vorpommern already use — very
+likely covers it. It could not be confirmed, because the backend is failing:
+
+| request | result |
+|---|---|
+| `/parldok/` | connects, TLS completes, then **empty reply** (curl exit 52) |
+| `/nonexistent-xyz/` | a clean **404** |
+| `/` | 403, the stock IIS message |
+
+The 404 on an arbitrary path is what matters: the site answers this client normally,
+so the empty reply on `/parldok/` is the ParlDok application failing rather than a
+block. `parldok.buergerschaft-hh.de` does not resolve, so there is no alternative
+host to try, and `www.buergerschaft-hh.de/robots.txt` is a 404 — nothing is
+disallowed.
+
+**This is the cheapest Land left.** When the service is back, the work is a facet
+listing to find Hamburg's id for "Schriftliche Kleine Anfrage" and a recorded window,
+the same two steps Mecklenburg-Vorpommern took.
+
 **Writing the adapter.** Implement `Source` in `src/index.ts`, change this package's `ENTRY` to `status: "implemented"` and a factory, and put its tests and recorded
 payloads in this folder. Nothing else in the workspace has to change: the registry
 already imports this package. Look at `connector-sachsen` for a Land whose documents
