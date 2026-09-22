@@ -62,6 +62,20 @@ function write(value: unknown, indent: number, depth: number): string {
     return "[" + pad + items.join("," + pad) + closePad + "]";
   }
 
+  // A Date, Map, Set or class instance has no own enumerable keys, so it used to
+  // serialise as `{}` — total, silent loss, in the module whose contract is that
+  // "silently losing a field would break the reproducibility contract quietly".
+  // Two different instants hashed identically. Rejecting is the same answer this
+  // function already gives a function or a symbol; a caller that wants a date
+  // passes the ISO string the schema asks for.
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(
+      `Cannot canonicalise a ${(value as object).constructor?.name ?? "non-plain"} — ` +
+        "canonical JSON takes primitives, arrays and plain objects",
+    );
+  }
+
   const source = value as Record<string, unknown>;
   const keys = Object.keys(source)
     .filter((key) => source[key] !== undefined)

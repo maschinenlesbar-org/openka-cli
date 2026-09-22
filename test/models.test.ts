@@ -1,7 +1,7 @@
 // The schema, its canonical form and its validators — the trust guarantee's
 // foundation, so these are the tests that must never be relaxed.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { canonicalJson, canonicalJsonLine } from "../src/core/repro/canonical.js";
 import { isSha256, sha256, sha256Canonical } from "../src/core/repro/hash.js";
@@ -16,6 +16,19 @@ import { computeExtractionDigest, extractionSourceFiles } from "../src/factory/l
 import { PROJECT_ROOT, sampleRecord } from "./helpers.js";
 
 describe("canonical JSON", () => {
+  it("refuses a value it cannot represent instead of writing {}", () => {
+    // A Date, Map, Set or class instance has no own enumerable keys, so each used
+    // to serialise as "{}" — and two different instants hashed identically, in the
+    // module the reproducibility claim rests on.
+    for (const value of [new Date(0), new Map([["a", 1]]), new Set([1])]) {
+      throws(() => canonicalJson(value), TypeError);
+    }
+    throws(() => canonicalJson({ when: new Date(0) }), TypeError);
+    // Plain objects, arrays and null-prototype objects are unaffected.
+    strictEqual(canonicalJson({ a: 1 }, 0), '{"a":1}');
+    strictEqual(canonicalJson(Object.assign(Object.create(null), { a: 1 }), 0), '{"a":1}');
+  });
+
   it("sorts keys at every level so equal values give equal bytes", () => {
     const a = canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 4, e: 5 }] } });
     const b = canonicalJson({ a: { c: [3, { e: 5, f: 4 }], d: 2 }, b: 1 });
