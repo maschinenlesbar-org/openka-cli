@@ -84,6 +84,9 @@
       "path": "packages/lib-parlamentsspiegel"
     },
     {
+      "path": "packages/lib-parldok"
+    },
+    {
       "path": "packages/lib-pdf"
     },
     {

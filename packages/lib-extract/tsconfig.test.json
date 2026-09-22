@@ -12,6 +12,9 @@
       "path": "./tsconfig.json"
     },
     {
+      "path": "../connector-berlin"
+    },
+    {
       "path": "../lib-models"
     },
     {

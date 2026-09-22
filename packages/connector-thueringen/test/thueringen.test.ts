@@ -74,7 +74,7 @@ describe("Parldok responses", () => {
   });
 
   it("finds the answer among the Vorgang's positions", () => {
-    const answer = answerPosition(PROCESS);
+    const answer = answerPosition(PROCESS, PARLDOK_WEB);
     strictEqual(answer.kind, "found");
     // 8/979 is answered by 8/1715 — no relation between the numbers, which is why
     // the lookup exists at all.
@@ -83,7 +83,7 @@ describe("Parldok responses", () => {
   });
 
   it("calls an empty result absent, not unrecognised", () => {
-    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{\\"positions\\":[]}}"}').kind, "absent");
+    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{\\"positions\\":[]}}"}', PARLDOK_WEB).kind, "absent");
     strictEqual(firstHit('{"success":true,"data":"{\\"docs\\":[]}"}').kind, "absent");
   });
 
@@ -92,11 +92,11 @@ describe("Parldok responses", () => {
     // changed under us, and a sync that cannot say which reports the wrong fact.
     strictEqual(firstHit("<html>Wartungsarbeiten</html>").kind, "unrecognised");
     strictEqual(firstHit('{"success":true,"data":"{}"}').kind, "unrecognised");
-    strictEqual(answerPosition('{"success":true,"data":"{}"}').kind, "unrecognised");
-    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{}}"}').kind, "unrecognised");
+    strictEqual(answerPosition('{"success":true,"data":"{}"}', PARLDOK_WEB).kind, "unrecognised");
+    strictEqual(answerPosition('{"success":true,"data":"{\\"process\\":{}}"}', PARLDOK_WEB).kind, "unrecognised");
     // An Antwort we can see and cannot follow is not an unanswered Anfrage either.
     const linkless = '{"success":true,"data":"{\\"process\\":{\\"positions\\":[{\\"text\\":\\"Antwort auf Kleine Anfrage\\",\\"doc\\":{}}]}}"}';
-    strictEqual(answerPosition(linkless).kind, "unrecognised");
+    strictEqual(answerPosition(linkless, PARLDOK_WEB).kind, "unrecognised");
   });
 });
 

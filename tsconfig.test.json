@@ -24,6 +24,9 @@
       "path": "packages/connector-bund/tsconfig.test.json"
     },
     {
+      "path": "packages/connector-mecklenburg-vorpommern/tsconfig.test.json"
+    },
+    {
       "path": "packages/connector-niedersachsen/tsconfig.test.json"
     },
     {
@@ -76,6 +79,9 @@
     },
     {
       "path": "packages/lib-models"
+    },
+    {
+      "path": "packages/lib-pardok"
     },
     {
       "path": "packages/lib-pipeline"

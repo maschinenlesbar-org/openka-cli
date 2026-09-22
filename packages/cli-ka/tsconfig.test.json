@@ -15,7 +15,13 @@
       "path": "../cli-ka-factory"
     },
     {
+      "path": "../connector-berlin"
+    },
+    {
       "path": "../lib-http"
+    },
+    {
+      "path": "../lib-pardok"
     },
     {
       "path": "../lib-store"

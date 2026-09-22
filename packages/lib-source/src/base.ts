@@ -87,6 +87,15 @@ export interface DiscoverResult {
   state?: SourceState;
   /** True when the upstream reported nothing changed since the last run. */
   unchanged?: boolean;
+  /**
+   * Set when the source was reached but could not be read — a search page whose
+   * markup contract broke, an API that answered in an unfamiliar shape.
+   *
+   * It is deliberately not the same as `refs: []`. An empty window is an answer;
+   * this is the absence of one, and it is what tells `FallbackSource` that going
+   * somewhere else is warranted rather than a way of papering over a quiet month.
+   */
+  unreadable?: string;
 }
 
 export interface Source {
@@ -177,4 +186,80 @@ export interface SourceEntry {
   note: string;
   /** Present only for an entry that can actually be built. */
   factory?: () => Source;
+}
+
+/**
+ * Compose a parliament's own interface with the aggregator behind it.
+ *
+ * The Parlamentsspiegel is a third party. It is an excellent one — the Landtag NRW
+ * runs it for all sixteen Länder — but a record about Sachsen should come from
+ * Sachsen where Sachsen offers a way to get it. So a connector that has both routes
+ * puts its own first and keeps the aggregator as a fallback.
+ *
+ * The fallback triggers on two things and not on a third:
+ *
+ * * the primary **throws** — the host is down, the certificate expired, the API
+ *   moved;
+ * * the primary reports `unreadable` — it reached its source and did not recognise
+ *   what came back, which is how a scraper says its markup contract broke.
+ *
+ * It does **not** trigger on zero refs. An empty window is a legitimate answer, and
+ * a Land that published nothing in March must not be quietly backfilled from
+ * somewhere else. That distinction is the same one `ApiReading` draws in the
+ * Thüringen client: "there is nothing" and "I do not understand this" are different
+ * facts, and only one of them is a reason to go looking elsewhere.
+ *
+ * Which route produced the refs is always in `warnings`, because a record's
+ * provenance should never be something the operator has to infer.
+ */
+export class FallbackSource implements Source {
+  constructor(
+    private readonly primary: Source,
+    private readonly fallback: Source,
+  ) {}
+
+  get key(): string {
+    return this.primary.key;
+  }
+  get parliament(): ParliamentKey | undefined {
+    return this.primary.parliament;
+  }
+  get tier(): Tier {
+    return this.primary.tier;
+  }
+  get label(): string {
+    return this.primary.label;
+  }
+  get homepage(): string {
+    return this.primary.homepage;
+  }
+  get notes(): string {
+    return `${this.primary.notes} Falls back to ${this.fallback.label} when this interface cannot be read.`;
+  }
+  get apiKeyEnv(): string | undefined {
+    return this.primary.apiKeyEnv;
+  }
+  get ruleSets(): readonly SegmentationRules[] | undefined {
+    return this.primary.ruleSets;
+  }
+
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    let reason: string;
+    try {
+      const result = await this.primary.discover(options);
+      if (result.unreadable === undefined) return result;
+      reason = result.unreadable;
+    } catch (err) {
+      reason = err instanceof Error ? err.message : String(err);
+    }
+    const result = await this.fallback.discover(options);
+    return {
+      ...result,
+      warnings: [
+        `${this.primary.key}: ${reason} — fell back to ${this.fallback.key}, ` +
+          "so these records came from the aggregator rather than from the parliament itself",
+        ...result.warnings,
+      ],
+    };
+  }
 }

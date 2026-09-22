@@ -9,7 +9,16 @@
   ],
   "references": [
     {
+      "path": "../lib-extract"
+    },
+    {
+      "path": "../lib-models"
+    },
+    {
       "path": "../lib-parlamentsspiegel"
+    },
+    {
+      "path": "../lib-parldok"
     },
     {
       "path": "../lib-source"

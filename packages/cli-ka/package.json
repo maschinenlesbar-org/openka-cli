@@ -33,6 +33,8 @@
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-cli-ka-factory": "0.0.1",
+    "@maschinenlesbar.org/openka-connector-berlin": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-pardok": "0.0.1",
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"
   },
   "files": [

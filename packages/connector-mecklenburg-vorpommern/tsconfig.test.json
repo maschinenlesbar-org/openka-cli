@@ -12,16 +12,7 @@
       "path": "./tsconfig.json"
     },
     {
-      "path": "../connector-berlin"
-    },
-    {
-      "path": "../lib-errors"
-    },
-    {
       "path": "../lib-testing"
-    },
-    {
-      "path": "../lib-text"
     }
   ]
 }

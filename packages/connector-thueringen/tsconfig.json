@@ -15,6 +15,9 @@
       "path": "../lib-parlamentsspiegel"
     },
     {
+      "path": "../lib-parldok"
+    },
+    {
       "path": "../lib-source"
     }
   ]

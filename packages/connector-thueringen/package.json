@@ -15,6 +15,7 @@
   "dependencies": {
     "@maschinenlesbar.org/openka-lib-models": "0.0.1",
     "@maschinenlesbar.org/openka-lib-parlamentsspiegel": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-parldok": "0.0.1",
     "@maschinenlesbar.org/openka-lib-source": "0.0.1"
   },
   "scripts": {
