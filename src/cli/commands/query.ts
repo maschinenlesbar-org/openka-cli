@@ -13,6 +13,7 @@ import type { CliDeps } from "../io.js";
 import {
   action,
   addCorpusFilters,
+  emit,
   choiceOption,
   corpusFiltersFrom,
   parseBoundedInt,
@@ -189,14 +190,10 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         const record = ctx.store().getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
         const format = ((ctx.opts["format"] as RenderFormat | undefined) ?? "json") as RenderFormat;
-        const text = renderRecord(record, format);
-        const out = ctx.opts["out"] as string | undefined;
-        if (out === undefined) ctx.deps.io.out(text.replace(/\n$/, ""));
-        else {
-          const data = Buffer.from(text, "utf8");
-          ctx.deps.io.writeFile(out, data);
-          ctx.deps.io.err(`Wrote ${data.length} bytes to ${out}`);
-        }
+        // `emit` wraps the write in a typed error; writing directly meant a bad
+        // path surfaced as "Unexpected error: ENOENT" while `ka export -o` gave a
+        // clean message for the identical failure.
+        emit(ctx, renderRecord(record, format), ctx.opts["out"] as string | undefined);
       }),
     );
 

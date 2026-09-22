@@ -16,6 +16,7 @@
 // those record their own model name and hash.
 
 import { createHash } from "node:crypto";
+import { OpenKaError } from "../../core/errors.js";
 import { readFileSync } from "node:fs";
 import { tokenize } from "../../core/store/fts.js";
 import { indexableFields } from "../../core/store/indexer.js";
@@ -87,7 +88,16 @@ export function importEmbeddings(
 ): EmbeddingSet {
   const vectors: Record<string, number[]> = {};
   let dimensions = 0;
-  const lines = readFileSync(path, "utf8").split("\n");
+  let source: string;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch (err) {
+    // Otherwise a missing --from path reached the CLI's "Unexpected error" branch,
+    // which exists for genuine surprises, not for a path that is not there.
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new OpenKaError(`could not read ${path}: ${reason}`, { cause: err });
+  }
+  const lines = source.split("\n");
   lines.forEach((line, index) => {
     const trimmed = line.trim();
     if (trimmed === "") return;
