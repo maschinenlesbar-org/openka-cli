@@ -7,6 +7,7 @@ import { stripControlCharacters } from "../src/core/text.js";
 import { deflateSync } from "node:zlib";
 import { describe, it } from "node:test";
 import { Lexer, isKeyword } from "../src/core/pdf/lexer.js";
+import { ParseError } from "../src/core/errors.js";
 import { isDict, isName, isRef, isString, type PdfDict } from "../src/core/pdf/objects.js";
 import { ascii85Decode, asciiHexDecode, decodeStream, lzwDecode, runLengthDecode } from "../src/core/pdf/filters.js";
 import { glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/core/pdf/encoding.js";
@@ -280,5 +281,21 @@ describe("control characters in extracted text", () => {
 
   it("leaves ordinary German text untouched", () => {
     strictEqual(stripControlCharacters("Brücken & Wege, §3 — 100 %"), "Brücken & Wege, §3 — 100 %");
+  });
+});
+
+describe("nesting depth", () => {
+  it("refuses a document nested past the limit with a ParseError, not a RangeError", () => {
+    // The recursive readers used to overflow the stack, and a RangeError is not
+    // the parse failure the caller turns into an abstention.
+    const deep = Buffer.from("[".repeat(20_000) + "]".repeat(20_000));
+    throws(() => new Lexer(deep).next(), ParseError);
+    const deepDict = Buffer.from("<</A ".repeat(20_000) + "1" + ">>".repeat(20_000));
+    throws(() => new Lexer(deepDict).next(), ParseError);
+  });
+
+  it("still reads the nesting a real document uses", () => {
+    const shallow = Buffer.from("[".repeat(100) + "]".repeat(100));
+    ok(new Lexer(shallow).next() !== undefined);
   });
 });

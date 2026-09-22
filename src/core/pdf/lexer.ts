@@ -38,8 +38,20 @@ export function isKeyword(value: LexValue | undefined, expected?: string): value
   );
 }
 
+/**
+ * How deeply arrays and dictionaries may nest before the document is refused.
+ *
+ * Real PDFs nest a handful of levels; a document that nests hundreds is either
+ * corrupt or hostile. Without a bound the recursive readers overflow the stack and
+ * throw a RangeError, which is not a `ParseError` — and this module's contract is
+ * that anything it cannot interpret becomes a parse failure the caller turns into
+ * an abstention.
+ */
+export const MAX_NESTING_DEPTH = 256;
+
 export class Lexer {
   pos: number;
+  private depth = 0;
 
   constructor(
     readonly buf: Buffer,
@@ -249,7 +261,23 @@ export class Lexer {
     return { kind: "string", bytes: Buffer.from(hex, "hex") };
   }
 
+  private enter(what: string): void {
+    if (++this.depth > MAX_NESTING_DEPTH) {
+      this.depth = 0;
+      throw new ParseError(`${what} nested deeper than ${MAX_NESTING_DEPTH} levels`);
+    }
+  }
+
   private readArray(): PdfValue {
+    this.enter("Array");
+    try {
+      return this.readArrayBody();
+    } finally {
+      this.depth--;
+    }
+  }
+
+  private readArrayBody(): PdfValue {
     const items: PdfValue[] = [];
     for (;;) {
       this.skipSpace();
@@ -270,6 +298,15 @@ export class Lexer {
   }
 
   private readDict(): PdfValue {
+    this.enter("Dictionary");
+    try {
+      return this.readDictBody();
+    } finally {
+      this.depth--;
+    }
+  }
+
+  private readDictBody(): PdfValue {
     const dict: PdfDict = new Map();
     for (;;) {
       this.skipSpace();
