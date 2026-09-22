@@ -84,31 +84,62 @@ function numberOf(value: PdfValue | undefined, fallback: number): number {
 }
 
 /**
+ * The most a single stream may inflate to. The fetch engine caps a *response* at
+ * 64 MiB, and without a cap here that budget buys an unbounded amount of heap: a
+ * 199 KiB deflate stream of repeated bytes expands to 200 MiB, so a 64 MiB body at
+ * that ratio is tens of gigabytes. 128 MiB is far beyond any real Drucksache and
+ * turns the bomb into an abstention.
+ */
+export const MAX_INFLATED_BYTES = 128 * 1024 * 1024;
+
+/**
  * zlib inflate, tolerating the two defects seen in the wild: a missing zlib header
  * (raw deflate) and a truncated final block. A truncated stream still yields the
  * bytes that did decode, because losing the tail of a page is better than losing
  * the page — and the caller can still tell, since the text simply stops.
+ *
+ * Output is bounded: see `MAX_INFLATED_BYTES`.
  */
 export function inflate(data: Buffer): Buffer {
+  const limit = { maxOutputLength: MAX_INFLATED_BYTES };
   try {
-    return inflateSync(data);
-  } catch {
-    /* fall through */
+    return inflateSync(data, limit);
+  } catch (err) {
+    if (tooLarge(err)) throw oversized();
   }
   try {
-    return inflateRawSync(data);
-  } catch {
-    /* fall through */
+    return inflateRawSync(data, limit);
+  } catch (err) {
+    if (tooLarge(err)) throw oversized();
   }
-  for (const attempt of [() => inflateSync(data, { finishFlush: 2 }), () => inflateRawSync(data, { finishFlush: 2 })]) {
+  for (const attempt of [
+    () => inflateSync(data, { ...limit, finishFlush: 2 }),
+    () => inflateRawSync(data, { ...limit, finishFlush: 2 }),
+  ]) {
     try {
       const out = attempt();
       if (out.length > 0) return out;
-    } catch {
-      /* keep trying */
+    } catch (err) {
+      if (tooLarge(err)) throw oversized();
     }
   }
   throw new ParseError("FlateDecode failed: stream is not valid zlib or raw deflate data");
+}
+
+/** zlib signals the cap with ERR_BUFFER_TOO_LARGE; anything else is a decode failure. */
+function tooLarge(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "ERR_BUFFER_TOO_LARGE"
+  );
+}
+
+function oversized(): ParseError {
+  return new ParseError(
+    `FlateDecode produced more than ${MAX_INFLATED_BYTES} bytes — refusing to inflate further`,
+  );
 }
 
 /** PNG (10–15) and TIFF (2) predictors, as used by xref and image streams. */

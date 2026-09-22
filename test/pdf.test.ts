@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import { Lexer, isKeyword } from "../src/core/pdf/lexer.js";
 import { ParseError } from "../src/core/errors.js";
 import { isDict, isName, isRef, isString, type PdfDict } from "../src/core/pdf/objects.js";
-import { ascii85Decode, asciiHexDecode, decodeStream, lzwDecode, runLengthDecode } from "../src/core/pdf/filters.js";
+import { ascii85Decode, asciiHexDecode, decodeStream, inflate, lzwDecode, runLengthDecode } from "../src/core/pdf/filters.js";
 import { glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/core/pdf/encoding.js";
 import { multiply, assemble, normalizeSpaces } from "../src/core/pdf/text.js";
 import { PdfDocument, extractPdfImages, extractPdfText } from "../src/core/pdf/index.js";
@@ -297,5 +297,19 @@ describe("nesting depth", () => {
   it("still reads the nesting a real document uses", () => {
     const shallow = Buffer.from("[".repeat(100) + "]".repeat(100));
     ok(new Lexer(shallow).next() !== undefined);
+  });
+});
+
+describe("decompression limits", () => {
+  it("refuses a stream that expands past the cap instead of taking the heap", () => {
+    // The fetch engine caps a response at 64 MiB; without a cap here that budget
+    // buys unbounded memory. 199 KiB of deflate expands to 200 MiB at 1029:1.
+    const bomb = deflateSync(Buffer.alloc(200 * 1024 * 1024, 0x20));
+    ok(bomb.length < 1024 * 1024, "the bomb should be small on the wire");
+    throws(() => inflate(bomb), ParseError);
+  });
+
+  it("still inflates an ordinary stream", () => {
+    strictEqual(inflate(deflateSync(Buffer.from("Hallo Welt"))).toString(), "Hallo Welt");
   });
 });
