@@ -32,6 +32,8 @@ export interface PdfTextResult {
   imageOnly: boolean;
   /** Content streams refused outright — an encrypted or unsupported filter. */
   undecodableStreams: number;
+  /** Objects lost with an object stream that would not decode. */
+  lostObjects: number;
   version: string;
   pageCount: number;
 }
@@ -100,6 +102,18 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     }
   }
 
+  // Objects lost with an ObjStm can be anything the document referenced from it —
+  // a page's /Contents, a font. Whatever is missing above is missing because of
+  // this, so it is reported alongside rather than left to be inferred.
+  let lostObjects = 0;
+  for (const lost of doc.lostObjectStreams) {
+    lostObjects += lost.count;
+    problems.push(
+      `object stream ${lost.object}: could not decode (filter ${lost.filters}) — ` +
+        `${lost.count} object(s) lost with it`,
+    );
+  }
+
   if (pages.length === 0) problems.push("no pages found");
   return {
     pages: results,
@@ -109,8 +123,9 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     // "No text-showing operators" only means "a scan" when we actually got to look.
     // A page whose content stream we refused has unknown text, and calling that
     // image-only sent the operator to OCR, which cannot decode it either.
-    imageOnly: total === 0 && undecodable === 0,
+    imageOnly: total === 0 && undecodable === 0 && lostObjects === 0,
     undecodableStreams: undecodable,
+    lostObjects,
     version: doc.version,
     pageCount: pages.length,
   };

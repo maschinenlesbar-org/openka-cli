@@ -277,6 +277,12 @@ function tryText(bytes: Buffer, abstentions: Abstentions): string | undefined {
     );
     return undefined;
   }
+  // The same applies to objects lost with an object stream: the page's /Contents
+  // may have been one of them, so an empty document here has not been read.
+  if (result.lostObjects > 0 && result.text.trim() === "") {
+    abstentions.note(`pdf: ${result.lostObjects} object(s) lost with an undecodable object stream, and no text was recovered`);
+    return undefined;
+  }
   // A document where a tenth of the characters have no mapping is a document we
   // are reading wrong, not one with a few odd glyphs. Refuse it.
   if (result.unmappedRatio > 0.1) {

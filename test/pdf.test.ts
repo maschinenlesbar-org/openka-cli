@@ -386,6 +386,54 @@ describe("a content stream the reader refuses", () => {
   });
 });
 
+describe("an object stream the reader refuses", () => {
+  // The page dictionary lives inside object stream 6, which declares a filter we
+  // do not implement. Losing it loses the page — and every object an ObjStm holds
+  // can be something the document needs: a page's /Contents, a font.
+  const inLostObjStm = (filter: string): Buffer => {
+    const content = "BT /F1 12 Tf 72 720 Td (Wichtiger Text) Tj ET";
+    // An ObjStm is a header of "objnum offset" pairs, then the objects themselves
+    // starting at /First.
+    const header = "3 0 ";
+    const packed = header + "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>";
+    return Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        `4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
+        "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj",
+        `6 0 obj << /Type /ObjStm /N 1 /First ${header.length} /Length ${packed.length}${filter} >> ` +
+          `stream\n${packed}\nendstream endobj`,
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+  };
+
+  it("names the stream and what it took, instead of a document that is simply shorter", () => {
+    const result = extractPdfText(inLostObjStm(" /Filter /Crypt"));
+    strictEqual(result.lostObjects, 1);
+    ok(
+      result.problems.some((problem) => /object stream 6: could not decode \(filter Crypt\) — 1 object\(s\) lost/.test(problem)),
+      `expected the loss to be named, got ${JSON.stringify(result.problems)}`,
+    );
+  });
+
+  it("is not called an image-only document", () => {
+    // Nothing was read, so "no text-showing operators" is not evidence of a scan,
+    // and sending the operator to OCR would not help.
+    strictEqual(extractPdfText(inLostObjStm(" /Filter /Crypt")).imageOnly, false);
+  });
+
+  it("reports nothing when the object stream decodes", () => {
+    const result = extractPdfText(inLostObjStm(""));
+    strictEqual(result.lostObjects, 0);
+    strictEqual(result.text, "Wichtiger Text");
+  });
+});
+
 describe("glyph widths", () => {
   const fontWith = (widths: string, extra = ""): Buffer => {
     // Two glyphs drawn adjacently; the first declares the width under test.

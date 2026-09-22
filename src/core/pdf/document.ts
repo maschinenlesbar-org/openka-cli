@@ -39,10 +39,22 @@ export interface PdfPage {
 
 const OBJ_HEADER = /(?<![0-9])(\d{1,10})\s+(\d{1,5})\s+obj\b/g;
 
+/** An object stream that would not decode, and what it took with it. */
+export interface LostObjectStream {
+  /** The object number of the `ObjStm` itself. */
+  object: number;
+  /** Its filter chain, or `unknown` when it declares none we could name. */
+  filters: string;
+  /** How many objects it said it held (`/N`). */
+  count: number;
+}
+
 export class PdfDocument {
   private readonly objects = new Map<number, PdfValue>();
   private readonly offsets = new Map<number, number>();
   readonly trailers: PdfDict[] = [];
+  /** Object streams that would not decode; their objects are missing from `objects`. */
+  readonly lostObjectStreams: LostObjectStream[] = [];
   /** True when the document declares an /Encrypt dictionary. */
   readonly encrypted: boolean;
 
@@ -106,7 +118,16 @@ export class PdfDocument {
       try {
         data = decodeStream(value, (v) => this.resolve(v));
       } catch {
-        continue; // an unreadable object stream costs us its objects, not the file
+        // An unreadable object stream costs us its objects, not the file — but the
+        // objects it held can be page content or a font, so the loss is named. Left
+        // silent it showed up as a page that was merely shorter than it should be,
+        // which reads as a document that said less, not as one we could not read.
+        this.lostObjectStreams.push({
+          object: num,
+          filters: filterChain(value.dict, (item: PdfValue | undefined) => this.resolve(item)).filters.join("+") || "unknown",
+          count: this.num(value.dict.get("N")) ?? 0,
+        });
+        continue;
       }
       const count = this.num(value.dict.get("N")) ?? 0;
       const first = this.num(value.dict.get("First")) ?? 0;
