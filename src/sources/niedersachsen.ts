@@ -29,15 +29,49 @@ export interface AnswerEntry {
   url: string;
 }
 
+/** One inclusive Drucksachen range that a sweep actually read. */
+export interface SweptRange {
+  from: number;
+  to: number;
+}
+
 export interface AnswerIndex {
   /** ISO instant the sweep ran; `ka sources show` can say how stale the map is. */
   built_at: string;
-  /** Number range swept, so a later run knows what is already covered. */
   period: number;
-  from: number;
-  to: number;
+  /**
+   * The ranges actually read, so a later run knows what is already covered.
+   *
+   * A list rather than one from/to pair: merging two disjoint sweeps (7900–8000
+   * and 9000–9100) into a single span would claim the 999 numbers between them
+   * had been read. A later run would then skip them and the map would look
+   * complete while being silently full of holes — the failure this project is
+   * built to avoid.
+   */
+  ranges: SweptRange[];
   /** Question Drucksachennummer -> the answer that names it. */
   answers: Record<string, AnswerEntry>;
+}
+
+/**
+ * Add a range to a covered set, sorted, with overlapping and adjacent ranges
+ * coalesced. Adjacent means `to + 1 === from`: number 8000 and number 8001 leave
+ * no gap between them.
+ */
+export function mergeRanges(existing: readonly SweptRange[], added: SweptRange): SweptRange[] {
+  const sorted = [...existing, added].sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged: SweptRange[] = [];
+  for (const range of sorted) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && range.from <= last.to + 1) last.to = Math.max(last.to, range.to);
+    else merged.push({ from: range.from, to: range.to });
+  }
+  return merged;
+}
+
+/** True when every number from `from` to `to` lies inside a swept range. */
+export function isCovered(index: AnswerIndex, from: number, to: number): boolean {
+  return index.ranges.some((range) => range.from <= from && range.to >= to);
 }
 
 /**

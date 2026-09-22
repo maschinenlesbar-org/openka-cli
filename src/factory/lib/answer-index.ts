@@ -14,13 +14,14 @@
 // question→answer map as an artifact, and the line consumes it (CONCEPT.md §0).
 
 import type { FetchEngine } from "../../core/http/engine.js";
-import { OpenKaApiError } from "../../core/errors.js";
+import { OpenKaApiError, OpenKaError } from "../../core/errors.js";
 import { extractPdfText } from "../../core/pdf/index.js";
 import type { Store } from "../../core/store/store.js";
 import {
   ANSWER_INDEX,
   citedQuestion,
   isAnsweredEdition,
+  mergeRanges,
   niedersachsenUrl,
   type AnswerEntry,
   type AnswerIndex,
@@ -57,6 +58,15 @@ export interface SweepReport {
  */
 export async function sweepAnswers(options: SweepOptions): Promise<SweepReport> {
   const existing = options.merge === true ? options.store.loadArtifact<AnswerIndex>(ANSWER_INDEX) : undefined;
+  if (existing !== undefined && existing.period !== options.period) {
+    // The ranges are Drucksachennummern *within* a period, so merging across one
+    // would silently relabel the artifact and produce a coverage claim that spans
+    // two numbering schemes. Refuse rather than write a map nobody can interpret.
+    throw new OpenKaError(
+      `The stored answer map is for period ${existing.period}, not ${options.period}. ` +
+        "Sweep without --merge to replace it, or sweep the period it already covers.",
+    );
+  }
   const answers: Record<string, AnswerEntry> = { ...(existing?.answers ?? {}) };
   const report: SweepReport = { scanned: 0, answers: 0, questions: 0, missing: 0, unreadable: 0, total: 0 };
 
@@ -106,8 +116,7 @@ export async function sweepAnswers(options: SweepOptions): Promise<SweepReport> 
   const index: AnswerIndex = {
     built_at: options.now,
     period: options.period,
-    from: existing !== undefined && options.merge === true ? Math.min(existing.from, options.from) : options.from,
-    to: existing !== undefined && options.merge === true ? Math.max(existing.to, options.to) : options.to,
+    ranges: mergeRanges(existing?.ranges ?? [], { from: options.from, to: options.to }),
     answers,
   };
   options.store.saveArtifact(ANSWER_INDEX, index);

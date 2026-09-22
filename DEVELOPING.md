@@ -316,7 +316,11 @@ exactly right for the factory:
     ka-factory answers niedersachsen --period 19 --from 7900 --to 8115 --merge
 
 It freezes a question→answer map as a **corpus artifact** (`artifacts/…json`, the
-slot `Store.loadArtifact` reads), stamped with when it ran and what range it covers.
+slot `Store.loadArtifact` reads), stamped with when it ran and which ranges it read.
+Those ranges are a *list*, not one from/to pair: `--merge` of two disjoint sweeps
+must not claim the numbers between them were read, or a later run skips them and the
+map looks complete while being full of holes. `--merge` across legislative periods
+is refused outright, since the numbers mean different things in each.
 `NiedersachsenSource` consumes it and attaches the answer; without it the source
 says so in a warning and yields question-only records, which is honest rather than
 wrong. A sweep of 190 Drucksachen found 67 answers and took the Land from no records

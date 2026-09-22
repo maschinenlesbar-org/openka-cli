@@ -1,7 +1,7 @@
 // Niedersachsen: the one source whose answers are recovered by a build-time sweep
 // rather than by asking an interface, because no interface exposes the link.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ANSWER_INDEX,
@@ -10,6 +10,8 @@ import {
   isAnsweredEdition,
   niedersachsenUrl,
   numberOf,
+  isCovered,
+  mergeRanges,
   type AnswerIndex,
 } from "../src/sources/niedersachsen.js";
 import { sweepAnswers } from "../src/factory/lib/answer-index.js";
@@ -115,8 +117,7 @@ describe("the answer sweep", () => {
     await sweepAnswers({ engine, store, period: 19, from: 8100, to: 8101, now: "2026-01-02T03:04:05Z" });
     const index = store.loadArtifact<AnswerIndex>(ANSWER_INDEX);
     strictEqual(index?.built_at, "2026-01-02T03:04:05Z");
-    strictEqual(index?.from, 8100);
-    strictEqual(index?.to, 8101);
+    deepStrictEqual(index?.ranges, [{ from: 8100, to: 8101 }]);
   });
 
   it("keeps earlier entries when merging, and widens the recorded range", async () => {
@@ -124,8 +125,7 @@ describe("the answer sweep", () => {
     store.saveArtifact(ANSWER_INDEX, {
       built_at: "2025-01-01T00:00:00Z",
       period: 19,
-      from: 1,
-      to: 10,
+      ranges: [{ from: 1, to: 10 }],
       answers: { "19/1": { reference: "19/2", url: "https://x.invalid/a.pdf" } },
     } satisfies AnswerIndex);
     const { engine } = sweep(store);
@@ -133,8 +133,47 @@ describe("the answer sweep", () => {
     const index = store.loadArtifact<AnswerIndex>(ANSWER_INDEX);
     strictEqual(index?.answers["19/1"]?.reference, "19/2");
     strictEqual(index?.answers["19/7745"]?.reference, "19/8100");
-    strictEqual(index?.from, 1);
-    strictEqual(index?.to, 8100);
+    // The two sweeps are disjoint, so they stay two ranges. Collapsing them to
+    // 1..8100 would claim 8090 numbers had been read that nobody fetched.
+    deepStrictEqual(index?.ranges, [
+      { from: 1, to: 10 },
+      { from: 8100, to: 8100 },
+    ]);
+    strictEqual(isCovered(index as AnswerIndex, 5000, 5000), false);
+  });
+
+  it("refuses to merge a sweep of a different legislative period", async () => {
+    const store = new MemoryStore();
+    store.saveArtifact(ANSWER_INDEX, {
+      built_at: "2025-01-01T00:00:00Z",
+      period: 18,
+      ranges: [{ from: 1, to: 10 }],
+      answers: {},
+    } satisfies AnswerIndex);
+    const { engine } = sweep(store);
+    await rejects(
+      () => sweepAnswers({ engine, store, period: 19, from: 8100, to: 8100, now: "2026-01-02T03:04:05Z", merge: true }),
+      /period 18, not 19/,
+    );
+  });
+});
+
+describe("swept ranges", () => {
+  it("coalesces overlapping and adjacent ranges but keeps disjoint ones apart", () => {
+    deepStrictEqual(mergeRanges([{ from: 1, to: 10 }], { from: 11, to: 20 }), [{ from: 1, to: 20 }]);
+    deepStrictEqual(mergeRanges([{ from: 1, to: 10 }], { from: 5, to: 20 }), [{ from: 1, to: 20 }]);
+    deepStrictEqual(mergeRanges([{ from: 1, to: 10 }], { from: 12, to: 20 }), [
+      { from: 1, to: 10 },
+      { from: 12, to: 20 },
+    ]);
+  });
+
+  it("reports a number in a gap as not covered", () => {
+    const index = { built_at: "", period: 19, ranges: [{ from: 1, to: 10 }, { from: 100, to: 110 }], answers: {} };
+    strictEqual(isCovered(index, 5, 5), true);
+    strictEqual(isCovered(index, 50, 50), false);
+    // A span that straddles a gap is not covered either.
+    strictEqual(isCovered(index, 5, 105), false);
   });
 });
 
@@ -169,8 +208,7 @@ describe("Niedersachsen source", () => {
     store.saveArtifact(ANSWER_INDEX, {
       built_at: "2026-01-02T03:04:05Z",
       period: 19,
-      from: 1,
-      to: 9999,
+      ranges: [{ from: 1, to: 9999 }],
       answers: { [reference]: { reference: "19/9999", url: "https://x.invalid/answer.pdf" } },
     } satisfies AnswerIndex);
 
