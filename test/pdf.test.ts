@@ -169,7 +169,11 @@ describe("text assembly", () => {
 // A hand-built PDF: uncompressed, one page, one text run. Small enough to reason
 // about, real enough to exercise the object scanner and the content interpreter.
 function minimalPdf(text: string): Buffer {
-  const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+  return rawContentPdf(`BT /F1 12 Tf 72 720 Td (${text}) Tj ET`);
+}
+
+/** A one-page PDF with the given content stream verbatim. */
+function rawContentPdf(content: string): Buffer {
   return Buffer.from(
     [
       "%PDF-1.4",
@@ -330,5 +334,18 @@ describe("filters that meet malformed input", () => {
     // The largest legal group is still accepted.
     strictEqual(ascii85Decode(Buffer.from("<~s8W-!~>")).length, 4);
     strictEqual(ascii85Decode(Buffer.from("<~87cURD]j7BEbo80~>")).toString(), "Hello world!");
+  });
+});
+
+describe("reporting a page that lost its text", () => {
+  it("says so when text was drawn with no font selected", () => {
+    // An unknown font was already reported; a `Tj` before any `Tf` was not, so a
+    // library caller reading `problems` saw an empty page and no reason for it.
+    // (The CLI was never misled: the codes count as unmapped and tiers refuses
+    // the page on the ratio.)
+    const withoutFont = extractPdfText(rawContentPdf("BT 72 720 Td (Wichtiger Text) Tj ET"));
+    strictEqual(withoutFont.text, "");
+    match(withoutFont.problems[0] ?? "", /drawn with no font selected/);
+    strictEqual(extractPdfText(rawContentPdf("BT /F1 12 Tf 72 720 Td (Text) Tj ET")).problems.length, 0);
   });
 });

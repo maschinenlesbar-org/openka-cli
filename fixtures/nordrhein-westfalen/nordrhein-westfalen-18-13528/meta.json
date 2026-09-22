@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.0.1+extract:a72bf011a08b",
+  "extractor_version": "pkg:0.0.1+extract:a0556dbd4f18",
   "human_verified": false,
   "id": "nordrhein-westfalen-18-13528",
   "note": "Landtag NRW: canonical MMD URLs, a question ending in a parenthetical after the question mark, a grouped answer for 1 and 2, and questions read from the question paper",
