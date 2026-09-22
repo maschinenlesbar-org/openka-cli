@@ -168,6 +168,8 @@ describe("Atom feed", () => {
   it("escapes XML metacharacters and drops characters XML cannot carry", () => {
     strictEqual(escapeXml('a & b <c> "d"'), "a &amp; b &lt;c&gt; &quot;d&quot;");
     strictEqual(escapeXml("a\u0000b"), "ab");
+    // DEL and C1 were left in, so a feed could carry U+009B (8-bit CSI).
+    strictEqual(escapeXml("a\u007fb\u009bc"), "abc");
   });
 
   it("does not leak a raw ampersand from a title", () => {
