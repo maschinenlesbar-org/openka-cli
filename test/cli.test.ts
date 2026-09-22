@@ -403,6 +403,18 @@ describe("ka-factory", () => {
     match(harness.stderr(), /--like cannot be combined with/);
   });
 
+  it("refuses a --baseline path that is not there", async () => {
+    // A missing default baseline means "first run"; a missing path the caller
+    // named is a typo, and it used to answer one with "every source is new,
+    // nothing is wrong" and exit 0.
+    const harness = cliHarness();
+    strictEqual(
+      await runFactory(["drift", "--baseline", "/nonexistent/baseline.json", "--corpus", harness.corpus], harness.deps),
+      EXIT_ERROR,
+    );
+    match(harness.stderr(), /No baseline at/);
+  });
+
   it("verifies the committed goldens", async () => {
     const harness = cliHarness();
     strictEqual(await runFactory(["goldens", "verify", "--dir", "fixtures"], harness.deps), EXIT_OK);
@@ -448,12 +460,11 @@ describe("ka-factory", () => {
   });
 
   it("reports a corpus with no baseline as new rather than broken", async () => {
+    // The *default* baseline being absent means "first run", which is not an
+    // error. A baseline the caller named and got wrong is — see the test below.
     const harness = await seeded();
     try {
-      strictEqual(
-        await runFactory(["--corpus", harness.corpus, "drift", "--baseline", `${harness.corpus}/none.json`], harness.deps),
-        EXIT_OK,
-      );
+      strictEqual(await runFactory(["--corpus", harness.corpus, "drift"], harness.deps), EXIT_OK);
       match(harness.stdout(), /\[new_source\]/);
       match(harness.stderr(), /No baseline at/);
     } finally {

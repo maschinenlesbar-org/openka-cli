@@ -201,27 +201,42 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .command("drift")
     .description("compare the corpus against the baseline and classify what changed")
     .option("--baseline <path>", `baseline snapshot (default: ${DEFAULT_BASELINE})`, parseNonEmpty)
+    .option("--fail-on-drift", "exit non-zero when anything drifted, for CI")
     .option("--json", "print findings as JSON")
     .action(
       action(deps, async (ctx) => {
-        const path = resolve((ctx.opts["baseline"] as string | undefined) ?? DEFAULT_BASELINE);
-        const snapshot = measureHealth(ctx.store(), isoInstant(ctx.deps.now()));
+        const named = ctx.opts["baseline"] as string | undefined;
+        const path = resolve(named ?? DEFAULT_BASELINE);
         const baseline = loadBaseline(path);
+        // A missing *default* baseline means "first run". A missing path the caller
+        // named is a typo, and answering a typo with "every source is new, nothing
+        // is wrong" is the worst reading available.
+        if (baseline === undefined && named !== undefined) {
+          throw new OpenKaError(`No baseline at ${path}. Write one with \`ka-factory health --save-baseline\`.`);
+        }
+        const snapshot = measureHealth(ctx.store(), isoInstant(ctx.deps.now()));
         const findings = detectDrift(snapshot, baseline);
         if (ctx.opts["json"] === true) {
           printJson(ctx, { baseline: baseline?.taken_at ?? null, findings });
-          return;
+        } else {
+          if (baseline === undefined) {
+            ctx.deps.io.err(`No baseline at ${path}; run \`ka-factory health --save-baseline\` first.`);
+          }
+          if (findings.length === 0) {
+            ctx.deps.io.out("No drift against the baseline.");
+          } else {
+            for (const finding of findings) {
+              ctx.deps.io.out(`${finding.source} [${finding.kind}] ${finding.detail}`);
+              ctx.deps.io.out(`    → ${finding.suggestion}`);
+            }
+          }
         }
-        if (baseline === undefined) {
-          ctx.deps.io.err(`No baseline at ${path}; run \`ka-factory health --save-baseline\` first.`);
-        }
-        if (findings.length === 0) {
-          ctx.deps.io.out("No drift against the baseline.");
-          return;
-        }
-        for (const finding of findings) {
-          ctx.deps.io.out(`${finding.source} [${finding.kind}] ${finding.detail}`);
-          ctx.deps.io.out(`    → ${finding.suggestion}`);
+        // Drift findings are signals rather than pass/fail, which is why this is
+        // opt-in — but without it there was no exit code at all, so the one signal
+        // the heal loop exists to act on could not fail a build, while `lint` and
+        // `goldens verify` both can.
+        if (ctx.opts["failOnDrift"] === true && findings.length > 0) {
+          throw new OpenKaError(`${findings.length} drift finding(s) against ${path}`);
         }
       }),
     );
