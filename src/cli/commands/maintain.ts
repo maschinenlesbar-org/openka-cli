@@ -13,11 +13,28 @@ import { pad, truncate } from "../text.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "./sync.js";
 import { choiceOption } from "../shared.js";
 
+/**
+ * An evenly spaced selection across a sorted list — the default `ka verify` sample.
+ *
+ * `slice(0, n)` was not a sample: record ids sort by parliament, so it checked the
+ * same alphabetically-first records on every run and whole Länder were never
+ * verified at all. Stepping through the range keeps the choice deterministic (the
+ * same corpus always yields the same sample, which a reproducibility check needs)
+ * while covering every part of it.
+ */
+export function spread(ids: string[], count: number): string[] {
+  if (count >= ids.length) return ids;
+  const step = ids.length / count;
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) out.push(ids[Math.floor(i * step)] as string);
+  return out;
+}
+
 export function registerMaintain(program: Command, deps: CliDeps): void {
   program
     .command("verify")
     .description("re-run an extraction from the archived bytes and assert identical output")
-    .argument("[id]", "record id; omit to verify a sample of the corpus")
+    .argument("[id]", "record id; omit to verify an evenly spaced sample of the corpus")
     .option("--all", "verify every record")
     .option("--limit <n>", "how many records to verify when no id is given", parseBoundedInt(1, 1_000_000))
     .addOption(choiceOption("--ocr <mode>", "OCR engine to use for records produced with one", OCR_MODES))
@@ -25,10 +42,13 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .action(
       action(deps, async (ctx, positionals) => {
         const store = ctx.store();
+        const all = store.recordIds();
         const ids =
           positionals[0] !== undefined
             ? [positionals[0]]
-            : store.recordIds().slice(0, ctx.opts["all"] === true ? undefined : ((ctx.opts["limit"] as number | undefined) ?? 25));
+            : ctx.opts["all"] === true
+              ? all
+              : spread(all, (ctx.opts["limit"] as number | undefined) ?? 25);
         if (ids.length === 0) throw new OpenKaError(`No records in ${ctx.corpusRoot()}`);
 
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";

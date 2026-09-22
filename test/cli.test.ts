@@ -7,6 +7,7 @@ import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/cli/run
 import { runFactory } from "../src/factory/cli/run.js";
 import { defaultCorpusRoot, parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/cli/shared.js";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/cli/text.js";
+import { spread } from "../src/cli/commands/maintain.js";
 import { cliHarness, readFixture, readFixtureText, scriptedTransport } from "./helpers.js";
 
 const PDF = readFixture(
@@ -317,6 +318,24 @@ describe("ka-factory", () => {
     strictEqual(await runFactory(["lint"], harness.deps), EXIT_OK);
     match(harness.stdout(), /No generative-model dependency on the line/);
     harness.cleanup();
+  });
+
+  it("samples across the corpus rather than one alphabetical prefix", () => {
+    // Record ids sort by parliament, so `slice(0, n)` checked the same first
+    // records every run and whole Länder were never verified.
+    const ids = [
+      ...Array.from({ length: 15 }, (_, i) => `berlin-19-${i}`),
+      ...Array.from({ length: 15 }, (_, i) => `sachsen-8-${i}`),
+      ...Array.from({ length: 15 }, (_, i) => `thueringen-8-${i}`),
+    ];
+    const sample = spread(ids, 25);
+    strictEqual(sample.length, 25);
+    for (const parliament of ["berlin", "sachsen", "thueringen"]) {
+      ok(sample.some((id: string) => id.startsWith(parliament)), `${parliament} missing from the sample`);
+    }
+    // Deterministic: a reproducibility check must pick the same records each run.
+    deepStrictEqual(spread(ids, 25), sample);
+    deepStrictEqual(spread(ids, 100), ids);
   });
 
   it("verifies the committed goldens", async () => {
