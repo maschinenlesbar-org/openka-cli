@@ -204,6 +204,9 @@ export function documentRole(rowSummary: string, fundstelle: string): SourceDocu
   return "question_pdf";
 }
 
+/** The "N weitere Dokumente" header that every row with follow-ups carries. */
+const FOLGE_MARKER = /<p[^>]*\sclass="(?:[^"]*\s)?ps-folge-dok(?:\s[^"]*)?"[^>]*>/;
+
 /** Parse one `ps-vorgang` result block into a DocRef. */
 export function parseVorgangBlock(block: string, warnings: string[]): DocRef | undefined {
   const id = ID_PATTERN.exec(block);
@@ -218,7 +221,14 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
   // Everything before the first follow-up document belongs to the question. The
   // split is on the opening tag, not on the class attribute: slicing mid-tag would
   // leave the tail without its `<div`, and nothing downstream would match it.
-  const folge = /<div[^>]*\sclass="(?:[^"]*\s)?ps-folge(?:\s[^"]*)?"[^>]*>/.exec(block);
+  //
+  // `ps-folge-dok` — the "N weitere Dokumente" header — is the marker, not the
+  // `ps-folge` div that holds them. The portal only puts that class on the div when
+  // the search filtered some of the follow-ups away; a row with
+  // "0 gefiltert/ausgeblendet" renders the same markup under a bare `<div >`.
+  // Splitting on `ps-folge` therefore lost the answer for every unfiltered row —
+  // measured on the recorded payloads, that was all of Niedersachsen and Thüringen.
+  const folge = FOLGE_MARKER.exec(block);
   const head = folge === null ? block : block.slice(0, folge.index);
   const tail = folge === null ? "" : block.slice(folge.index);
 
@@ -285,11 +295,25 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
   return ref;
 }
 
+/**
+ * One segment per follow-up document: the `ps-dokument` row that names it, plus
+ * the `ps-titel`/`ps-urheber` fields the portal prints under it, up to the next
+ * follow-up. Sachsen files an Antwort and a Berichtigung under one Vorgang, so
+ * the fields have to stay attached to the row they describe.
+ */
+function followUpSegments(tail: string): string[] {
+  const opener = /<p[^>]*\sclass="(?:[^"]*\s)?ps-dokument(?:\s[^"]*)?"[^>]*>/g;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(tail)) !== null) starts.push(match.index);
+  return starts.map((start, index) => tail.slice(start, starts[index + 1] ?? tail.length));
+}
+
 /** The Antwort among a Vorgang's follow-up documents, if it lists one. */
 function parseFollowUps(tail: string): { url?: string; date?: string; ministry?: string } | undefined {
   if (tail === "") return undefined;
-  for (const folge of blocksWithClass(tail, "ps-folge")) {
-    const region = regionWithClass(folge, "ps-dokument");
+  for (const segment of followUpSegments(tail)) {
+    const region = regionWithClass(segment, "ps-dokument");
     if (region === undefined) continue;
     const summary = visibleTextOf(region);
     // Sachsen abbreviates it: its follow-up row reads "Sachsen - Antw SMI 13.08.2025".
@@ -300,12 +324,15 @@ function parseFollowUps(tail: string): { url?: string; date?: string; ministry?:
     if (url !== undefined && /^https?:/i.test(url)) out.url = url;
     const date = findRowDate(summary);
     if (date !== undefined) out.date = date;
-    // `Nordrhein-Westfalen - Antwort 5343. MKJFGFI - Drucksache 18/14035, …`
-    const ministry = /\bAntw(?:ort)?\.?\s+\d*\.?\s*([^-]+?)\s+-\s+Drucksache/.exec(summary);
-    if (ministry !== null) {
-      const name = (ministry[1] as string).trim();
-      if (name !== "") out.ministry = name;
-    }
+    // The answering body comes from the row's own `Urheber` field, not from the
+    // summary line. Reading the summary meant guessing where the name started:
+    // "Antwort 5516. MUNV - Drucksache …" and "Antwort. Landesregierung - …" both
+    // parsed, but Thüringen's "Antwort auf Kleine Anfrage. Ministerium für …"
+    // yielded "auf Kleine Anfrage. Ministerium für …", and Sachsen's "Antw SMI
+    // 12.08.2025 Drs 8/3351" — no " - Drucksache" — yielded nothing at all.
+    const urheberRegion = regionWithClass(segment, "ps-urheber");
+    const ministry = urheberRegion === undefined ? "" : (spanTexts(urheberRegion).pop() ?? "").trim();
+    if (ministry !== "") out.ministry = ministry;
     return out;
   }
   return undefined;

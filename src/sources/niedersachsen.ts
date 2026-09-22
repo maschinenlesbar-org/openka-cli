@@ -122,11 +122,11 @@ export class NiedersachsenSource implements Source {
   readonly label = "Niedersächsischer Landtag";
   readonly homepage = "https://www.landtag-niedersachsen.de/dokumentensuche/";
   readonly notes =
-    "Discovery runs through the Parlamentsspiegel, which knows an answer exists but never renders " +
-    "it. The answer is a separate Drucksache that names the question in its header, so the link is " +
-    "recovered by a build-time sweep (`ka-factory answers niedersachsen`) and frozen as an " +
-    "artifact. Without that artifact this source yields question-only records, which is honest " +
-    "rather than wrong.";
+    "Discovery runs through the Parlamentsspiegel, which lists the answer as a follow-up document. " +
+    "The answer is a separate Drucksache that reprints the question, and a build-time sweep " +
+    "(`ka-factory answers niedersachsen`) reads the papers to confirm which question each one " +
+    "answers; where that frozen map has an entry it is authoritative, because it was read rather " +
+    "than inferred from a result row.";
 
   private readonly aggregator = new ParlamentsspiegelSource("niedersachsen");
 
@@ -137,7 +137,8 @@ export class NiedersachsenSource implements Source {
 
     if (index === undefined) {
       warnings.push(
-        "no answer index in this corpus — records will carry the question only. " +
+        "no answer index in this corpus — the answer is taken from the Parlamentsspiegel row, " +
+          "which lists one only for a Vorgang the portal has already linked. " +
           "Build one with `ka-factory answers niedersachsen --period 19 --from … --to …`.",
       );
       return withDiscoveryState(discovered, discovered.refs, warnings);
@@ -147,8 +148,10 @@ export class NiedersachsenSource implements Source {
       const answer = index.answers[ref.reference];
       if (answer === undefined) return ref;
       // The answer paper reprints the question above the reply, so it is combined.
+      // It replaces whatever follow-up the result row named rather than joining it:
+      // they are the same paper, and appending would fetch and extract it twice.
       const documents: DocRefDocument[] = [
-        ...ref.documents,
+        ...ref.documents.filter((document) => document.role === "question_pdf"),
         { role: "combined_pdf", url: answer.url, urlStable: true },
       ];
       return { ...ref, documents };

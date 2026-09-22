@@ -297,8 +297,17 @@ needed, and no Land has yet been shown to need it.
 ### Thüringen, and using an undocumented API
 
 Thüringen's answer is a Drucksache with **no relation to the Kleine Anfrage's
-number** — 8/979 is answered by 8/1715 — and the Parlamentsspiegel will not render
-it. Nothing in the question document names it either; it is published weeks later.
+number** — 8/979 is answered by 8/1715 — and nothing in the question document names
+it either; it is published weeks later.
+
+The Parlamentsspiegel does list it, as a follow-up document. That was read as "the
+portal will not render it" for as long as the adapter split a result block on the
+`ps-folge` class, which the portal emits only when the search filtered some of a
+Vorgang's follow-ups away; an unfiltered row puts the same markup under a bare
+`<div >`, and every Thüringen row in the recorded payloads is unfiltered. Since that
+was fixed the row yields the answer's Parldok URL, its date and the answering
+ministry, and the API lookup below confirms the paper rather than being the only
+route to it.
 
 Parldok is a single-page application whose search runs over a JSON API, and the
 adapter uses two of its endpoints exactly as the application does:
@@ -326,8 +335,14 @@ in its header: `Drs. 19/7745`. The link exists; nothing queryable exposes it.
 
 What was checked and ruled out, so it is not repeated:
 
-- **The Parlamentsspiegel** knows an answer exists ("1 weiteres Dokument") and never
-  renders it — with `detail`, `alles`, `weitern`, or the document-type filter dropped.
+- **The Parlamentsspiegel** does render it, which this list got wrong for as long as
+  the adapter split a result block on the `ps-folge` class: the portal emits that
+  class only when the search filtered some of a Vorgang's follow-ups away, and every
+  Niedersachsen row in the recorded payloads reads "0 gefiltert/ausgeblendet" and
+  puts the same markup under a bare `<div >`. The row names the answer Drucksache,
+  its URL, its date and the answering ministry. What it does not do is say that the
+  paper reprints the question, which is what the sweep below establishes by reading
+  it — so the sweep is a confirmation now, not the only route.
 - **`/dokumentensuche/`** (permitted by robots.txt; only `/service/suche/` is
   disallowed) is a TYPO3 browse filter over kind, Wahlperiode and year, with no
   lookup by number and a server-computed `cHash`, so a query it did not generate

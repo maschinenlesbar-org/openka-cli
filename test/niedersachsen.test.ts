@@ -192,8 +192,35 @@ describe("Niedersachsen source", () => {
       state: { source: "niedersachsen", http_cache: {} },
     });
     ok(result.refs.length >= 1);
-    ok(result.refs.every((ref) => ref.documents.every((document) => document.role === "question_pdf")));
+    // The result row names the answer, so a corpus without the sweep is not
+    // answer-less — it just lacks the confirmation that the sweep reads.
+    ok(result.refs.every((ref) => ref.documents.some((document) => document.role === "answer_pdf")));
     ok(result.warnings.some((warning) => warning.includes("ka-factory answers niedersachsen")));
+  });
+
+  it("does not attach the answer twice when the map repeats the row's follow-up", async () => {
+    const { transport } = scriptedTransport([{ match: "/suche", body: html }]);
+    const store = new MemoryStore();
+    const discovered = await new NiedersachsenSource().discover({
+      engine: testEngine(transport),
+      store,
+      state: { source: "niedersachsen", http_cache: {} },
+    });
+    const reference = discovered.refs[0]?.reference as string;
+    store.saveArtifact(ANSWER_INDEX, {
+      built_at: "2026-01-02T03:04:05Z",
+      period: 19,
+      ranges: [{ from: 1, to: 9999 }],
+      answers: { [reference]: { reference: "19/9999", url: "https://x.invalid/answer.pdf" } },
+    } satisfies AnswerIndex);
+
+    const result = await new NiedersachsenSource().discover({
+      engine: testEngine(scriptedTransport([{ match: "/suche", body: html }]).transport),
+      store,
+      state: { source: "niedersachsen", http_cache: {} },
+    });
+    const documents = result.refs.find((ref) => ref.reference === reference)?.documents ?? [];
+    deepStrictEqual(documents.map((document) => document.role), ["question_pdf", "combined_pdf"]);
   });
 
   it("attaches the answer when the map has one", async () => {

@@ -133,8 +133,8 @@ export class ThueringenSource implements Source {
   readonly label = "Thüringer Landtag (Parldok)";
   readonly homepage = "https://parldok.thueringer-landtag.de/ParlDok/";
   readonly notes =
-    "Discovery runs through the Parlamentsspiegel, which knows an answer exists but does not render " +
-    "it. The answer is a Drucksache with no relation to the Kleine Anfrage's number (8/979 is " +
+    "Discovery runs through the Parlamentsspiegel, which lists the answer as a follow-up document " +
+    "linking Parldok's viewer. The answer is a Drucksache with no relation to the Kleine Anfrage's number (8/979 is " +
     "answered by 8/1715), so it is looked up through Parldok's own JSON API — undocumented, so an " +
     "unexpected response means 'no answer found' rather than a failed sync. The answer document " +
     "holds the question and the reply together.";
@@ -153,9 +153,11 @@ export class ThueringenSource implements Source {
         continue;
       }
       // The answer Drucksache reprints the question above the reply, so it is a
-      // combined paper; the Kleine Anfrage itself stays as the question source.
+      // combined paper; the Kleine Anfrage itself stays as the question source. The
+      // API's URL replaces the result row's link to the same paper — appending both
+      // would fetch and extract it twice.
       const documents: DocRefDocument[] = [
-        ...ref.documents,
+        ...ref.documents.filter((document) => document.role === "question_pdf"),
         { role: "combined_pdf", url: answer.url, urlStable: true },
       ];
       refs.push({ ...ref, documents });

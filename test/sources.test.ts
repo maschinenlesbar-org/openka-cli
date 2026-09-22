@@ -312,6 +312,42 @@ describe("Parlamentsspiegel source", () => {
     ok(answered?.answered_by.ministry !== undefined);
   });
 
+  it("reads a follow-up the portal did not collapse", () => {
+    // The portal only puts the `ps-folge` class on the wrapper when the search
+    // filtered some of a Vorgang's follow-ups away. A row reading
+    // "0 gefiltert/ausgeblendet" renders the same markup under a bare `<div >`,
+    // and splitting on `ps-folge` lost its answer entirely — which is every
+    // Niedersachsen and Thüringen row in the recorded payloads.
+    for (const payload of ["parlamentsspiegel-niedersachsen.html", "parlamentsspiegel-thueringen.html"]) {
+      const blocks = blocksWithClass(readFixtureText("payloads", payload), "ps-vorgang", /<hr\s*\/?>/);
+      const refs = blocks.map((block) => parseVorgangBlock(block, []));
+      ok(refs.length >= 1);
+      for (const ref of refs) {
+        ok(ref?.documents.some((document) => document.role === "answer_pdf"), `${payload}: no answer document`);
+        ok(ref?.dates.answered !== undefined, `${payload}: no answer date`);
+        ok(ref?.answered_by.ministry !== undefined, `${payload}: no answering body`);
+      }
+    }
+  });
+
+  it("takes the answering body from the follow-up's own Urheber field", () => {
+    const ministryOf = (payload: string): (string | undefined)[] =>
+      blocksWithClass(readFixtureText("payloads", payload), "ps-vorgang", /<hr\s*\/?>/)
+        .map((block) => parseVorgangBlock(block, [])?.answered_by.ministry);
+
+    // Reading it out of the summary line instead meant guessing where the name
+    // began. Thüringen writes "Antwort auf Kleine Anfrage. Ministerium für …",
+    // whose leading clause is not part of the name, and Sachsen writes
+    // "Antw SMI 12.08.2025 Drs 8/3351", which has no delimiter to stop at.
+    deepStrictEqual(ministryOf("parlamentsspiegel-sachsen.html"), ["SMI", "SMI"]);
+    for (const ministry of ministryOf("parlamentsspiegel-thueringen.html")) {
+      match(ministry ?? "", /^Ministerium für /);
+    }
+    // Unchanged where the old reading already worked.
+    deepStrictEqual(ministryOf("parlamentsspiegel-saarland.html"), ["Landesregierung", "Landesregierung"]);
+    deepStrictEqual(ministryOf("parlamentsspiegel-nrw.html"), ["MUNV", "MUNV", "MUNV"]);
+  });
+
   it("accepts the word Thüringen uses for a paper", () => {
     // Most Länder label it "Drucksache"; Thüringen labels the same thing
     // "Dokument", and requiring the commoner word cost that Land every record.
