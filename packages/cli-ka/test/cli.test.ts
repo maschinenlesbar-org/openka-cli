@@ -373,6 +373,28 @@ describe("ka", () => {
     }
   });
 
+  it("refuses a parliament it does not know, instead of answering No matches", async () => {
+    const harness = await seeded();
+    try {
+      for (const argv of [
+        ["search", "--parliament", "narnia"],
+        ["export", "--parliament", "narnia", "--format", "jsonl"],
+        ["feed", "--parliament", "narnia"],
+        ["review", "--source", "narnia"],
+      ]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+        match(harness.stderr(), /Unknown parliament "narnia"\. Known: .*berlin/);
+      }
+      // A key in the wrong case is still that key.
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "search", "--parliament", "Berlin", "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /berlin-19-10006/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("calls a malformed record id a usage error, before the store is asked", async () => {
     // It surfaced from the store as exit 3, "the corpus is missing or unreadable",
     // which says nothing about the id. The store still refuses it on its own.

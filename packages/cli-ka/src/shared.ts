@@ -83,6 +83,25 @@ export function collect(value: string, previous: string[] = []): string[] {
   return previous.concat([parseNonEmpty(value)]);
 }
 
+/**
+ * commander value-parser: a parliament key, folded to lower case. Any string used
+ * to be accepted, so `--parliament narnia` or `--parliament Berlin` filtered
+ * everything away and answered "No matches." with exit 0 — a filter that cannot
+ * match is a usage error.
+ */
+export function parseParliament(value: string): string {
+  const key = parseNonEmpty(value).trim().toLowerCase();
+  if (!(ParliamentKeys as readonly string[]).includes(key)) {
+    throw new InvalidArgumentError(`Unknown parliament "${value}". Known: ${ParliamentKeys.join(", ")}.`);
+  }
+  return key;
+}
+
+/** commander accumulator for a repeatable `--parliament`. */
+export function collectParliament(value: string, previous: string[] = []): string[] {
+  return previous.concat([parseParliament(value)]);
+}
+
 /** commander accumulator for repeatable integer options. */
 export function collectInt(min: number, max?: number): (value: string, previous?: number[]) => number[] {
   const parse = parseBoundedInt(min, max);
@@ -197,7 +216,7 @@ export function emit(ctx: ActionContext, text: string, outPath: string | undefin
  */
 export function addCorpusFilters(command: Command): Command {
   return command
-    .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known)`, collect)
+    .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known, see \`ka sources list\`)`, collectParliament)
     .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
     .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
     .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))

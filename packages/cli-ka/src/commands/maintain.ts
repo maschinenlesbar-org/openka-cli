@@ -9,7 +9,7 @@ import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
-import { action, parseBoundedInt, parseNonEmpty, parseRecordId, printJson } from "../shared.js";
+import { action, parseBoundedInt, parseParliament, parseRecordId, printJson } from "../shared.js";
 import { pad, truncate } from "../text.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "./sync.js";
 import { choiceOption } from "../shared.js";
@@ -101,7 +101,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
   program
     .command("review")
     .description("work the abstention queue: records the extractor refused to complete")
-    .option("--source <key>", "restrict to one parliament", parseNonEmpty)
+    .option("--source <key>", "restrict to one parliament", parseParliament)
     .option("--limit <n>", "how many records to list", parseBoundedInt(1, 10_000))
     .option("--mark-verified <id>", "record that a human checked this record against its source", parseRecordId)
     .option("--json", "print the queue as JSON")
