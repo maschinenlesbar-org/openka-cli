@@ -562,6 +562,28 @@ describe("metadata rules", () => {
     strictEqual(markers.classified, true);
     deepStrictEqual(markers.attachments_referenced, ["Anlage 2", "Anlage 10"]);
   });
+
+  it("does not read an attachment out of the word after Anlage", () => {
+    // "die PV-Anlage in Betrieb" was "Anlage i", frozen into berlin-19-10006.
+    for (const text of [
+      "die PV-Anlage in Betrieb genommen",
+      "Die Anlage ist seit 2020 in Betrieb.",
+      "Die Anlage liefert Strom.",
+      "Eine Anlage verbraucht viel.",
+      "Die Anlage Vorgaben entsprechend",
+      "Anlage 123",
+      "Anlage 1a",
+    ]) {
+      deepStrictEqual(findMarkers(text).attachments_referenced, [], text);
+    }
+    deepStrictEqual(findMarkers("Anlagen 1 und 2").attachments_referenced, ["Anlage 1", "Anlage 2"]);
+    deepStrictEqual(findMarkers("ANLAGE II, siehe Anlage IV, V und VI.").attachments_referenced, [
+      "Anlage II",
+      "Anlage IV",
+      "Anlage V",
+      "Anlage VI",
+    ]);
+  });
 });
 
 describe("a question number that appears twice", () => {

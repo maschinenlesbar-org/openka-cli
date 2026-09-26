@@ -218,6 +218,18 @@ export interface DocumentMarkers {
 const CLASSIFIED = /\b(?:VS[ -]?(?:NUR F(?:Ü|UE)R DEN DIENSTGEBRAUCH|VERTRAULICH)|VERSCHLUSSSACHE|GEHEIM(?:HALTUNG)?|NICHT ZUR VER(?:Ö|OE)FFENTLICHUNG)\b/i;
 
 /**
+ * What an attachment is numbered with: one or two digits, or an upper-case Roman
+ * numeral — ending where the word ends.
+ *
+ * The pattern used to be case-insensitive with no end, so "die PV-Anlage in
+ * Betrieb" referenced "Anlage i", "Anlage liefert" "Anlage li" and "Anlage
+ * verbraucht" "Anlage v" — attachments invented out of ordinary words, and frozen
+ * into two goldens. Roman numerals are upper case when they number something, and
+ * "Anlage 123" is not Anlage 12, nor "Anlage 1a" Anlage 1.
+ */
+const ATTACHMENT_NUMBER = String.raw`(?:\d{1,2}|[IVXLC]{1,5})(?![\p{L}\p{N}])`;
+
+/**
  * Structural markers. `contains_tables` is a *hint*, not a claim about layout: a
  * text layer has no table objects, so the marker fires on the tabular typography a
  * text extraction leaves behind (several columns separated by runs of spaces) or on
@@ -225,7 +237,10 @@ const CLASSIFIED = /\b(?:VS[ -]?(?:NUR F(?:Ü|UE)R DEN DIENSTGEBRAUCH|VERTRAULIC
  */
 export function findMarkers(text: string): DocumentMarkers {
   const attachments = new Set<string>();
-  const pattern = /\bAnlage[n]?\s+((?:\d{1,2}|[IVXLC]{1,5})(?:\s*(?:,|und|bis|-|–)\s*(?:\d{1,2}|[IVXLC]{1,5}))*)/gi;
+  const pattern = new RegExp(
+    String.raw`\b(?:Anlagen?|ANLAGEN?)\s+(${ATTACHMENT_NUMBER}(?:\s*(?:,|und|bis|-|–)\s*${ATTACHMENT_NUMBER})*)`,
+    "gu",
+  );
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     for (const part of (match[1] as string).split(/\s*(?:,|und|bis|-|–)\s*/)) {

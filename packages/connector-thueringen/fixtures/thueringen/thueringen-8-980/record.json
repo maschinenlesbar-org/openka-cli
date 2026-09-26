@@ -14,7 +14,7 @@
     "abstained_fields": [
       "answered_by.ministry"
     ],
-    "extractor_version": "pkg:0.0.1+extract:5cfa7aceea7b",
+    "extractor_version": "pkg:0.0.1+extract:ab9026225f9e",
     "input_sha256": "df1cf65c008bf7bc81628768bebb70af4762d001c4c147779d60006907356f4c",
     "model_artifacts": [],
     "parse_complete": false,
@@ -28,9 +28,7 @@
   "markers": {
     "attachments_referenced": [
       "Anlage 1",
-      "Anlage 2",
-      "Anlage i",
-      "Anlage v"
+      "Anlage 2"
     ],
     "classified": false,
     "contains_tables": false
