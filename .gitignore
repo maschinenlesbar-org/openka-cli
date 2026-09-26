@@ -8,8 +8,9 @@ dist-artifacts/
 # Local working plan (not part of the published project)
 plan.md
 
-# The drift baseline is a measurement of one machine's corpus, not a fixture:
-# `ka-factory health --save-baseline` writes it and `ka-factory drift` reads it.
+# The drift baseline is a measurement of one machine's corpus, not a fixture.
+# `ka-factory health --save-baseline` now writes it into the corpus; the old
+# default path stays ignored so a baseline left over from before is not committed.
 fixtures/health-baseline.json
 
 # Generated into the published package by tools/prepack.mjs

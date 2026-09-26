@@ -1,9 +1,9 @@
 // The CLI, driven in-process through `run()` with a real temporary corpus, a
 // scripted transport and a fixed clock. No subprocess, no network.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -511,6 +511,37 @@ describe("ka-factory", () => {
       harness.out.length = 0;
       strictEqual(await runFactory(["--corpus", harness.corpus, "drift", "--baseline", baseline], harness.deps), EXIT_OK);
       match(harness.stdout(), /No drift against the baseline/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("keeps the default baseline in the corpus it measures, wherever the command runs", async () => {
+    // The default was fixtures/health-baseline.json under the cwd, which nothing
+    // created: the documented command failed with a raw ENOENT.
+    const harness = await seeded();
+    try {
+      strictEqual(await runFactory(["--corpus", harness.corpus, "health", "--save-baseline"], harness.deps), EXIT_OK);
+      ok(existsSync(join(harness.corpus, "health-baseline.json")));
+      harness.out.length = 0;
+      harness.err.length = 0;
+      strictEqual(await runFactory(["--corpus", harness.corpus, "drift", "--fail-on-drift"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /No drift against the baseline/);
+      // A path whose directory does not exist yet is created.
+      const nested = join(harness.corpus, "reports", "2026", "baseline.json");
+      strictEqual(await runFactory(["--corpus", harness.corpus, "health", "--save-baseline", nested], harness.deps), EXIT_OK);
+      ok(existsSync(nested));
+      // A blank path is a usage error, not EISDIR on the cwd.
+      strictEqual(await runFactory(["--corpus", harness.corpus, "health", "--save-baseline", ""], harness.deps), EXIT_USAGE);
+      // A path that cannot be written is an error that says so.
+      harness.err.length = 0;
+      writeFileSync(join(harness.corpus, "afile"), "x");
+      strictEqual(
+        await runFactory(["--corpus", harness.corpus, "health", "--save-baseline", join(harness.corpus, "afile", "b.json")], harness.deps),
+        EXIT_ERROR,
+      );
+      match(harness.stderr(), /Could not write the baseline/);
+      doesNotMatch(harness.stderr(), /Unexpected error/);
     } finally {
       harness.cleanup();
     }

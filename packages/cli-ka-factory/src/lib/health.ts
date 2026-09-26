@@ -6,7 +6,9 @@
 // each is a symptom with a different cause, and the classification below is what
 // turns a number into a job.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import type { CatalogStore, RecordStore, SourceStateStore } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
@@ -99,11 +101,25 @@ function round(value: number): number {
 
 export function loadBaseline(path: string): HealthSnapshot | undefined {
   if (!existsSync(path)) return undefined;
-  return JSON.parse(readFileSync(path, "utf8")) as HealthSnapshot;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as HealthSnapshot;
+  } catch (err) {
+    throw new OpenKaError(`Could not read the baseline ${path}: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
+  }
 }
 
+/** Write a baseline, creating its directory; a failure is an OpenKaError, not a raw fs error. */
 export function saveBaseline(path: string, snapshot: HealthSnapshot): void {
-  writeFileSync(path, canonicalJsonLine(snapshot));
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, canonicalJsonLine(snapshot));
+  } catch (err) {
+    throw new OpenKaError(`Could not write the baseline ${path}: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
+  }
 }
 
 export type DriftKind =

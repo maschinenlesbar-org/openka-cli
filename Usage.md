@@ -119,7 +119,7 @@ ka-factory lint                                   # no generative model on the l
 ka-factory goldens list
 ka-factory goldens add berlin-19-10041 --note "sub-items and a date at line start"
 ka-factory goldens verify                         # the regression gate
-ka-factory health --save-baseline
+ka-factory health --save-baseline                 # into the corpus: health-baseline.json
 ka-factory drift                                  # classified, with a repair suggestion
 ka-factory answers niedersachsen --period 19 --from 7900 --to 8115 --merge
 ka-factory embed                                  # frozen vectors for `ka search --like`
