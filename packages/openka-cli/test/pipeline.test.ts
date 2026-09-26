@@ -182,6 +182,63 @@ describe("sync pipeline", () => {
     });
   });
 
+  it("refuses a reference whose record id collides with another's, or is empty", async () => {
+    // "19/9.1" and "19/9-1" slug to the same id; the second replaced the first and
+    // both counted as stored. "19/../.." slugged to nothing: id "berlin-19-".
+    const ref = (reference: string, title: string) => ({
+      key: reference,
+      reference,
+      legislative_period: 19,
+      title,
+      documentType: "schriftliche_anfrage" as const,
+      askers: [],
+      answered_by: {},
+      dates: {},
+      documents: [],
+    });
+    const source: Source = {
+      key: "berlin",
+      parliament: "berlin",
+      tier: "structured",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => ({
+        warnings: [],
+        refs: [ref("19/9.1", "Kollision A"), ref("19/9-1", "Kollision B"), ref("19/../..", "Leer"), ref("19/10", "Normal")],
+      }),
+    };
+    const store = new MemoryStore();
+    const report = await sync({ source, store, engine: testEngine(async () => ({ status: 404, headers: {}, body: Buffer.alloc(0) })), metadataOnly: true });
+    strictEqual(report.stored, 2);
+    strictEqual(report.failed, 2);
+    match(report.errors[0] ?? "", /19\/9-1: reference "19\/9-1" maps to record id berlin-19-9-1, which already holds "19\/9.1"/);
+    match(report.errors[1] ?? "", /19\/\.\.\/\.\.: reference "19\/\.\.\/\.\." yields no record id/);
+    strictEqual(store.getRecord("berlin-19-9-1")?.title, "Kollision A");
+    strictEqual(store.getRecord("berlin-19-"), undefined);
+  });
+
+  it("treats a re-padded period as the same Drucksache, not a collision", async () => {
+    const store = new MemoryStore();
+    const engine = testEngine(async () => ({ status: 404, headers: {}, body: Buffer.alloc(0) }));
+    const source = (reference: string): Source => ({
+      key: "thueringen",
+      parliament: "thueringen",
+      tier: "structured",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => ({
+        warnings: [],
+        refs: [{ key: "k", reference, legislative_period: 8, title: "T", documentType: "kleine_anfrage", askers: [], answered_by: {}, dates: {}, documents: [] }],
+      }),
+    });
+    await sync({ source: source("08/980"), store, engine, metadataOnly: true });
+    const report = await sync({ source: source("8/980"), store, engine, metadataOnly: true });
+    deepStrictEqual(report.errors, []);
+    strictEqual(store.getRecord("thueringen-8-980")?.reference, "8/980");
+  });
+
   it("fetches under --ignore-robots and records that it did", async () => {
     const store = new MemoryStore();
     const { transport, requests } = scriptedTransport([

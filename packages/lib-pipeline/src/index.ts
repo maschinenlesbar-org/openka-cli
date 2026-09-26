@@ -8,7 +8,7 @@
 
 import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
-import { makeRecordId, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, type SourceState, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -211,7 +211,21 @@ async function syncRef(
     answered_by: ref.answered_by,
     dates: ref.dates,
   };
-  const existing = store.getRecord(recordIdFor({ parliament, metadata }));
+  // A record id is the parliament, the period and a slug of the reference, and the
+  // slug folds every punctuation mark to "-" — so "19/9.1" and "19/9-1" are one id,
+  // and "19/../.." is none at all. The second of two such refs used to replace the
+  // first silently, both counted as stored.
+  if (referenceSlug(ref.reference) === "") {
+    throw new OpenKaError(`reference "${ref.reference}" yields no record id`);
+  }
+  const id = recordIdFor({ parliament, metadata });
+  const existing = store.getRecord(id);
+  if (existing !== undefined && !sameReference(existing.reference, ref.reference)) {
+    throw new OpenKaError(
+      `reference "${ref.reference}" maps to record id ${id}, which already holds "${existing.reference}"; ` +
+        "the stored record was not overwritten",
+    );
+  }
 
   const documents: FetchedDocument[] = [];
   let bytesFetched = 0;
@@ -294,6 +308,19 @@ async function syncRef(
  */
 function recordIdFor(request: { parliament: string; metadata: SourceMetadata }): string {
   return makeRecordId(request.parliament, request.metadata.legislative_period, request.metadata.reference);
+}
+
+/**
+ * Do two references name the same Drucksache? Compared as values where both parse,
+ * so a Land that pads the period one day (`08/980`) and not the next (`8/980`) is
+ * a correction of the same record, not a collision with another.
+ */
+function sameReference(a: string, b: string): boolean {
+  if (a === b) return true;
+  const left = parseReference(a);
+  const right = parseReference(b);
+  if (left === undefined || right === undefined) return false;
+  return periodNumber(left) === periodNumber(right) && left.number === right.number;
 }
 
 /**
