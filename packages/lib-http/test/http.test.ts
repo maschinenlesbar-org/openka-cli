@@ -49,6 +49,17 @@ describe("retry timing", () => {
     strictEqual(retryDelayMs("2", 0), 2000);
   });
 
+  it("reads only delay-seconds and an IMF-fixdate, and backs off on anything else", () => {
+    // "-5" was the year −5 to Date.parse, so "retry immediately"; "0x10" was 16 s.
+    for (const bad of ["-5", "0x10", "1e9", "1.5", "+3", "2026-01-01", "Thursday, 01-Jan-26 00:00:00 GMT"]) {
+      strictEqual(retryDelayMs(bad, 1), 2000, bad);
+    }
+    const inTenSeconds = new Date(Date.now() + 10_000).toUTCString();
+    const delay = retryDelayMs(inTenSeconds, 0);
+    ok(delay > 8000 && delay <= 10_000, `${inTenSeconds} -> ${delay}`);
+    strictEqual(retryDelayMs(new Date(Date.now() - 60_000).toUTCString(), 0), 0);
+  });
+
   it("caps a huge Retry-After", () => {
     strictEqual(retryDelayMs("100000", 0), 60_000);
   });

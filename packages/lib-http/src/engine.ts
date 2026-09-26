@@ -381,12 +381,22 @@ export function retryDelayMs(retryAfter: string | string[] | undefined, attempt:
   // A blank header is no header. `Number("")` is 0, so an empty `Retry-After` used
   // to mean "retry immediately" and turned the backoff off entirely for all three
   // attempts — the opposite of what a 429 is asking for.
+  //
+  // Only the two forms RFC 9110 defines are read: delay-seconds (digits only) and
+  // an IMF-fixdate. `Number()` took "0x10" as 16 s and "1e9" as a billion, and
+  // `Date.parse("-5")` is the year −5, so a negative value meant "retry now".
+  // Anything else falls back to the linear backoff.
   const header = firstHeader(retryAfter)?.trim();
   if (header !== undefined && header !== "") {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 60_000);
-    const date = Date.parse(header);
-    if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), 60_000);
+    if (/^\d+$/.test(header)) return Math.min(Number(header) * 1000, 60_000);
+    if (IMF_FIXDATE.test(header)) {
+      const date = Date.parse(header);
+      if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), 60_000);
+    }
   }
   return Math.min((attempt + 1) * 1000, 60_000);
 }
+
+/** RFC 9110's preferred HTTP-date, the only date form `Retry-After` is read in. */
+const IMF_FIXDATE =
+  /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/;
