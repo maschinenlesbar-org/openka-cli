@@ -20,12 +20,13 @@
 // changing one changes the bytes of every record produced through this tier, and so
 // is an extractor-version bump.
 
+import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { decodeStream } from "./filters.js";
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 import { Lexer, isKeyword, type LexValue } from "./lexer.js";
 import { FontCache, GLYPH_SPACE, type Font } from "./fonts.js";
 import type { PdfDocument } from "./document.js";
-import { isName, isStream, isString, type PdfDict, type PdfValue } from "./objects.js";
+import { isName, isStream, isString, type PdfDict, type PdfStream, type PdfValue } from "./objects.js";
 
 /** Two runs on one line are separated by a space when the gap exceeds this fraction of an em. */
 export const WORD_GAP_EM = 0.18;
@@ -35,6 +36,57 @@ export const LINE_TOLERANCE_EM = 0.4;
 
 /** How deeply a Form XObject may nest before we stop following it. */
 const MAX_XOBJECT_DEPTH = 8;
+
+/**
+ * How many Form XObjects one document may draw, counting every `Do` at every depth.
+ *
+ * The depth limit alone does not bound the work: a form that draws itself k times
+ * runs k^8 times before the depth limit stops it, so a 753-byte file with k = 16
+ * kept a sync busy for minutes at gigabytes of heap. Real documents draw a form
+ * per page or per logo — a few hundred in a long Drucksache — so ten thousand is
+ * far beyond anything legitimate and still finishes in milliseconds.
+ */
+export const MAX_FORM_INVOCATIONS = 10_000;
+
+/**
+ * How many content-stream bytes one document may interpret, page content and every
+ * form invocation included. A form drawn many times is interpreted many times,
+ * and without this a large form behind the invocation limit is still gigabytes of
+ * lexing. Twice the single-stream inflate cap, so one maximal page still fits.
+ */
+export const MAX_INTERPRETED_BYTES = 256 * 1024 * 1024;
+
+/** Drawing a document would take more work than `InterpretBudget` allows. */
+export class BudgetExceededError extends ParseError {}
+
+/**
+ * The work one document's text extraction may do, shared by all of its pages, and
+ * the forms it has already decoded — a form drawn on every page is decoded once.
+ *
+ * Exceeding it throws `BudgetExceededError`; `extractPdfText` turns that into a
+ * refused page, which abstains the way an undecodable content stream does.
+ */
+export class InterpretBudget {
+  forms = 0;
+  bytes = 0;
+  readonly decodedForms = new Map<PdfStream, Buffer | undefined>();
+
+  constructor(
+    readonly maxForms: number = MAX_FORM_INVOCATIONS,
+    readonly maxBytes: number = MAX_INTERPRETED_BYTES,
+  ) {}
+
+  /** Account for interpreting `bytes` more content, and for one more form if `form`. */
+  charge(bytes: number, form: boolean): void {
+    if (form && ++this.forms > this.maxForms) {
+      throw new BudgetExceededError(`drawing it takes more than ${this.maxForms} form XObject invocations`);
+    }
+    this.bytes += bytes;
+    if (this.bytes > this.maxBytes) {
+      throw new BudgetExceededError(`drawing it means interpreting more than ${this.maxBytes} bytes of content`);
+    }
+  }
+}
 
 /**
  * Typographic spaces, folded to a plain space, and invisible characters, dropped.
@@ -126,16 +178,23 @@ export function newFontCache(doc: PdfDocument): FontCache {
 
 export { FontCache } from "./fonts.js";
 
-/** Extract the text of one page (or any content stream) as plain text. */
+/**
+ * Extract the text of one page (or any content stream) as plain text.
+ *
+ * Throws `BudgetExceededError` when drawing the content exceeds `budget` — pass one budget
+ * for all the pages of a document so the bound holds for the document.
+ */
 export function extractContentText(
   doc: PdfDocument,
   content: Buffer,
   resources: PdfDict,
   cache: FontCache = new FontCache(doc),
+  budget: InterpretBudget = new InterpretBudget(),
 ): TextExtractionResult {
   const runs: Run[] = [];
   const counters = { unmapped: 0, total: 0, noFont: 0 };
-  interpret(doc, content, resources, cache, runs, counters, [...IDENTITY] as Matrix, 0);
+  budget.charge(content.length, false);
+  interpret(doc, content, resources, cache, runs, counters, [...IDENTITY] as Matrix, 0, budget);
   return {
     text: assemble(runs),
     unmappedCodes: counters.unmapped,
@@ -156,6 +215,7 @@ function interpret(
   counters: { unmapped: number; total: number; noFont: number },
   initialCtm: Matrix,
   depth: number,
+  budget: InterpretBudget,
 ): void {
   const lexer = new Lexer(content, 0);
   const operands: LexValue[] = [];
@@ -331,12 +391,17 @@ function interpret(
         const xobjects = doc.dict(resources.get("XObject"));
         const xobject = doc.resolve(xobjects?.get((target as { name: string }).name));
         if (!isStream(xobject) || !isName(doc.get(xobject.dict, "Subtype"), "Form")) break;
-        let inner: Buffer;
-        try {
-          inner = decodeStream(xobject, (value) => doc.resolve(value));
-        } catch {
-          break;
+        let inner = budget.decodedForms.get(xobject);
+        if (!budget.decodedForms.has(xobject)) {
+          try {
+            inner = decodeStream(xobject, (value) => doc.resolve(value));
+          } catch {
+            inner = undefined;
+          }
+          budget.decodedForms.set(xobject, inner);
         }
+        if (inner === undefined) break;
+        budget.charge(inner.length, true);
         // A form carries its own /Matrix, and its text belongs at the position that
         // matrix puts it — so it joins the page's runs rather than being appended.
         const formMatrix = doc.resolve(xobject.dict.get("Matrix"));
@@ -344,7 +409,7 @@ function interpret(
           ? (formMatrix.map((value) => doc.num(value) ?? 0) as Matrix)
           : ([...IDENTITY] as Matrix);
         const innerResources = doc.dict(xobject.dict.get("Resources")) ?? resources;
-        interpret(doc, inner, innerResources, cache, runs, counters, multiply(matrix, ctm), depth + 1);
+        interpret(doc, inner, innerResources, cache, runs, counters, multiply(matrix, ctm), depth + 1, budget);
         break;
       }
       default:

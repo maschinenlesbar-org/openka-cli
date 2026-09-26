@@ -3,12 +3,22 @@
 
 import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { PdfDocument } from "./document.js";
-import { extractContentText, newFontCache } from "./text.js";
+import { BudgetExceededError, InterpretBudget, extractContentText, newFontCache } from "./text.js";
 import { IMAGE_FILTERS, filterChain } from "./filters.js";
 import { isName, isStream } from "./objects.js";
 
 export { PdfDocument } from "./document.js";
-export { extractContentText, assemble, normalizeSpaces, WORD_GAP_EM, LINE_TOLERANCE_EM } from "./text.js";
+export {
+  extractContentText,
+  assemble,
+  normalizeSpaces,
+  InterpretBudget,
+  BudgetExceededError,
+  MAX_FORM_INVOCATIONS,
+  MAX_INTERPRETED_BYTES,
+  WORD_GAP_EM,
+  LINE_TOLERANCE_EM,
+} from "./text.js";
 export { FontCache, GLYPH_SPACE } from "./fonts.js";
 export * from "./filters.js";
 export * from "./objects.js";
@@ -30,7 +40,10 @@ export interface PdfTextResult {
   unmappedRatio: number;
   /** True when the document has no text-showing operators at all (a scan). */
   imageOnly: boolean;
-  /** Content streams refused outright — an encrypted or unsupported filter. */
+  /**
+   * Content streams refused outright — an encrypted or unsupported filter — plus
+   * pages refused because drawing them exceeded the reader's work budget.
+   */
   undecodableStreams: number;
   /** Objects lost with an object stream that would not decode. */
   lostObjects: number;
@@ -55,6 +68,7 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     throw new ParseError("Encrypted PDF — this extractor does not decrypt documents");
   }
   const cache = newFontCache(doc);
+  const budget = new InterpretBudget();
   const pages = doc.pages();
   const problems: string[] = [];
   const results: PdfPageText[] = [];
@@ -75,7 +89,19 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
       results.push({ page: page.number, text: "", unmappedCodes: 0, totalCodes: 0 });
       continue;
     }
-    const extracted = extractContentText(doc, page.content, page.resources, cache);
+    let extracted: ReturnType<typeof extractContentText>;
+    try {
+      extracted = extractContentText(doc, page.content, page.resources, cache, budget);
+    } catch (err) {
+      if (!(err instanceof BudgetExceededError)) throw err;
+      // A page whose drawing blew the budget — a form that draws itself, say — is
+      // refused whole, like a stream we cannot decode: half of a runaway page is
+      // not text anybody wrote once.
+      undecodable++;
+      problems.push(`page ${page.number}: refused — ${err.message}`);
+      results.push({ page: page.number, text: "", unmappedCodes: 0, totalCodes: 0 });
+      continue;
+    }
     unmapped += extracted.unmappedCodes;
     total += extracted.totalCodes;
     results.push({

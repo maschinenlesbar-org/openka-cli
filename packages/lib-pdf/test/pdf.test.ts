@@ -12,7 +12,14 @@ import { isDict, isName, isRef, isString, type PdfDict } from "../src/objects.js
 import { ascii85Decode, asciiHexDecode, decodeStream, inflate, lzwDecode, runLengthDecode } from "../src/filters.js";
 import { baseEncoding, glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/encoding.js";
 import { multiply, assemble, normalizeSpaces } from "../src/text.js";
-import { PdfDocument, extractPdfImages, extractPdfText } from "../src/index.js";
+import {
+  InterpretBudget,
+  MAX_FORM_INVOCATIONS,
+  PdfDocument,
+  extractContentText,
+  extractPdfImages,
+  extractPdfText,
+} from "../src/index.js";
 import { fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 // Real documents come from the connector that recorded them: one copy of the
@@ -319,6 +326,69 @@ describe("decompression limits", () => {
 
   it("still inflates an ordinary stream", () => {
     strictEqual(inflate(deflateSync(Buffer.from("Hallo Welt"))).toString(), "Hallo Welt");
+  });
+});
+
+describe("form XObjects", () => {
+  // A page that draws form /X1, whose own content is `formContent`. The form shares
+  // the page's font through its own /Resources, and names itself as /X1 there — so
+  // a form content that says `/X1 Do` draws itself.
+  const withForm = (pageContent: string, formContent: string): Buffer =>
+    Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources 7 0 R /Contents 4 0 R >> endobj",
+        `4 0 obj << /Length ${pageContent.length} >> stream\n${pageContent}\nendstream endobj`,
+        "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj",
+        `6 0 obj << /Type /XObject /Subtype /Form /Resources 7 0 R /Length ${formContent.length} >> ` +
+          `stream\n${formContent}\nendstream endobj`,
+        "7 0 obj << /Font << /F1 5 0 R >> /XObject << /X1 6 0 R >> >> endobj",
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+
+  it("still reads the text of an ordinary form", () => {
+    const result = extractPdfText(withForm("/X1 Do", "BT /F1 12 Tf 72 720 Td (Aus dem Formular) Tj ET"));
+    strictEqual(result.text, "Aus dem Formular");
+    deepStrictEqual(result.problems, []);
+  });
+
+  it("refuses a page whose form draws itself, instead of fanning out 16^8 times", () => {
+    // 753 bytes of this kept `ka sync` busy for minutes at 2.7 GB: the depth limit
+    // bounds how deep the recursion goes, not how many times it runs.
+    const bomb = withForm("/X1 Do /X1 Do /X1 Do /X1 Do", `BT /F1 12 Tf (ab) Tj ET ${"/X1 Do ".repeat(16)}`);
+    ok(bomb.length < 1024);
+    const started = Date.now();
+    const result = extractPdfText(bomb);
+    ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+    strictEqual(result.text, "");
+    strictEqual(result.undecodableStreams, 1);
+    strictEqual(result.imageOnly, false);
+    match(result.problems[0] ?? "", new RegExp(`page 1: refused — .*more than ${MAX_FORM_INVOCATIONS} form XObject`));
+  });
+
+  it("decodes a form once however often it is drawn", () => {
+    const pdf = withForm("/X1 Do /X1 Do /X1 Do", "BT /F1 12 Tf 72 720 Td (x) Tj ET");
+    const doc = PdfDocument.load(pdf);
+    const page = doc.pages()[0];
+    ok(page !== undefined);
+    const budget = new InterpretBudget();
+    extractContentText(doc, page.content, page.resources, undefined, budget);
+    strictEqual(budget.forms, 3);
+    strictEqual(budget.decodedForms.size, 1);
+  });
+
+  it("counts interpreted bytes against the same budget, across pages", () => {
+    const pdf = withForm("/X1 Do /X1 Do", "BT /F1 12 Tf 72 720 Td (x) Tj ET");
+    const doc = PdfDocument.load(pdf);
+    const page = doc.pages()[0];
+    ok(page !== undefined);
+    const budget = new InterpretBudget(MAX_FORM_INVOCATIONS, 50);
+    throws(() => extractContentText(doc, page.content, page.resources, undefined, budget), /more than 50 bytes/);
   });
 });
 
