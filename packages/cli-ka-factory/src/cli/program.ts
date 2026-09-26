@@ -25,7 +25,7 @@ import {
 } from "@maschinenlesbar.org/openka-cli-ka";
 import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
-import { addGolden, listAllGoldens, listGoldens, verifyGolden } from "../lib/goldens.js";
+import { addGolden, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
 import { detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
 import { buildEmbeddings, importEmbeddings, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
 import { sweepAnswers } from "../lib/answer-index.js";
@@ -63,11 +63,14 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   program
     .command("lint")
     .description("check that no code on the line can reach a generative model")
-    .option("--root <dir>", "project root to scan", parseNonEmpty)
+    .option("--root <dir>", "project root to scan (default: the workspace around the cwd)", parseNonEmpty)
     .option("--json", "print findings as JSON")
     .action(
       action(deps, async (ctx) => {
-        const root = resolve((ctx.opts["root"] as string | undefined) ?? process.cwd());
+        // Found by walking up, like the goldens: `npm test` runs each package's
+        // suite with that package as the cwd, where there is no packages/ to scan.
+        const given = ctx.opts["root"] as string | undefined;
+        const root = given === undefined ? workspaceRoot() : resolve(given);
         const report = lintLine(root);
         // A guardrail that scanned nothing has guarded nothing. The likely cause
         // is a wrong --root or a cwd outside the workspace, and "no violations"
