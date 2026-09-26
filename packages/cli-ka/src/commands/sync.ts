@@ -1,7 +1,7 @@
 // `ka sync` — the ingest command. Deterministic from end to end: discovery, fetch
 // with conditional requests, the declared tier, then store and index.
 
-import type { Command } from "commander";
+import { InvalidArgumentError, type Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import {
@@ -55,11 +55,20 @@ export async function buildPerceiver(
   return perceiver;
 }
 
+/** commander value-parser: a source key the registry knows — a typo is a usage error. */
+function parseSourceKey(value: string): string {
+  const key = parseNonEmpty(value);
+  if (sourceEntry(key) === undefined) {
+    throw new InvalidArgumentError(`Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
+  }
+  return key;
+}
+
 export function registerSync(program: Command, deps: CliDeps): void {
   program
     .command("sync")
     .description("fetch, extract and store Anfragen from a source")
-    .requiredOption("--source <key>", `source to sync (${sourceKeys().join(", ")})`, parseNonEmpty)
+    .requiredOption("--source <key>", `source to sync (${sourceKeys().join(", ")})`, parseSourceKey)
     .option("--since <date>", "only Anfragen dated on or after this date (YYYY-MM-DD)", parseIsoDate)
     .option("--until <date>", "only Anfragen dated on or before this date (YYYY-MM-DD)", parseIsoDate)
     .option("--period <n>", "restrict to one legislative period", parseBoundedInt(1, 99))
@@ -81,7 +90,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const key = ctx.opts["source"] as string;
         const entry = sourceEntry(key);
         if (entry === undefined) {
-          throw new OpenKaError(`Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
+          throw new UsageError(`Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
         }
         const source = createSource(key);
         const store = ctx.store();

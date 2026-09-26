@@ -314,11 +314,26 @@ describe("ka", () => {
     }
   });
 
-  it("refuses to sync a source that needs a credential it does not have", async () => {
+  it("refuses a sync it cannot honour as a usage error, and files no source error for it", async () => {
+    // A missing key, a Wahlperiode the feed does not cover and an unknown source
+    // exited 1 and left a "last error" in state/ for `sources list` and
+    // `ka-factory health` to report against a source that is working fine.
     const harness = cliHarness({ transport: berlinTransport().transport });
-    strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "bund"], harness.deps), EXIT_ERROR);
-    match(harness.stderr(), /needs a key/);
-    harness.cleanup();
+    try {
+      for (const [argv, message] of [
+        [["--source", "bund"], /needs a key/],
+        [["--source", "berlin", "--period", "5"], /covers Wahlperioden 11–19; 5 was requested/],
+        [["--source", "nordrhein-westfalen", "--period", "13"], /robots\.txt disallows its document archive/],
+        [["--source", "narnia"], /Unknown source "narnia"/],
+      ] as const) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "sync", ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+        match(harness.stderr(), message);
+      }
+      ok(!existsSync(join(harness.corpus, "state")), "no source state for refused runs");
+    } finally {
+      harness.cleanup();
+    }
   });
 
   it("takes a credential from the environment", async () => {

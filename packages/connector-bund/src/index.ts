@@ -14,7 +14,7 @@
 // of a pair — those are completed with a targeted per-Vorgang request rather than
 // being published as a record with an invented counterpart.
 
-import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
+import { ParseError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { AnsweredBy, Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { periodFromReference } from "@maschinenlesbar.org/openka-lib-extract";
 import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "@maschinenlesbar.org/openka-lib-source";
@@ -50,7 +50,8 @@ export class BundDipSource implements Source {
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     if (options.apiKey === undefined || options.apiKey.trim() === "") {
-      throw new ParseError(
+      // A missing credential is the operator's to supply, not a degraded source.
+      throw new UsageError(
         `The Bundestag DIP API needs a key. Pass --api-key, or set ${DIP_API_KEY_ENV}. ` +
           "The Bundestag publishes a public key on https://dip.bundestag.de/über-dip/hilfe/api.",
       );

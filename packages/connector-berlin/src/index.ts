@@ -13,7 +13,7 @@
 // the same thing under the Land's own name, which is why `document_type` is part
 // of the schema instead of being assumed.
 
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { SourceState } from "@maschinenlesbar.org/openka-lib-store";
 import { parsePardokExport } from "@maschinenlesbar.org/openka-lib-pardok";
 import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
@@ -44,7 +44,9 @@ export class BerlinSource implements Source {
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const period = options.period ?? BERLIN_LATEST_PERIOD;
     if (!BERLIN_PERIODS.includes(period as (typeof BERLIN_PERIODS)[number])) {
-      throw new OpenKaError(
+      // The request, not the source: a usage error, so no "last error" is filed
+      // against a Berlin that is working fine.
+      throw new UsageError(
         `Berlin's open-data feed covers Wahlperioden ${BERLIN_PERIODS[0]}–${BERLIN_LATEST_PERIOD}; ` +
           `${period} was requested. If a new Wahlperiode has begun, the feed list in this adapter needs a bump.`,
       );

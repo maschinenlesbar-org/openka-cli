@@ -26,7 +26,7 @@
 // Extraction needs nothing NRW-specific: its answer Drucksachen number the questions
 // and let the answer follow directly, which the shared `antwort_folgt` rules read.
 
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
@@ -78,7 +78,7 @@ export class NordrheinWestfalenSource implements Source {
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     if (options.period !== undefined && (ROBOTS_DISALLOWED_PERIODS as readonly number[]).includes(options.period)) {
-      throw new OpenKaError(
+      throw new UsageError(
         `The Landtag NRW's robots.txt disallows its document archive for Wahlperiode ${options.period} ` +
           `(11–15). This client will not fetch it.`,
       );
