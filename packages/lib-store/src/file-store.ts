@@ -31,6 +31,26 @@ function assertSafeKey(value: string, what: string): void {
   }
 }
 
+/** Why a parsed catalog is not a list of catalog rows, or undefined when it is one. */
+function catalogProblem(rows: unknown): string | undefined {
+  if (!Array.isArray(rows)) return "not a list of rows";
+  for (const [index, row] of rows.entries()) {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) return `row ${index} is not an object`;
+    const entry = row as Record<string, unknown>;
+    if (typeof entry["id"] !== "string" || !SAFE_KEY.test(entry["id"]) || entry["id"].includes("..")) {
+      return `row ${index} has no safe record id`;
+    }
+    for (const key of ["parliament", "reference", "title", "review_status", "tier"]) {
+      if (typeof entry[key] !== "string") return `row ${index} (${entry["id"]}) has no ${key}`;
+    }
+    for (const key of ["legislative_period", "abstained", "terms"]) {
+      if (typeof entry[key] !== "number") return `row ${index} (${entry["id"]}) has no ${key}`;
+    }
+    if (!Array.isArray(entry["parties"])) return `row ${index} (${entry["id"]}) has no parties`;
+  }
+  return undefined;
+}
+
 export class FileStore implements Store {
   readonly root: string;
 
@@ -135,6 +155,9 @@ export class FileStore implements Store {
     } catch (err) {
       throw new StoreError(`Corrupt record ${id}`, { cause: err });
     }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed) || (parsed as { id?: unknown }).id !== id) {
+      throw new StoreError(`Corrupt record ${id}: not a record stored under that id`);
+    }
     return parsed as KaRecord;
   }
 
@@ -174,8 +197,23 @@ export class FileStore implements Store {
   }
 
   private readCatalogFile(): Map<string, CatalogEntry> {
-    const rows = this.readJson<CatalogEntry[]>(this.path("index", "catalog.json"), []);
-    return new Map(rows.map((row) => [row.id, row]));
+    const path = this.path("index", "catalog.json");
+    const rows = this.readJson<unknown>(path, []);
+    // Parsed is not the same as well-formed: `{"a":1}` crashed search with
+    // "rows.map is not a function", and a row without a title with a TypeError —
+    // both reported as an unexpected error rather than as a corpus problem.
+    const problem = catalogProblem(rows);
+    if (problem !== undefined) {
+      throw new StoreError(`Corrupt catalog ${path}: ${problem} — \`ka reindex\` rebuilds it from the records`);
+    }
+    return new Map((rows as CatalogEntry[]).map((row) => [row.id, row]));
+  }
+
+  replaceCatalog(entries: readonly CatalogEntry[]): void {
+    this.catalogCache = new Map(entries.map((entry) => [entry.id, entry]));
+    this.touched.clear();
+    this.removed.clear();
+    this.writeJson(this.path("index", "catalog.json"), this.catalog());
   }
 
   catalog(): CatalogEntry[] {

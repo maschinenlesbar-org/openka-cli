@@ -4,6 +4,7 @@
 // live in. Removing one uses the catalog row to find the same shards again, so a
 // deletion never has to scan all 256 of them.
 
+import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { CatalogEntry, CatalogStore, IndexStore, RecordStore } from "./store.js";
 import type { IndexShard } from "./fts.js";
@@ -128,15 +129,30 @@ export function unindexRecord(store: IndexTarget, id: string): void {
  * postings first turns that into one write per shard for the whole corpus, and one
  * catalog write instead of one per record.
  */
-export function reindexAll(store: IndexTarget): number {
+export function reindexAll(
+  store: IndexTarget,
+  options: {
+    /**
+     * Called for a record that cannot be read, which is then left out of the index.
+     * Without it the first such record aborts the rebuild, as it always did.
+     */
+    onUnreadable?: (id: string, error: StoreError) => void;
+  } = {},
+): number {
   for (const shard of store.shardNames()) store.saveShard(shard, {});
-  for (const entry of store.catalog()) store.removeCatalogEntry(entry.id);
 
   const byShard = new Map<string, IndexShard>();
   const rows: CatalogEntry[] = [];
   let count = 0;
   for (const id of store.recordIds()) {
-    const record = store.getRecord(id);
+    let record: KaRecord | undefined;
+    try {
+      record = store.getRecord(id);
+    } catch (err) {
+      if (options.onUnreadable === undefined || !(err instanceof StoreError)) throw err;
+      options.onUnreadable(id, err);
+      continue;
+    }
     if (record === undefined) continue;
     const counts = termFrequencies(indexableFields(record));
     for (const [token, tf] of counts) {
@@ -156,6 +172,8 @@ export function reindexAll(store: IndexTarget): number {
     }
     store.saveShard(shard, data);
   }
-  store.putCatalogEntries(rows);
+  // The old catalog is discarded unread: a corrupt one is exactly what a rebuild
+  // is for.
+  store.replaceCatalog(rows);
   return count;
 }

@@ -87,6 +87,12 @@ export interface CatalogStore {
   putCatalogEntries(entries: readonly CatalogEntry[]): void;
   removeCatalogEntry(id: string): void;
   /**
+   * Replace every catalog row with `entries` and persist, without reading what is
+   * there. That is what a rebuild needs: `ka reindex` read the old catalog in order
+   * to clear it, so a corrupt catalog was the one thing it could not repair.
+   */
+  replaceCatalog(entries: readonly CatalogEntry[]): void;
+  /**
    * Run `work` with catalog writes deferred, and persist the catalog once when it
    * returns — also when it throws, so an interrupted run keeps what it indexed.
    *

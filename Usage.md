@@ -74,7 +74,9 @@ ka verify --all --json           # everything, machine-readable
 ```
 
 Re-runs the extraction from the archived bytes and asserts the canonical output is
-byte-identical. Exits non-zero if any record does not reproduce.
+byte-identical. Exits non-zero if any record does not reproduce. A record that cannot
+be read is reported as a `FAIL` and the rest are still checked; the exit code is then
+3, the corpus-problem code.
 
 ## `ka review`
 
@@ -105,6 +107,10 @@ ka stats                   # how much of the corpus is parse-complete
 ka schema                  # the JSON Schema of a record
 ka reindex                 # rebuild the index from the stored records
 ```
+
+`ka reindex` rebuilds the catalog and the search index without reading the old ones,
+so it repairs a corrupt catalog. A record that cannot be read is named on stderr and
+left out of the index, and the command exits 3.
 
 ## `ka-factory`
 

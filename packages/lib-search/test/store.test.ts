@@ -1,11 +1,12 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
 import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { indexableFields, indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
@@ -208,6 +209,7 @@ describe("the store's roles", () => {
       putCatalogEntry: () => undefined,
       putCatalogEntries: () => undefined,
       removeCatalogEntry: () => undefined,
+      replaceCatalog: () => undefined,
       batchCatalog: (work) => work(),
     };
     const hits = searchLike(tiny, "a");
@@ -247,6 +249,49 @@ describe("file store", () => {
 
   it("refuses a blob name that is not a digest", () => {
     throws(() => store.blobPath("not-a-digest"), /Not a sha256/);
+  });
+
+  it("calls a catalog of the wrong shape corrupt, instead of crashing a reader", () => {
+    // `{"a":1}` gave "rows.map is not a function" and a row with no title a
+    // TypeError in search — each an "Unexpected error", not a corpus problem.
+    const dir = mkdtempSync(join(tmpdir(), "openka-catalog-"));
+    try {
+      mkdirSync(join(dir, "index"), { recursive: true });
+      for (const [content, reason] of [
+        ['{"a":1}', /not a list of rows/],
+        ['[{"id":"../../evil","parliament":"berlin"}]', /row 0 has no safe record id/],
+        ['[{"id":"berlin-19-1","parliament":"berlin"}]', /row 0 \(berlin-19-1\) has no reference/],
+      ] as const) {
+        writeFileSync(join(dir, "index", "catalog.json"), content);
+        throws(() => new FileStore(dir).catalog(), (err: unknown) => err instanceof StoreError && reason.test(err.message));
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rebuilds a corrupt catalog without reading it, and names an unreadable record", () => {
+    // `ka reindex` read the old catalog in order to clear it, so a catalog that
+    // would not parse was the one thing it could not repair.
+    const dir = mkdtempSync(join(tmpdir(), "openka-reindex-"));
+    try {
+      const fresh = new FileStore(dir);
+      fresh.putRecord(sampleRecord());
+      fresh.putRecord(sampleRecord({ id: "berlin-19-2", reference: "19/2" }));
+      mkdirSync(join(dir, "index"), { recursive: true });
+      writeFileSync(join(dir, "index", "catalog.json"), "[1,2");
+      writeFileSync(join(dir, "records", "berlin-19-2.json"), '{"broken');
+      const store = new FileStore(dir);
+      throws(() => store.catalog(), StoreError);
+      // Without a handler an unreadable record still aborts, as it always did.
+      throws(() => reindexAll(new FileStore(dir)), /Corrupt record berlin-19-2/);
+      const skipped: string[] = [];
+      strictEqual(reindexAll(store, { onUnreadable: (id) => skipped.push(id) }), 1);
+      deepStrictEqual(skipped, ["berlin-19-2"]);
+      deepStrictEqual(new FileStore(dir).catalog().map((entry) => entry.id), ["berlin-19-12345"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps per-source state", () => {

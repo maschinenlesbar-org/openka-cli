@@ -2,8 +2,9 @@
 // honest about itself.
 
 import type { Command } from "commander";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
+import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
@@ -55,10 +56,26 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         const perceiver = mode === "off" ? undefined : await buildPerceiver(mode);
 
         const results = [];
+        let unreadable = 0;
         for (const id of ids) {
-          results.push(
-            await verifyRecord(id, { store, ...(perceiver === undefined ? {} : { perceiver }), env: ctx.deps.env }),
-          );
+          try {
+            results.push(
+              await verifyRecord(id, { store, ...(perceiver === undefined ? {} : { perceiver }), env: ctx.deps.env }),
+            );
+          } catch (err) {
+            // `verify --all` is the natural tool for finding a corrupt record, and it
+            // stopped at the first one: the rest were never checked.
+            if (!(err instanceof StoreError)) throw err;
+            unreadable++;
+            results.push({
+              id,
+              ok: false,
+              reason: err.message,
+              differences: [] as string[],
+              storedVersion: "unknown",
+              currentVersion: extractorVersion(ctx.deps.env),
+            });
+          }
         }
         const failed = results.filter((result) => !result.ok);
 
@@ -73,6 +90,9 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             }
           }
           ctx.deps.io.out(`${results.length - failed.length}/${results.length} record(s) reproduced byte-identically.`);
+        }
+        if (unreadable > 0) {
+          throw new StoreError(`${failed.length} record(s) did not reproduce, ${unreadable} of them unreadable`);
         }
         if (failed.length > 0) throw new OpenKaError(`${failed.length} record(s) did not reproduce`);
       }),
@@ -141,8 +161,19 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .description("rebuild the search index and catalog from the stored records")
     .action(
       action(deps, async (ctx) => {
-        const count = reindexAll(ctx.store());
+        const unreadable: string[] = [];
+        const count = reindexAll(ctx.store(), {
+          onUnreadable: (id, err) => {
+            unreadable.push(id);
+            ctx.deps.io.err(`skipped ${id}: ${err.message}`);
+          },
+        });
         ctx.deps.io.out(`Reindexed ${count} record(s) in ${ctx.corpusRoot()}.`);
+        // The rest of the corpus is searchable again; the unreadable ones are not,
+        // and saying so is a corpus problem, not a success.
+        if (unreadable.length > 0) {
+          throw new StoreError(`${unreadable.length} unreadable record(s) left out of the index: ${unreadable.join(", ")}`);
+        }
       }),
     );
 

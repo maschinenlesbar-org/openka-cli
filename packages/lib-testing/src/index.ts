@@ -133,6 +133,10 @@ export class MemoryStore implements Store {
   removeCatalogEntry(id: string): void {
     this.rows.delete(id);
   }
+  replaceCatalog(entries: readonly CatalogEntry[]): void {
+    this.rows.clear();
+    for (const entry of entries) this.rows.set(entry.id, entry);
+  }
   /** Nothing to defer in memory; counted so a test can assert the pipeline batches. */
   batches = 0;
   async batchCatalog<T>(work: () => Promise<T>): Promise<T> {

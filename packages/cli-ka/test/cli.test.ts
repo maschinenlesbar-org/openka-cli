@@ -3,6 +3,8 @@
 
 import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { defaultCorpusRoot, parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
@@ -254,6 +256,38 @@ describe("ka", () => {
     try {
       strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
       match(harness.stdout(), /Reindexed \d+ record\(s\)/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("repairs a corrupt catalog with reindex, and checks every record past a corrupt one", async () => {
+    const harness = await seeded();
+    try {
+      const ids = harness.deps.createStore(harness.corpus).recordIds();
+      ok(ids.length >= 2, `seeded ${ids.length} record(s)`);
+      const broken = ids[0] as string;
+      writeFileSync(join(harness.corpus, "records", `${broken}.json`), '{"broken');
+      writeFileSync(join(harness.corpus, "index", "catalog.json"), "[1,2");
+
+      // Search names the corpus problem instead of crashing.
+      strictEqual(await run(["--corpus", harness.corpus, "search", "solaranlagen"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /Corrupt JSON in .*catalog\.json/);
+
+      // Reindex does not need the catalog it is rebuilding, and indexes the rest.
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_STORE);
+      match(harness.stdout(), new RegExp(`Reindexed ${ids.length - 1} record\\(s\\)`));
+      match(harness.stderr(), new RegExp(`skipped ${broken}: Corrupt record`));
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "search", "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /berlin-19-10006/);
+
+      // verify --all reports the corrupt record and carries on with the others.
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_STORE);
+      match(harness.stdout(), new RegExp(`FAIL ${broken}: Corrupt record`));
+      match(harness.stdout(), new RegExp(`${ids.length - 1}/${ids.length} record\\(s\\) reproduced`));
     } finally {
       harness.cleanup();
     }
