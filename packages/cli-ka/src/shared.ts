@@ -11,12 +11,13 @@ import { ParliamentKeys } from "@maschinenlesbar.org/openka-lib-models";
 import type { SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { existsSync } from "node:fs";
+import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
 import type { CliDeps } from "./io.js";
-import type { Store } from "@maschinenlesbar.org/openka-lib-store";
+import { isSafeKey, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory. */
 export const CORPUS_ENV = "OPENKA_CORPUS";
@@ -50,6 +51,18 @@ export function parseBoundedInt(min: number, max?: number): (value: string) => n
 /** commander value-parser: a non-empty (after trimming) string. */
 export function parseNonEmpty(value: string): string {
   if (value.trim() === "") throw new InvalidArgumentError("Expected a non-empty value.");
+  return value;
+}
+
+/**
+ * commander value-parser: a record id. A malformed one ("BERLIN-19-10006",
+ * "../x") is a usage mistake, and it used to surface from the store as exit 3 —
+ * "the corpus is missing or unreadable", which says nothing about the id.
+ */
+export function parseRecordId(value: string): string {
+  if (!isSafeKey(value)) {
+    throw new InvalidArgumentError("Not a record id: expected lower-case letters, digits, '.', '_' and '-', like berlin-19-10006.");
+  }
   return value;
 }
 
@@ -106,6 +119,12 @@ export interface ActionContext {
   opts: Record<string, unknown>;
   /** The corpus, opened lazily so `--help` never creates a directory. */
   store(): Store;
+  /**
+   * The corpus, for a command that only reads one: a directory that is not there
+   * is a StoreError (exit 3). A mistyped `--corpus` used to look like an empty
+   * result — "No matches.", "0 record(s)" — and exit 0.
+   */
+  existingStore(): Store;
   corpusRoot(): string;
 }
 
@@ -131,6 +150,14 @@ export function action(
         opts: command.opts(),
         corpusRoot: () => root,
         store: () => (store ??= deps.createStore(root)),
+        existingStore: () => {
+          if (!existsSync(root)) {
+            throw new StoreError(
+              `No corpus at ${root}: nothing has been synced there. Check --corpus / OPENKA_CORPUS, or run \`ka sync\` first.`,
+            );
+          }
+          return (store ??= deps.createStore(root));
+        },
       },
       positionals,
     );

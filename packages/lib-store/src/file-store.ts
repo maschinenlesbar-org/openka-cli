@@ -25,8 +25,13 @@ import type { CatalogEntry, EmbeddingSet, SourceState, Store } from "./store.js"
 /** Record ids and source keys reach the filesystem, so they are strictly checked. */
 const SAFE_KEY = /^[a-z0-9][a-z0-9._-]*$/;
 
+/** Whether `value` can be a record id or source key — the rule every path is built under. */
+export function isSafeKey(value: string): boolean {
+  return SAFE_KEY.test(value) && !value.includes("..");
+}
+
 function assertSafeKey(value: string, what: string): void {
-  if (!SAFE_KEY.test(value) || value.includes("..")) {
+  if (!isSafeKey(value)) {
     throw new StoreError(`Unsafe ${what} "${value}": expected [a-z0-9][a-z0-9._-]*`);
   }
 }

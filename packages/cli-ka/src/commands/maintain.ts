@@ -9,7 +9,7 @@ import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
-import { action, parseBoundedInt, parseNonEmpty, printJson } from "../shared.js";
+import { action, parseBoundedInt, parseNonEmpty, parseRecordId, printJson } from "../shared.js";
 import { pad, truncate } from "../text.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "./sync.js";
 import { choiceOption } from "../shared.js";
@@ -35,14 +35,14 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
   program
     .command("verify")
     .description("re-run an extraction from the archived bytes and assert identical output")
-    .argument("[id]", "record id; omit to verify an evenly spaced sample of the corpus")
+    .argument("[id]", "record id; omit to verify an evenly spaced sample of the corpus", parseRecordId)
     .option("--all", "verify every record")
     .option("--limit <n>", "how many records to verify when no id is given", parseBoundedInt(1, 1_000_000))
     .addOption(choiceOption("--ocr <mode>", "OCR engine to use for records produced with one", OCR_MODES))
     .option("--json", "print results as JSON")
     .action(
       action(deps, async (ctx, positionals) => {
-        const store = ctx.store();
+        const store = ctx.existingStore();
         const all = store.recordIds();
         const ids =
           positionals[0] !== undefined
@@ -103,11 +103,11 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .description("work the abstention queue: records the extractor refused to complete")
     .option("--source <key>", "restrict to one parliament", parseNonEmpty)
     .option("--limit <n>", "how many records to list", parseBoundedInt(1, 10_000))
-    .option("--mark-verified <id>", "record that a human checked this record against its source", parseNonEmpty)
+    .option("--mark-verified <id>", "record that a human checked this record against its source", parseRecordId)
     .option("--json", "print the queue as JSON")
     .action(
       action(deps, async (ctx) => {
-        const store = ctx.store();
+        const store = ctx.existingStore();
 
         const mark = ctx.opts["markVerified"] as string | undefined;
         if (mark !== undefined) {
@@ -162,7 +162,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .action(
       action(deps, async (ctx) => {
         const unreadable: string[] = [];
-        const count = reindexAll(ctx.store(), {
+        const count = reindexAll(ctx.existingStore(), {
           onUnreadable: (id, err) => {
             unreadable.push(id);
             ctx.deps.io.err(`skipped ${id}: ${err.message}`);

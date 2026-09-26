@@ -11,7 +11,7 @@ import type { CliDeps } from "./io.js";
 /**
  * Exit codes, documented so they are scriptable:
  *   0  success (including `--help` and `--version`)
- *   1  an error — an upstream failure, a corpus problem, a failed verification
+ *   1  an error — an upstream failure, a missing record, a failed verification
  *   2  a usage error (commander's parse failures are remapped to this)
  *   3  the corpus is missing or unreadable
  *   4  the requested record or resource does not exist upstream (HTTP 404)
@@ -35,7 +35,9 @@ function configureTree(command: Command, deps: CliDeps): void {
   command.exitOverride();
   command.configureOutput({
     writeOut: (str) => deps.io.out(str.replace(/\n$/, "")),
-    writeErr: (str) => deps.io.err(str.replace(/\n$/, "")),
+    // Commander's own errors echo the rejected value, which is the user's input
+    // and may carry terminal controls; each line is sanitised like any other.
+    writeErr: (str) => deps.io.err(str.replace(/\n$/, "").split("\n").map(sanitizeForTerminal).join("\n")),
   });
   for (const child of command.commands) configureTree(child, deps);
 }

@@ -132,6 +132,6 @@ ka-factory embed --from vectors.jsonl --model bge-m3 --model-sha256 <hex>
 |------|---------|
 | 0 | success (including `--help` and `--version`) |
 | 1 | an error: an upstream failure, a failed verification, a missing record |
-| 2 | a usage error (a rejected option value, an unknown command) |
-| 3 | the corpus is missing or unreadable |
+| 2 | a usage error (a rejected option value, a malformed record id, an unknown command) |
+| 3 | the corpus is missing or unreadable (a `--corpus` that does not exist included) |
 | 4 | the upstream returned 404 |

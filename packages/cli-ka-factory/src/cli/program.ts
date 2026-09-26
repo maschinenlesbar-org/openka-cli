@@ -20,6 +20,7 @@ import {
   choiceOption,
   parseBoundedInt,
   parseNonEmpty,
+  parseRecordId,
   printJson,
   toEngineOptions,
 } from "@maschinenlesbar.org/openka-cli-ka";
@@ -105,14 +106,14 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   goldens
     .command("add")
     .description("freeze a record and its input bytes as a golden fixture")
-    .argument("<id>", "record id in the corpus")
+    .argument("<id>", "record id in the corpus", parseRecordId)
     .option("--dir <dir>", `fixture directory (default: ${DEFAULT_FIXTURES})`, parseNonEmpty)
     .option("--source <key>", "source folder to file it under (default: the record's parliament)", parseNonEmpty)
     .option("--note <text>", "what this fixture is here to pin down", parseNonEmpty)
     .action(
       action(deps, async (ctx, positionals) => {
         const id = positionals[0] as string;
-        const store = ctx.store();
+        const store = ctx.existingStore();
         const record = store.getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
         const dir = resolve((ctx.opts["dir"] as string | undefined) ?? DEFAULT_FIXTURES);

@@ -3,7 +3,7 @@
 import { CommanderError } from "commander";
 import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE } from "@maschinenlesbar.org/openka-cli-ka";
-import { defaultDeps, type CliDeps } from "@maschinenlesbar.org/openka-cli-ka";
+import { defaultDeps, sanitizeForTerminal, type CliDeps } from "@maschinenlesbar.org/openka-cli-ka";
 import { buildFactoryProgram } from "./program.js";
 import type { Command } from "commander";
 
@@ -11,7 +11,7 @@ function configureTree(command: Command, deps: CliDeps): void {
   command.exitOverride();
   command.configureOutput({
     writeOut: (str) => deps.io.out(str.replace(/\n$/, "")),
-    writeErr: (str) => deps.io.err(str.replace(/\n$/, "")),
+    writeErr: (str) => deps.io.err(str.replace(/\n$/, "").split("\n").map(sanitizeForTerminal).join("\n")),
   });
   for (const child of command.commands) configureTree(child, deps);
 }

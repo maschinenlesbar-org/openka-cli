@@ -18,6 +18,7 @@ import {
   corpusFiltersFrom,
   parseBoundedInt,
   parseNonEmpty,
+  parseRecordId,
   printJson,
 } from "../shared.js";
 import { pad, sanitizeForTerminal, truncate } from "../text.js";
@@ -113,7 +114,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
       .option("--json", "print results as JSON"),
   ).action(
     action(deps, async (ctx, positionals) => {
-      const store = ctx.store();
+      const store = ctx.existingStore();
       const filters = corpusFiltersFrom(ctx.opts);
       const limit = (ctx.opts["limit"] as number | undefined) ?? 20;
 
@@ -181,13 +182,13 @@ export function registerQuery(program: Command, deps: CliDeps): void {
   program
     .command("get")
     .description("print one record in a machine-readable format")
-    .argument("<id>", "record id, e.g. berlin-19-10006")
+    .argument("<id>", "record id, e.g. berlin-19-10006", parseRecordId)
     .addOption(choiceOption("--format <format>", "output format", RENDER_FORMATS))
     .option("-o, --out <file>", "write to this file instead of stdout", parseNonEmpty)
     .action(
       action(deps, async (ctx, positionals) => {
         const id = positionals[0] as string;
-        const record = ctx.store().getRecord(id);
+        const record = ctx.existingStore().getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
         const format = ((ctx.opts["format"] as RenderFormat | undefined) ?? "json") as RenderFormat;
         // `emit` wraps the write in a typed error; writing directly meant a bad
@@ -200,11 +201,11 @@ export function registerQuery(program: Command, deps: CliDeps): void {
   program
     .command("show")
     .description("render one record for reading")
-    .argument("<id>", "record id")
+    .argument("<id>", "record id", parseRecordId)
     .action(
       action(deps, async (ctx, positionals) => {
         const id = positionals[0] as string;
-        const record = ctx.store().getRecord(id);
+        const record = ctx.existingStore().getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
         for (const line of renderShowLines(record)) ctx.deps.io.out(line);
       }),
@@ -213,12 +214,12 @@ export function registerQuery(program: Command, deps: CliDeps): void {
   program
     .command("open")
     .description("print the path of a record's archived source document")
-    .argument("<id>", "record id")
+    .argument("<id>", "record id", parseRecordId)
     .option("--role <role>", "which document to open when there are several", parseNonEmpty)
     .action(
       action(deps, async (ctx, positionals) => {
         const id = positionals[0] as string;
-        const store = ctx.store();
+        const store = ctx.existingStore();
         const record = store.getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
         const role = ctx.opts["role"] as string | undefined;

@@ -373,11 +373,44 @@ describe("ka", () => {
     }
   });
 
-  it("reports an unreadable corpus with its own exit code", async () => {
+  it("calls a malformed record id a usage error, before the store is asked", async () => {
+    // It surfaced from the store as exit 3, "the corpus is missing or unreadable",
+    // which says nothing about the id. The store still refuses it on its own.
     const harness = cliHarness();
-    // A record id that would escape the records directory is a store error.
-    strictEqual(await run(["--corpus", harness.corpus, "show", "../etc/passwd"], harness.deps), EXIT_STORE);
-    harness.cleanup();
+    try {
+      for (const argv of [
+        ["show", "../etc/passwd"],
+        ["get", "BERLIN-19-10006"],
+        ["open", "a/../b"],
+        ["verify", "Berlin-19-10006"],
+        ["review", "--mark-verified", "../x"],
+      ]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+        match(harness.stderr(), /Not a record id/);
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("reports a corpus that is not there with its own exit code, not as an empty result", async () => {
+    // A mistyped --corpus answered "No matches." and "0 record(s)" with exit 0.
+    const harness = cliHarness();
+    try {
+      const missing = join(harness.corpus, "typo");
+      for (const argv of [["search", "brücke"], ["stats"], ["get", "berlin-19-1"], ["export", "--format", "jsonl"], ["verify", "--all"], ["reindex"]]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", missing, ...argv], harness.deps), EXIT_STORE, argv.join(" "));
+        match(harness.stderr(), /No corpus at .*typo: nothing has been synced there/);
+      }
+      ok(!existsSync(missing), "a read command must not create the corpus");
+      // Commands that do not read a corpus still work without one.
+      strictEqual(await run(["--corpus", missing, "sources", "list"], harness.deps), EXIT_OK);
+      strictEqual(await run(["--corpus", missing, "schema"], harness.deps), EXIT_OK);
+    } finally {
+      harness.cleanup();
+    }
   });
 });
 

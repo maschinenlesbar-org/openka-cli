@@ -55,7 +55,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
   ).action(
     action(deps, async (ctx) => {
       const format = (ctx.opts["format"] as (typeof EXPORT_FORMATS)[number] | undefined) ?? "csv";
-      const records = selectRecords(ctx.store(), ctx.opts, (ctx.opts["limit"] as number | undefined) ?? 1_000_000);
+      const records = selectRecords(ctx.existingStore(), ctx.opts, (ctx.opts["limit"] as number | undefined) ?? 1_000_000);
       if (records.length === 0) throw new OpenKaError("Nothing selected — the corpus is empty or the filters match nothing.");
 
       let text: string;
@@ -84,7 +84,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       // true of the feed a reader sees rather than only of the dates. Plain string
       // comparison, not localeCompare: these are ISO instants, and the ordering of
       // a published feed must not depend on the locale of the machine that built it.
-      const records = selectRecords(ctx.store(), ctx.opts, 100_000)
+      const records = selectRecords(ctx.existingStore(), ctx.opts, 100_000)
         .sort((a, b) => {
           const left = atomEntryUpdated(a, updated);
           const right = atomEntryUpdated(b, updated);
@@ -118,7 +118,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {
-        const store = ctx.store();
+        const store = ctx.existingStore();
         const catalog = store.catalog();
         const byParliament = new Map<string, { records: number; abstained: number }>();
         const byTier = new Map<string, number>();
