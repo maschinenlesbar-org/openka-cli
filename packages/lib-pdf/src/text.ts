@@ -394,7 +394,7 @@ function interpret(
         let inner = budget.decodedForms.get(xobject);
         if (!budget.decodedForms.has(xobject)) {
           try {
-            inner = decodeStream(xobject, (value) => doc.resolve(value));
+            inner = decodeStream(xobject, (value) => doc.resolve(value), doc.decodeBudget);
           } catch {
             inner = undefined;
           }

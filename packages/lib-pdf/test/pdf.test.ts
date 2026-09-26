@@ -9,7 +9,17 @@ import { describe, it } from "node:test";
 import { Lexer, isKeyword } from "../src/lexer.js";
 import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { isDict, isName, isRef, isString, type PdfDict } from "../src/objects.js";
-import { ascii85Decode, asciiHexDecode, decodeStream, inflate, lzwDecode, runLengthDecode } from "../src/filters.js";
+import {
+  DecodeBudget,
+  MAX_DECODED_BYTES,
+  MAX_INFLATED_BYTES,
+  ascii85Decode,
+  asciiHexDecode,
+  decodeStream,
+  inflate,
+  lzwDecode,
+  runLengthDecode,
+} from "../src/filters.js";
 import { baseEncoding, glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/encoding.js";
 import { multiply, assemble, normalizeSpaces } from "../src/text.js";
 import {
@@ -389,6 +399,113 @@ describe("form XObjects", () => {
     ok(page !== undefined);
     const budget = new InterpretBudget(MAX_FORM_INVOCATIONS, 50);
     throws(() => extractContentText(doc, page.content, page.resources, undefined, budget), /more than 50 bytes/);
+  });
+});
+
+/**
+ * A PDF-style LZW encoder (MSB first, EarlyChange 1, no clear code once the table
+ * is full), so the decoder can be tested on more than the one worked example.
+ */
+function lzwEncode(input: Buffer): Buffer {
+  const out: number[] = [];
+  let acc = 0;
+  let accBits = 0;
+  let width = 9;
+  const emit = (code: number): void => {
+    acc = (acc << width) | code;
+    accBits += width;
+    while (accBits >= 8) {
+      out.push((acc >> (accBits - 8)) & 0xff);
+      accBits -= 8;
+    }
+    acc &= (1 << accBits) - 1;
+  };
+  const table = new Map<string, number>();
+  for (let code = 0; code < 256; code++) table.set(String.fromCharCode(code), code);
+  let next = 258;
+  // The decoder's table lags the encoder's by one code; its width follows its own.
+  let decoderNext = 258;
+  let codes = 0;
+  const emitTracked = (code: number): void => {
+    emit(code);
+    if (codes++ > 0 && decoderNext < 4096) decoderNext++;
+    if (decoderNext + 1 >= 1 << width && width < 12) width++;
+  };
+  emit(256);
+  let w = "";
+  for (const byte of input) {
+    const wc = w + String.fromCharCode(byte);
+    if (table.has(wc)) {
+      w = wc;
+      continue;
+    }
+    emitTracked(table.get(w) as number);
+    if (next < 4096) table.set(wc, next++);
+    w = String.fromCharCode(byte);
+  }
+  if (w !== "") emitTracked(table.get(w) as number);
+  emit(257);
+  if (accBits > 0) out.push((acc << (8 - accBits)) & 0xff);
+  return Buffer.from(out);
+}
+
+describe("decode limits beyond Flate", () => {
+  it("round-trips LZW past the 4096 entries a 12-bit code can address", () => {
+    // A small alphabet in a pseudo-random order fills the table and keeps going.
+    let seed = 7;
+    const input = Buffer.alloc(200_000);
+    for (let i = 0; i < input.length; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      input[i] = 97 + (seed % 5);
+    }
+    deepStrictEqual(lzwDecode(lzwEncode(input)), input);
+  });
+
+  it("refuses LZW output past the cap instead of taking gigabytes first", () => {
+    // A 230 KB LZW stream cost 3.7 GB of RSS before V8 gave up on the array.
+    const bomb = lzwEncode(Buffer.alloc(1024 * 1024, 0x41));
+    ok(bomb.length < 4096, `bomb is ${bomb.length} bytes`);
+    throws(() => lzwDecode(bomb, 1, 64 * 1024), /LZWDecode produced more than 65536 bytes/);
+    strictEqual(lzwDecode(bomb).length, 1024 * 1024);
+  });
+
+  it("refuses an LZW code that is past the dictionary instead of guessing it", () => {
+    // 9-bit codes, MSB first: clear, 'A', then 300 — two entries past the table.
+    const bits = [256, 65, 300, 257].map((code) => code.toString(2).padStart(9, "0")).join("");
+    const bytes = Buffer.from(bits.padEnd(Math.ceil(bits.length / 8) * 8, "0").match(/.{8}/g)?.map((byte) => parseInt(byte, 2)) ?? []);
+    throws(() => lzwDecode(bytes), /code 300 is past the dictionary/);
+  });
+
+  it("refuses RunLength and ASCII85 output past the cap", () => {
+    // Two bytes of RunLength are 128 bytes of output; `z` is four.
+    const runs = Buffer.alloc(2 * 1024, 0);
+    for (let i = 0; i < runs.length; i += 2) {
+      runs[i] = 129;
+      runs[i + 1] = 0x20;
+    }
+    strictEqual(runLengthDecode(runs).length, 128 * 1024);
+    throws(() => runLengthDecode(runs, 1000), /RunLengthDecode produced more than 1000 bytes/);
+    throws(() => ascii85Decode(Buffer.from("z".repeat(300)), 1000), /ASCII85Decode produced more than 1000 bytes/);
+  });
+
+  it("charges every stream of a document to one budget", () => {
+    // Eight streams of 120 MiB each passed the per-stream cap one at a time.
+    strictEqual(MAX_DECODED_BYTES, 2 * MAX_INFLATED_BYTES);
+    const stream = (raw: Buffer, filter?: string) => ({
+      kind: "stream" as const,
+      dict: new Map(filter === undefined ? [] : [["Filter", { kind: "name" as const, name: filter }]]) as PdfDict,
+      raw,
+    });
+    const budget = new DecodeBudget(100);
+    strictEqual(decodeStream(stream(deflateSync(Buffer.alloc(60, 0x20)), "FlateDecode"), undefined, budget).length, 60);
+    strictEqual(budget.used, 60);
+    throws(
+      () => decodeStream(stream(deflateSync(Buffer.alloc(60, 0x20)), "FlateDecode"), undefined, budget),
+      /FlateDecode would exceed the document's decode budget \(40 bytes left/,
+    );
+    throws(() => decodeStream(stream(Buffer.from([129, 0x20]), "RunLengthDecode"), undefined, budget), /RunLengthDecode would exceed/);
+    // Without a budget, one stream is still held to the per-stream cap.
+    strictEqual(decodeStream(stream(Buffer.from("plain"))).toString(), "plain");
   });
 });
 

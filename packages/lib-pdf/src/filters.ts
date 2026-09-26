@@ -16,15 +16,57 @@ const IDENTITY: Resolver = (value) => value ?? null;
 /** Filters that produce image data and are passed through to the OCR tier as-is. */
 export const IMAGE_FILTERS = new Set(["DCTDecode", "JPXDecode", "JBIG2Decode", "CCITTFaxDecode"]);
 
-/** Decode a stream's bytes, applying its filter chain in order. */
-export function decodeStream(stream: PdfStream, resolve: Resolver = IDENTITY): Buffer {
+/**
+ * How much one document may decode across all of its streams.
+ *
+ * The per-stream cap (`MAX_INFLATED_BYTES`) alone leaves a document unbounded: eight
+ * streams of 120 MiB each is a 1 MB PDF that costs gigabytes. Every stream a
+ * document decodes is charged to its `PdfDocument`'s budget, and each filter is
+ * handed only what is left of it, so a bomb stops where the budget ends rather
+ * than after it has been allocated. Twice the per-stream cap: one maximal stream
+ * still fits, and no real Drucksache comes near it.
+ */
+export const MAX_DECODED_BYTES = 256 * 1024 * 1024;
+
+export class DecodeBudget {
+  used = 0;
+  constructor(readonly max: number = MAX_DECODED_BYTES) {}
+
+  /** What the next filter may produce: the rest of the budget, never more than one stream's cap. */
+  get remaining(): number {
+    return Math.max(0, Math.min(MAX_INFLATED_BYTES, this.max - this.used));
+  }
+
+  charge(bytes: number): void {
+    this.used += bytes;
+  }
+}
+
+/**
+ * Decode a stream's bytes, applying its filter chain in order.
+ *
+ * With a `budget`, the output is charged to it and no filter may produce more than
+ * it has left; without one, each filter is bounded by `MAX_INFLATED_BYTES`.
+ */
+export function decodeStream(stream: PdfStream, resolve: Resolver = IDENTITY, budget?: DecodeBudget): Buffer {
   const { filters, parms } = filterChain(stream.dict, resolve);
   let data = stream.raw;
   for (let i = 0; i < filters.length; i++) {
     const filter = filters[i] as string;
     const parm = parms[i];
-    data = applyFilter(filter, data, parm, resolve);
+    const limit = budget?.remaining ?? MAX_INFLATED_BYTES;
+    try {
+      data = applyFilter(filter, data, parm, resolve, limit);
+    } catch (err) {
+      if (budget !== undefined && limit < MAX_INFLATED_BYTES && err instanceof DecodeLimitError) {
+        throw new DecodeLimitError(
+          `${filter} would exceed the document's decode budget (${limit} bytes left of ${budget.max}) — refusing to decode further`,
+        );
+      }
+      throw err;
+    }
   }
+  budget?.charge(data.length);
   return data;
 }
 
@@ -55,23 +97,23 @@ export function filterChain(
   return { filters, parms };
 }
 
-function applyFilter(filter: string, data: Buffer, parm: PdfDict | undefined, resolve: Resolver): Buffer {
+function applyFilter(filter: string, data: Buffer, parm: PdfDict | undefined, resolve: Resolver, limit: number): Buffer {
   switch (filter) {
     case "FlateDecode":
     case "Fl":
-      return applyPredictor(inflate(data), parm, resolve);
+      return applyPredictor(inflate(data, limit), parm, resolve);
     case "LZWDecode":
     case "LZW":
-      return applyPredictor(lzwDecode(data, numberOf(resolve(parm?.get("EarlyChange")), 1)), parm, resolve);
+      return applyPredictor(lzwDecode(data, numberOf(resolve(parm?.get("EarlyChange")), 1), limit), parm, resolve);
     case "ASCIIHexDecode":
     case "AHx":
       return asciiHexDecode(data);
     case "ASCII85Decode":
     case "A85":
-      return ascii85Decode(data);
+      return ascii85Decode(data, limit);
     case "RunLengthDecode":
     case "RL":
-      return runLengthDecode(data);
+      return runLengthDecode(data, limit);
     case "Crypt":
       throw new ParseError("Encrypted stream (Crypt filter) — cannot decode");
     default:
@@ -84,11 +126,13 @@ function numberOf(value: PdfValue | undefined, fallback: number): number {
 }
 
 /**
- * The most a single stream may inflate to. The fetch engine caps a *response* at
- * 64 MiB, and without a cap here that budget buys an unbounded amount of heap: a
- * 199 KiB deflate stream of repeated bytes expands to 200 MiB, so a 64 MiB body at
- * that ratio is tens of gigabytes. 128 MiB is far beyond any real Drucksache and
- * turns the bomb into an abstention.
+ * The most a single stream may decode to, whichever filter expands it. The fetch
+ * engine caps a *response* at 64 MiB, and without a cap here that budget buys an
+ * unbounded amount of heap: a 199 KiB deflate stream of repeated bytes expands to
+ * 200 MiB, so a 64 MiB body at that ratio is tens of gigabytes. LZW and RunLength
+ * expand just as well — a 230 KB LZW stream cost 3.7 GB before it failed — so they
+ * are held to the same cap. 128 MiB is far beyond any real Drucksache and turns
+ * the bomb into an abstention.
  */
 export const MAX_INFLATED_BYTES = 128 * 1024 * 1024;
 
@@ -100,17 +144,24 @@ export const MAX_INFLATED_BYTES = 128 * 1024 * 1024;
  *
  * Output is bounded: see `MAX_INFLATED_BYTES`.
  */
-export function inflate(data: Buffer): Buffer {
-  const limit = { maxOutputLength: MAX_INFLATED_BYTES };
+export function inflate(data: Buffer, maxBytes: number = MAX_INFLATED_BYTES): Buffer {
+  // zlib refuses a maxOutputLength below 1; an exhausted budget still decodes nothing.
+  const limit = { maxOutputLength: Math.max(1, maxBytes) };
+  const refuse = (out: Buffer): Buffer => {
+    if (out.length > maxBytes) throw oversized("FlateDecode", maxBytes);
+    return out;
+  };
   try {
-    return inflateSync(data, limit);
+    return refuse(inflateSync(data, limit));
   } catch (err) {
-    if (tooLarge(err)) throw oversized();
+    if (tooLarge(err)) throw oversized("FlateDecode", maxBytes);
+    if (err instanceof ParseError) throw err;
   }
   try {
-    return inflateRawSync(data, limit);
+    return refuse(inflateRawSync(data, limit));
   } catch (err) {
-    if (tooLarge(err)) throw oversized();
+    if (tooLarge(err)) throw oversized("FlateDecode", maxBytes);
+    if (err instanceof ParseError) throw err;
   }
   for (const attempt of [
     () => inflateSync(data, { ...limit, finishFlush: 2 }),
@@ -118,9 +169,10 @@ export function inflate(data: Buffer): Buffer {
   ]) {
     try {
       const out = attempt();
-      if (out.length > 0) return out;
+      if (out.length > 0) return refuse(out);
     } catch (err) {
-      if (tooLarge(err)) throw oversized();
+      if (tooLarge(err)) throw oversized("FlateDecode", maxBytes);
+      if (err instanceof ParseError) throw err;
     }
   }
   throw new ParseError("FlateDecode failed: stream is not valid zlib or raw deflate data");
@@ -136,10 +188,58 @@ function tooLarge(err: unknown): boolean {
   );
 }
 
-function oversized(): ParseError {
-  return new ParseError(
-    `FlateDecode produced more than ${MAX_INFLATED_BYTES} bytes — refusing to inflate further`,
-  );
+/** A filter's output hit its ceiling — the stream cap, or what was left of the document's budget. */
+export class DecodeLimitError extends ParseError {}
+
+function oversized(filter: string, limit: number): DecodeLimitError {
+  return new DecodeLimitError(`${filter} produced more than ${limit} bytes — refusing to decode further`);
+}
+
+/**
+ * A byte sink with a hard ceiling, for the filters that build their output a byte
+ * at a time. A `number[]` grows until V8 gives up at its maximum array length —
+ * gigabytes later — so the cap has to be checked as the bytes arrive.
+ */
+class BoundedOutput {
+  private buf = Buffer.alloc(4096);
+  length = 0;
+
+  constructor(
+    private readonly filter: string,
+    private readonly limit: number,
+  ) {}
+
+  /** Make room for `n` more bytes, or refuse. Returns the write position. */
+  reserve(n: number): number {
+    const at = this.length;
+    const needed = at + n;
+    if (needed > this.limit) throw oversized(this.filter, this.limit);
+    if (needed > this.buf.length) {
+      const grown = Buffer.alloc(Math.min(Math.max(needed, this.buf.length * 2), Math.max(needed, this.limit)));
+      this.buf.copy(grown, 0, 0, at);
+      this.buf = grown;
+    }
+    this.length = needed;
+    return at;
+  }
+
+  push(byte: number): void {
+    this.buf[this.reserve(1)] = byte;
+  }
+
+  fill(byte: number, count: number): void {
+    const at = this.reserve(count);
+    this.buf.fill(byte, at, at + count);
+  }
+
+  /** Write position `at` directly — for a caller that reserved first. */
+  set(at: number, byte: number): void {
+    this.buf[at] = byte;
+  }
+
+  result(): Buffer {
+    return Buffer.from(this.buf.subarray(0, this.length));
+  }
 }
 
 /** PNG (10–15) and TIFF (2) predictors, as used by xref and image streams. */
@@ -211,8 +311,9 @@ export function asciiHexDecode(data: Buffer): Buffer {
   return Buffer.from(hex, "hex");
 }
 
-export function ascii85Decode(data: Buffer): Buffer {
-  const out: number[] = [];
+export function ascii85Decode(data: Buffer, maxBytes: number = MAX_INFLATED_BYTES): Buffer {
+  // `z` stands for four zero bytes, so ASCII85 expands too — fourfold.
+  const out = new BoundedOutput("ASCII85Decode", maxBytes);
   let tuple = 0;
   let count = 0;
   let start = 0;
@@ -221,7 +322,7 @@ export function ascii85Decode(data: Buffer): Buffer {
     const byte = data[i] as number;
     if (byte === 0x7e) break; // '~>' terminator
     if (byte === 0x7a && count === 0) {
-      out.push(0, 0, 0, 0);
+      out.fill(0, 4);
       continue;
     }
     if (byte < 0x21 || byte > 0x75) continue; // whitespace and noise
@@ -233,21 +334,20 @@ export function ascii85Decode(data: Buffer): Buffer {
       throw new ParseError("ASCII85Decode: a group encodes more than 32 bits");
     }
     if (++count === 5) {
-      out.push((tuple >>> 24) & 0xff, (tuple >>> 16) & 0xff, (tuple >>> 8) & 0xff, tuple & 0xff);
+      for (const shift of [24, 16, 8, 0]) out.push((tuple >>> shift) & 0xff);
       tuple = 0;
       count = 0;
     }
   }
   if (count > 0) {
     for (let i = count; i < 5; i++) tuple = tuple * 85 + 84;
-    const bytes = [(tuple >>> 24) & 0xff, (tuple >>> 16) & 0xff, (tuple >>> 8) & 0xff, tuple & 0xff];
-    out.push(...bytes.slice(0, count - 1));
+    for (const shift of [24, 16, 8, 0].slice(0, count - 1)) out.push((tuple >>> shift) & 0xff);
   }
-  return Buffer.from(out);
+  return out.result();
 }
 
-export function runLengthDecode(data: Buffer): Buffer {
-  const out: number[] = [];
+export function runLengthDecode(data: Buffer, maxBytes: number = MAX_INFLATED_BYTES): Buffer {
+  const out = new BoundedOutput("RunLengthDecode", maxBytes);
   let i = 0;
   while (i < data.length) {
     const length = data[i++] as number;
@@ -260,32 +360,55 @@ export function runLengthDecode(data: Buffer): Buffer {
       // times and `Buffer.from` turned every one of them into a NUL — inventing
       // content out of a truncation, in a module that refuses to approximate.
       if (i >= data.length) break;
-      const byte = data[i++] as number;
-      for (let j = 0; j < 257 - length; j++) out.push(byte);
+      out.fill(data[i++] as number, 257 - length);
     }
   }
-  return Buffer.from(out);
+  return out.result();
 }
 
-/** LZW as PDF uses it: variable code width 9–12 bits, MSB first. */
-export function lzwDecode(data: Buffer, earlyChange = 1): Buffer {
-  const out: number[] = [];
-  let dictionary: number[][] = [];
-  const reset = (): void => {
-    dictionary = [];
-    for (let i = 0; i < 256; i++) dictionary.push([i]);
-    dictionary.push([], []); // 256 = clear, 257 = EOD
-  };
-  reset();
+/** LZW codes are at most 12 bits wide, so the dictionary never has more entries. */
+const LZW_MAX_ENTRIES = 4096;
 
+/**
+ * LZW as PDF uses it: variable code width 9–12 bits, MSB first.
+ *
+ * The dictionary is a table of (prefix code, last byte) pairs rather than copied
+ * byte arrays — each entry used to be a copy of the previous one plus a byte, and
+ * the table kept growing past the 4096 entries a 12-bit code can address. It now
+ * stops there, as the format says, and the output is bounded like every filter's.
+ */
+export function lzwDecode(data: Buffer, earlyChange = 1, maxBytes: number = MAX_INFLATED_BYTES): Buffer {
+  const prefix = new Int32Array(LZW_MAX_ENTRIES);
+  const last = new Uint8Array(LZW_MAX_ENTRIES);
+  const first = new Uint8Array(LZW_MAX_ENTRIES);
+  const size = new Int32Array(LZW_MAX_ENTRIES);
+  for (let code = 0; code < 256; code++) {
+    prefix[code] = -1;
+    last[code] = code;
+    first[code] = code;
+    size[code] = 1;
+  }
+  const out = new BoundedOutput("LZWDecode", maxBytes);
+  /** Write entry `code`, back to front, since the table stores it that way. */
+  const write = (code: number): void => {
+    const length = size[code] as number;
+    const at = out.reserve(length);
+    let cursor = code;
+    for (let pos = at + length - 1; pos >= at; pos--) {
+      out.set(pos, last[cursor] as number);
+      cursor = prefix[cursor] as number;
+    }
+  };
+
+  let next = 258; // 256 = clear, 257 = EOD
   let codeWidth = 9;
-  let previous: number[] | undefined;
+  let previous = -1;
   let bitBuffer = 0;
   let bitCount = 0;
 
   for (let i = 0; i <= data.length; i++) {
     if (i < data.length) {
-      bitBuffer = (bitBuffer << 8) | (data[i] as number);
+      bitBuffer = ((bitBuffer << 8) | (data[i] as number)) & 0xffffff;
       bitCount += 8;
     } else if (bitCount < codeWidth) {
       break;
@@ -294,26 +417,36 @@ export function lzwDecode(data: Buffer, earlyChange = 1): Buffer {
       const code = (bitBuffer >> (bitCount - codeWidth)) & ((1 << codeWidth) - 1);
       bitCount -= codeWidth;
       if (code === 256) {
-        reset();
+        next = 258;
         codeWidth = 9;
-        previous = undefined;
+        previous = -1;
         continue;
       }
-      if (code === 257) return Buffer.from(out);
-      let entry: number[];
-      if (code < dictionary.length) {
-        entry = dictionary[code] as number[];
-      } else if (previous !== undefined) {
-        entry = [...previous, previous[0] as number];
+      if (code === 257) return out.result();
+      let firstByte: number;
+      if (code < next && code !== 256 && code !== 257) {
+        firstByte = first[code] as number;
+      } else if (code === next && previous >= 0) {
+        // The one code that may name the entry about to be made: previous + its own first byte.
+        firstByte = first[previous] as number;
       } else {
-        throw new ParseError("LZWDecode: code out of range before any dictionary entry");
+        throw new ParseError(
+          previous < 0
+            ? "LZWDecode: code out of range before any dictionary entry"
+            : `LZWDecode: code ${code} is past the dictionary (${next} entries)`,
+        );
       }
-      out.push(...entry);
-      if (previous !== undefined) dictionary.push([...previous, entry[0] as number]);
-      previous = entry;
-      const limit = dictionary.length + earlyChange;
-      if (limit >= 1 << codeWidth && codeWidth < 12) codeWidth++;
+      if (previous >= 0 && next < LZW_MAX_ENTRIES) {
+        prefix[next] = previous;
+        last[next] = firstByte;
+        first[next] = first[previous] as number;
+        size[next] = (size[previous] as number) + 1;
+        next++;
+      }
+      write(code);
+      previous = code;
+      if (next + earlyChange >= 1 << codeWidth && codeWidth < 12) codeWidth++;
     }
   }
-  return Buffer.from(out);
+  return out.result();
 }

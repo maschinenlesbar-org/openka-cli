@@ -9,7 +9,7 @@
 // still refusing anything genuinely unreadable rather than guessing.
 
 import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
-import { decodeStream, filterChain } from "./filters.js";
+import { DecodeBudget, decodeStream, filterChain } from "./filters.js";
 import { Lexer } from "./lexer.js";
 import {
   isDict,
@@ -57,6 +57,8 @@ export class PdfDocument {
   readonly lostObjectStreams: LostObjectStream[] = [];
   /** True when the document declares an /Encrypt dictionary. */
   readonly encrypted: boolean;
+  /** What every stream this document decodes is charged to — see `MAX_DECODED_BYTES`. */
+  readonly decodeBudget = new DecodeBudget();
 
   private constructor(readonly buf: Buffer) {
     this.scanObjects();
@@ -116,7 +118,7 @@ export class PdfDocument {
       if (!isStream(value) || !isName(value.dict.get("Type"), "ObjStm")) continue;
       let data: Buffer;
       try {
-        data = decodeStream(value, (v) => this.resolve(v));
+        data = decodeStream(value, (v) => this.resolve(v), this.decodeBudget);
       } catch {
         // An unreadable object stream costs us its objects, not the file — but the
         // objects it held can be page content or a font, so the loss is named. Left
@@ -278,7 +280,7 @@ export class PdfDocument {
     const undecodable: string[] = [];
     for (const stream of streams) {
       try {
-        parts.push(decodeStream(stream, (value) => this.resolve(value)));
+        parts.push(decodeStream(stream, (value) => this.resolve(value), this.decodeBudget));
         parts.push(Buffer.from("\n"));
       } catch {
         // A stream we cannot decode contributes nothing — but *which* nothing
