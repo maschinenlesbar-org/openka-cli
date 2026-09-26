@@ -5,7 +5,7 @@ import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { PdfDocument } from "./document.js";
 import { BudgetExceededError, InterpretBudget, extractContentText, newFontCache } from "./text.js";
 import { IMAGE_FILTERS, filterChain } from "./filters.js";
-import { isName, isStream } from "./objects.js";
+import { isName, isStream, type PdfDict } from "./objects.js";
 
 export { PdfDocument } from "./document.js";
 export {
@@ -38,7 +38,10 @@ export interface PdfTextResult {
   problems: string[];
   /** Share of character codes no font mapping covered, 0..1. */
   unmappedRatio: number;
-  /** True when the document has no text-showing operators at all (a scan). */
+  /**
+   * True when the document has no text-showing operators at all but draws images
+   * (a scan). A document with neither is not image-only: it has nothing to OCR.
+   */
   imageOnly: boolean;
   /**
    * Content streams refused outright — an encrypted or unsupported filter — plus
@@ -76,7 +79,9 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
   let total = 0;
 
   let undecodable = 0;
+  let drawsImages = false;
   for (const page of pages) {
+    if (!drawsImages && hasImage(doc, page.resources)) drawsImages = true;
     if (page.undecodable.length > 0) {
       undecodable += page.undecodable.length;
       problems.push(
@@ -141,20 +146,45 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
   }
 
   if (pages.length === 0) problems.push("no pages found");
+  else if (total === 0 && undecodable === 0 && lostObjects === 0 && !drawsImages) {
+    problems.push("no page draws text or an image");
+  }
   return {
     pages: results,
     text: results.map((page) => page.text).join(PAGE_SEPARATOR),
     problems,
     unmappedRatio: total === 0 ? 0 : unmapped / total,
-    // "No text-showing operators" only means "a scan" when we actually got to look.
-    // A page whose content stream we refused has unknown text, and calling that
-    // image-only sent the operator to OCR, which cannot decode it either.
-    imageOnly: total === 0 && undecodable === 0 && lostObjects === 0,
+    // "No text-showing operators" only means "a scan" when we actually got to look
+    // and there is an image to look at. A page whose content stream we refused has
+    // unknown text, and calling that image-only sent the operator to OCR, which
+    // cannot decode it either; so did a truncated file with no content stream at
+    // all, a circular one, and one whose content is only whitespace.
+    imageOnly: total === 0 && undecodable === 0 && lostObjects === 0 && drawsImages,
     undecodableStreams: undecodable,
     lostObjects,
     version: doc.version,
     pageCount: pages.length,
   };
+}
+
+/**
+ * Whether a page's resources hold an image XObject, directly or inside a form it
+ * uses — the evidence that a page without text is a scan rather than nothing.
+ */
+function hasImage(doc: PdfDocument, resources: PdfDict, depth = 0): boolean {
+  const xobjects = doc.dict(resources.get("XObject"));
+  if (xobjects === undefined) return false;
+  for (const value of xobjects.values()) {
+    const xobject = doc.resolve(value);
+    if (!isStream(xobject)) continue;
+    const subtype = doc.get(xobject.dict, "Subtype");
+    if (isName(subtype, "Image")) return true;
+    if (isName(subtype, "Form") && depth < 2) {
+      const inner = doc.dict(xobject.dict.get("Resources"));
+      if (inner !== undefined && inner !== resources && hasImage(doc, inner, depth + 1)) return true;
+    }
+  }
+  return false;
 }
 
 export interface PdfImage {

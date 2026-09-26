@@ -233,10 +233,35 @@ describe("PDF documents", () => {
   });
 
   it("reports an image-only document instead of pretending it has no text", () => {
-    const noText = Buffer.from(minimalPdf("x").toString("latin1").replace(/BT[^e]*ET/, "q Q"), "latin1");
-    const result = extractPdfText(noText);
+    // A scan: the page draws an image and no text.
+    const scan = Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >> endobj",
+        "4 0 obj << /Length 32 >> stream\nq 595 0 0 842 0 0 cm /Im0 Do Q\nendstream endobj",
+        "5 0 obj << /Type /XObject /Subtype /Image /Width 1 /Height 1 /Filter /DCTDecode /Length 4 >> stream\nJPEG\nendstream endobj",
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+    const result = extractPdfText(scan);
     strictEqual(result.imageOnly, true);
     strictEqual(result.text, "");
+  });
+
+  it("does not call a document with neither text nor an image a scan", () => {
+    // Truncated, circular and whitespace-only files all looked exactly like a scan
+    // and were sent to OCR instead of abstaining as unreadable.
+    const blank = extractPdfText(Buffer.from(minimalPdf("x").toString("latin1").replace(/BT[^e]*ET/, "q Q"), "latin1"));
+    strictEqual(blank.imageOnly, false);
+    ok(blank.problems.includes("no page draws text or an image"), JSON.stringify(blank.problems));
+    const truncated = minimalPdf("Hallo Welt").subarray(0, 250);
+    const cut = extractPdfText(truncated);
+    strictEqual(cut.imageOnly, false);
+    strictEqual(cut.text, "");
   });
 });
 

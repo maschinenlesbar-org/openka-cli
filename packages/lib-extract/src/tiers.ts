@@ -297,6 +297,12 @@ function tryText(bytes: Buffer, abstentions: Abstentions): string | undefined {
   if (result.unmappedRatio > 0) {
     abstentions.note(`pdf: ${(result.unmappedRatio * 100).toFixed(2)}% of character codes were dropped as unmappable`);
   }
+  // No text and no image is not a scan, and not a document we read either: a
+  // truncated file, a circular one, content that is only whitespace.
+  if (result.text.trim() === "") {
+    abstentions.note("pdf: no text was drawn, and no page image either — nothing to read");
+    return undefined;
+  }
   return result.text;
 }
 

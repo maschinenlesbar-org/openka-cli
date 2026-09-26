@@ -1085,6 +1085,33 @@ describe("the tier stack", () => {
     ok(record.extraction.abstained_fields.includes("full_text"));
   });
 
+  it("abstains on a document with neither text nor an image, rather than calling it a scan", async () => {
+    const content = "q Q";
+    const blank = Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj",
+        `4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+    const { record, notes } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "text_layer",
+      metadata,
+      documents: [{ ...(documents[0] as (typeof documents)[number]), bytes: blank }],
+      env: {},
+    });
+    ok(record.extraction.abstained_fields.includes("full_text"));
+    ok(notes.some((note) => note.includes("no text was drawn, and no page image either")), JSON.stringify(notes));
+    ok(!notes.some((note) => note.includes("the ocr tier is needed")), JSON.stringify(notes));
+  });
+
   it("keeps the source's tier when no document parsed, instead of claiming structured", async () => {
     // A text_layer source (Bayern, Bremen) whose PDF would not parse was recorded
     // as `structured` — "API / XML export; highest trust".
