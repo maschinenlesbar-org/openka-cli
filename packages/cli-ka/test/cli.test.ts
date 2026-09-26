@@ -373,6 +373,22 @@ describe("ka", () => {
     }
   });
 
+  it("lists the date --from/--to filter on: when the Anfrage was asked", async () => {
+    const harness = await seeded();
+    try {
+      const record = harness.deps.createStore(harness.corpus).getRecord("berlin-19-10006");
+      const { submitted, answered } = record?.dates ?? {};
+      ok(submitted !== undefined && answered !== undefined && submitted !== answered);
+      strictEqual(await run(["--corpus", harness.corpus, "search", "--to", submitted, "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stdout(), new RegExp(`berlin-19-10006\\s+${submitted}`));
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "search", "--help"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /--from <date>\s+asked on or after this date/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("refuses a parliament it does not know, instead of answering No matches", async () => {
     const harness = await seeded();
     try {

@@ -220,8 +220,8 @@ export function addCorpusFilters(command: Command): Command {
     .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
     .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
     .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))
-    .option("--from <date>", "answered (or submitted) on or after this date", parseIsoDate)
-    .option("--to <date>", "answered (or submitted) on or before this date", parseIsoDate);
+    .option("--from <date>", "asked on or after this date (the answer's date where the question's is unknown)", parseIsoDate)
+    .option("--to <date>", "asked on or before this date (the answer's date where the question's is unknown)", parseIsoDate);
 }
 
 /**
