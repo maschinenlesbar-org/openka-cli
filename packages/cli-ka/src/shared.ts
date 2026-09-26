@@ -205,9 +205,9 @@ export function choiceOption(flags: string, description: string, choices: readon
 export function addGlobalOptions(program: Command): Command {
   return program
     .option("--corpus <dir>", `corpus directory (default: $${CORPUS_ENV} or ~/.local/share/openka)`, parseNonEmpty)
-    .option("--timeout <ms>", "per-request timeout in milliseconds", parseBoundedInt(0, MAX_TIMEOUT_MS))
+    .option("--timeout <ms>", "timeout per request attempt in milliseconds (a timed-out request is retried once)", parseBoundedInt(0, MAX_TIMEOUT_MS))
     .option("--user-agent <ua>", "User-Agent sent to upstreams", parseNonEmpty)
-    .option("--max-retries <n>", "retries for transient 429/503 responses", parseBoundedInt(0, 10))
+    .option("--max-retries <n>", "retries for a transient 429/503 or a dropped connection (never an over-size response)", parseBoundedInt(0, 10))
     .option("--max-response-bytes <n>", "hard cap on a single response body", parseBoundedInt(1024))
     .option("--min-host-interval <ms>", "minimum delay between requests to one host", parseBoundedInt(0, 60_000))
     .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, 10))

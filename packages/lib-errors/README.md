@@ -15,7 +15,7 @@ behaviour the whole project exists to guarantee.
 Everything is re-exported from the package root:
 
 ```
-OpenKaError, OpenKaApiError, NetworkError, ParseError, StoreError, UsageError, AbstainError
+OpenKaError, OpenKaApiError, NetworkFailure, NetworkError, ParseError, StoreError, UsageError, AbstainError
 ```
 
 ## Depends on

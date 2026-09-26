@@ -280,6 +280,7 @@ export class FetchEngine {
     body?: string,
   ): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }> {
     let lastError: unknown;
+    let timeouts = 0;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       await this.throttle(url);
       try {
@@ -299,6 +300,13 @@ export class FetchEngine {
       } catch (err) {
         lastError = err;
         if (attempt >= this.maxRetries) break;
+        // Every failure used to be retried maxRetries times: an over-size body was
+        // downloaded four times (4 × 64 MiB per document on a parliament server)
+        // and a hanging host cost four timeouts plus backoff. A size or URL
+        // failure is deterministic and is not retried; a timeout is retried once.
+        const failure = err instanceof NetworkError ? err.failure : undefined;
+        if (failure === "too_large" || failure === "bad_url") break;
+        if (failure === "timeout" && ++timeouts > 1) break;
         await this.sleep(retryDelayMs(undefined, attempt));
       }
     }

@@ -13,6 +13,12 @@ size ceiling, per-host rate limiting, and redirect handling that strips credenti
 headers on a cross-origin hop. Doing it once here means no adapter has to remember
 any of it.
 
+**What is retried.** A 429/503 and a dropped connection get the full `maxRetries`;
+a timeout is retried once (`timeoutMs` is per attempt); a response over
+`maxResponseBytes` or a URL that cannot be fetched is not retried at all, because it
+would fail the same way at the same cost. The transport says which it was through
+`NetworkError.failure`.
+
 `--base-url` is trusted input but only `http:` and `https:` are accepted, checked at
 parse time, in the engine, and again per hop.
 

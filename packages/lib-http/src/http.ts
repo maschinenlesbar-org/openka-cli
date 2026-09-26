@@ -42,14 +42,14 @@ export const nodeHttpTransport: Transport = (request) =>
     try {
       url = new URL(request.url);
     } catch {
-      reject(new NetworkError(`Invalid URL: ${request.url}`));
+      reject(new NetworkError(`Invalid URL: ${request.url}`, { failure: "bad_url" }));
       return;
     }
 
     // Only http/https. Rejecting here keeps file:/ftp:/data: from ever reaching a
     // driver, including on a redirect hop the engine hands us.
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      reject(new NetworkError(`Unsupported protocol "${url.protocol}" in URL: ${request.url}`));
+      reject(new NetworkError(`Unsupported protocol "${url.protocol}" in URL: ${request.url}`, { failure: "bad_url" }));
       return;
     }
 
@@ -79,7 +79,7 @@ export const nodeHttpTransport: Transport = (request) =>
           aborted = true;
           clearDeadline();
           res.destroy();
-          reject(new NetworkError(`Response exceeded maxResponseBytes (${maxBytes})`));
+          reject(new NetworkError(`Response exceeded maxResponseBytes (${maxBytes})`, { failure: "too_large" }));
           return;
         }
         chunks.push(chunk);
@@ -99,10 +99,10 @@ export const nodeHttpTransport: Transport = (request) =>
     if (request.timeoutMs && request.timeoutMs > 0) {
       const delay = Math.min(request.timeoutMs, MAX_TIMEOUT_MS);
       req.setTimeout(delay, () => {
-        req.destroy(new NetworkError(`Request timed out after ${request.timeoutMs}ms`));
+        req.destroy(new NetworkError(`Request timed out after ${request.timeoutMs}ms`, { failure: "timeout" }));
       });
       deadline = setTimeout(() => {
-        req.destroy(new NetworkError(`Request exceeded deadline of ${request.timeoutMs}ms`));
+        req.destroy(new NetworkError(`Request exceeded deadline of ${request.timeoutMs}ms`, { failure: "timeout" }));
       }, delay);
       deadline.unref?.();
     }

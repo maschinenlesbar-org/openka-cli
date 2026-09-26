@@ -108,6 +108,47 @@ describe("fetch engine", () => {
     strictEqual(calls, 3);
   });
 
+  it("does not retry what would fail the same way again, and retries a timeout once", async () => {
+    // Every thrown error used to be retried maxRetries (3) times: an over-cap body
+    // was downloaded four times, a hanging host cost four timeouts plus backoff.
+    const callsFor = async (failure: NetworkError["failure"]): Promise<number> => {
+      let calls = 0;
+      const engine = testEngine(async () => {
+        calls++;
+        throw new NetworkError(`failed (${failure ?? "reset"})`, failure === undefined ? undefined : { failure });
+      });
+      await rejects(() => engine.get("https://example.invalid/x"), NetworkError);
+      return calls;
+    };
+    strictEqual(await callsFor("too_large"), 1);
+    strictEqual(await callsFor("bad_url"), 1);
+    strictEqual(await callsFor("timeout"), 2);
+    // A dropped connection is still worth the full retry budget.
+    strictEqual(await callsFor(undefined), 4);
+  });
+
+  it("marks the transport's own size and deadline failures so the engine can tell", async () => {
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200);
+      response.end(Buffer.alloc(4096, 0x41));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const { port } = server.address() as { port: number };
+    try {
+      const error = await nodeHttpTransport({ method: "GET", url: `http://127.0.0.1:${port}/`, headers: {}, maxResponseBytes: 1024 }).then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      ok(error instanceof NetworkError);
+      strictEqual(error.failure, "too_large");
+      const bad = await nodeHttpTransport({ method: "GET", url: "ftp://example.invalid/", headers: {} }).catch((err: unknown) => err);
+      strictEqual((bad as NetworkError).failure, "bad_url");
+    } finally {
+      server.close();
+    }
+  });
+
   it("reports a 304 as not-modified rather than an error", async () => {
     const { transport } = scriptedTransport([{ match: "cached", status: 304, headers: { etag: '"v2"' } }]);
     const result = await testEngine(transport).get("https://example.invalid/cached", {

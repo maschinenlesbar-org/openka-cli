@@ -30,8 +30,23 @@ export class OpenKaApiError extends OpenKaError {
   }
 }
 
+/**
+ * What kind of transport failure a `NetworkError` is, where the transport knows.
+ * The engine retries on it: a dropped connection is worth another try, a timeout
+ * one more, and a response over the size cap or a URL that cannot be fetched at all
+ * none — each would fail the same way again, at the same cost.
+ */
+export type NetworkFailure = "timeout" | "too_large" | "bad_url";
+
 /** A transport-level failure (DNS, connection reset, timeout, ...). */
-export class NetworkError extends OpenKaError {}
+export class NetworkError extends OpenKaError {
+  readonly failure?: NetworkFailure;
+
+  constructor(message: string, options?: { cause?: unknown; failure?: NetworkFailure }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    if (options?.failure !== undefined) this.failure = options.failure;
+  }
+}
 
 /** A payload could not be parsed as the expected shape. */
 export class ParseError extends OpenKaError {}

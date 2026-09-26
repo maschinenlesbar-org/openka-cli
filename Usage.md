@@ -8,9 +8,9 @@ are authoritative; this is the narrative version.
 | Option | Meaning |
 |--------|---------|
 | `--corpus <dir>` | where the corpus lives (default: `$OPENKA_CORPUS`, else `~/.local/share/openka`) |
-| `--timeout <ms>` | per-request timeout |
+| `--timeout <ms>` | timeout per request attempt; a timed-out request is retried once |
 | `--user-agent <ua>` | override the identifying User-Agent |
-| `--max-retries <n>` | retries for transient 429/503 |
+| `--max-retries <n>` | retries for a transient 429/503 or a dropped connection; a response over `--max-response-bytes` is never retried |
 | `--max-response-bytes <n>` | hard cap on one response body |
 | `--min-host-interval <ms>` | minimum delay between two requests to one host |
 | `--max-redirects <n>` | redirects to follow; `0` surfaces a 3xx as an error |
