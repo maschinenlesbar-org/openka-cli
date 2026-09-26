@@ -9,7 +9,18 @@ import { atomEntryUpdated, csvHeader, renderAtom, renderCsvRow, renderJsonLd } f
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
-import { action, addCorpusFilters, choiceOption, corpusFiltersFrom, emit, parseBoundedInt, parseNonEmpty, printJson } from "../shared.js";
+import {
+  action,
+  addCorpusFilters,
+  addOutOptions,
+  choiceOption,
+  corpusFiltersFrom,
+  emit,
+  outTarget,
+  parseBoundedInt,
+  parseNonEmpty,
+  printJson,
+} from "../shared.js";
 
 const EXPORT_FORMATS = ["csv", "jsonl", "jsonld"] as const;
 
@@ -45,15 +56,16 @@ function selectRecords(
 }
 
 export function registerOutput(program: Command, deps: CliDeps): void {
-  addSelectionOptions(
+  const exportCommand = addSelectionOptions(
     program
       .command("export")
       .description("export the corpus (or a selection of it) in bulk")
       .addOption(choiceOption("--format <format>", "output format", EXPORT_FORMATS))
-      .option("--limit <n>", "maximum records to export (most relevant first with --query)", parseBoundedInt(1, 1_000_000))
-      .option("-o, --out <file>", "write to this file instead of stdout", parseNonEmpty),
-  ).action(
+      .option("--limit <n>", "maximum records to export (most relevant first with --query)", parseBoundedInt(1, 1_000_000)),
+  );
+  addOutOptions(exportCommand).action(
     action(deps, async (ctx) => {
+      const out = outTarget(ctx);
       const format = (ctx.opts["format"] as (typeof EXPORT_FORMATS)[number] | undefined) ?? "csv";
       const records = selectRecords(ctx.existingStore(), ctx.opts, (ctx.opts["limit"] as number | undefined) ?? 1_000_000);
       if (records.length === 0) throw new OpenKaError("Nothing selected — the corpus is empty or the filters match nothing.");
@@ -63,21 +75,22 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       else if (format === "jsonl") text = records.map((record) => canonicalJsonLine(record).replace(/\n+$/, "")).join("\n") + "\n";
       else text = records.map((record) => renderJsonLd(record).replace(/\n+$/, "")).join("\n") + "\n";
 
-      emit(ctx, text, ctx.opts["out"] as string | undefined);
-      if (ctx.opts["out"] !== undefined) ctx.deps.io.err(`${records.length} record(s) exported.`);
+      emit(ctx, text, out);
+      if (out !== undefined) ctx.deps.io.err(`${records.length} record(s) exported.`);
     }),
   );
 
-  addSelectionOptions(
+  const feedCommand = addSelectionOptions(
     program
       .command("feed")
       .description("an Atom feed of the newest matching Anfragen")
       .option("--limit <n>", "entries in the feed", parseBoundedInt(1, 500))
       .option("--title <text>", "feed title", parseNonEmpty)
-      .option("--id <url>", "feed id / self link", parseNonEmpty)
-      .option("-o, --out <file>", "write to this file instead of stdout", parseNonEmpty),
-  ).action(
+      .option("--id <url>", "feed id / self link", parseNonEmpty),
+  );
+  addOutOptions(feedCommand).action(
     action(deps, async (ctx) => {
+      const out = outTarget(ctx);
       const limit = (ctx.opts["limit"] as number | undefined) ?? 50;
       const updated = isoInstant(ctx.deps.now());
       // Order on exactly the instant each entry will print, so "newest first" is
@@ -99,7 +112,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
         id: (ctx.opts["id"] as string | undefined) ?? "urn:openka:feed",
         updated,
       });
-      emit(ctx, text, ctx.opts["out"] as string | undefined);
+      emit(ctx, text, out);
     }),
   );
 

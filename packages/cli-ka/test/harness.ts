@@ -36,7 +36,13 @@ export function cliHarness(options: { transport?: Transport; env?: NodeJS.Proces
   const io: CliIO = {
     out: (text) => out.push(text),
     err: (text) => err.push(text),
-    writeFile: (path, data) => void files.set(path, data),
+    // Like the real one: an existing file is only replaced when asked to.
+    writeFile: (path, data, writeOptions) => {
+      if (writeOptions?.overwrite !== true && files.has(path)) {
+        throw Object.assign(new Error(`EEXIST: file already exists, open '${path}'`), { code: "EEXIST" });
+      }
+      files.set(path, data);
+    },
   };
   const fixedNow = options.now ?? new Date("2026-01-02T03:04:05Z");
   const deps: CliDeps = {

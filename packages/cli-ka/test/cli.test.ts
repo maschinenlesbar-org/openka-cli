@@ -1,9 +1,10 @@
 // The CLI, driven in-process through `run()` with a real temporary corpus, a
 // scripted transport and a fixed clock. No subprocess, no network.
 
-import { deepStrictEqual, doesNotMatch, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -13,6 +14,7 @@ import { evenSample } from "../src/commands/maintain.js";
 import { renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
+import { defaultIO } from "../src/io.js";
 
 // Real documents come from the connector that recorded them: one copy of the
 // bytes, and the borrowing is visible as a devDependency.
@@ -671,6 +673,66 @@ describe("ka-factory", () => {
     const harness = cliHarness();
     strictEqual(await runFactory(["nonsense"], harness.deps), EXIT_USAGE);
     harness.cleanup();
+  });
+});
+
+describe("--out", () => {
+  it("means stdout for -, and does not replace a file without --force", async () => {
+    // `--out -` wrote a file named "-", and `-o keep.txt` replaced its content silently.
+    const harness = await seeded();
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "--out", "-"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /"id": "berlin-19-10006"/);
+      strictEqual(harness.files.size, 0);
+
+      harness.files.set("keep.txt", Buffer.from("precious"));
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "-o", "keep.txt"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /Refusing to overwrite existing file keep\.txt; pass --force/);
+      strictEqual(harness.files.get("keep.txt")?.toString(), "precious");
+      strictEqual(await run(["--corpus", harness.corpus, "export", "--format", "csv", "-o", "keep.txt"], harness.deps), EXIT_USAGE);
+      strictEqual(await run(["--corpus", harness.corpus, "feed", "-o", "keep.txt"], harness.deps), EXIT_USAGE);
+      strictEqual(harness.files.get("keep.txt")?.toString(), "precious");
+
+      strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "-o", "keep.txt", "--force"], harness.deps), EXIT_OK);
+      match(harness.files.get("keep.txt")?.toString() ?? "", /"id": "berlin-19-10006"/);
+
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "export", "--format", "csv", "--force"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /--force needs --out/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("creates the file exclusively on disk unless told to overwrite", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-out-"));
+    try {
+      const path = join(dir, "keep.txt");
+      defaultIO.writeFile(path, Buffer.from("precious"));
+      throws(() => defaultIO.writeFile(path, Buffer.from("new")), /EEXIST/);
+      strictEqual(readFileSync(path, "utf8"), "precious");
+      defaultIO.writeFile(path, Buffer.from("new"), { overwrite: true });
+      strictEqual(readFileSync(path, "utf8"), "new");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("says a directory is not a file, whether or not --force is given", async () => {
+    const harness = await seeded();
+    const dir = mkdtempSync(join(tmpdir(), "openka-out-"));
+    try {
+      const deps = { ...harness.deps, io: { ...harness.deps.io, writeFile: defaultIO.writeFile } };
+      for (const extra of [[], ["--force"]]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "-o", dir, ...extra], deps), EXIT_ERROR);
+        match(harness.stderr(), /is a directory; give a file path to --out/);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      harness.cleanup();
+    }
   });
 });
 

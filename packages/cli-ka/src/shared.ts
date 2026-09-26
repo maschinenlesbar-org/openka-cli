@@ -11,8 +11,8 @@ import { ParliamentKeys } from "@maschinenlesbar.org/openka-lib-models";
 import type { SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { existsSync } from "node:fs";
-import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { existsSync, statSync } from "node:fs";
+import { OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
@@ -191,18 +191,51 @@ export function printJson(ctx: ActionContext, value: unknown): void {
 
 /** Write text to a file, or print it when no path was given. */
 export function emit(ctx: ActionContext, text: string, outPath: string | undefined): void {
-  if (outPath === undefined) {
+  if (outPath === undefined || outPath === "-") {
     ctx.deps.io.out(text.replace(/\n$/, ""));
     return;
   }
   const data = Buffer.from(text, "utf8");
   try {
-    ctx.deps.io.writeFile(outPath, data);
+    ctx.deps.io.writeFile(outPath, data, { overwrite: ctx.opts["force"] === true });
   } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    if (code === "EEXIST" || code === "EISDIR") {
+      if (isDirectory(outPath)) throw new OpenKaError(`"${outPath}" is a directory; give a file path to --out.`);
+      throw new UsageError(`Refusing to overwrite existing file ${outPath}; pass --force to replace it.`);
+    }
     const reason = err instanceof Error ? err.message : String(err);
     throw new OpenKaError(`could not write ${outPath}: ${reason}`, { cause: err });
   }
   ctx.deps.io.err(`Wrote ${data.length} bytes to ${outPath}`);
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `-o, --out <file>` / `--force` pair every writing command shares. `-` is
+ * stdout (it used to write a file named "-"), and an existing file is not replaced
+ * without `--force` (it was, silently).
+ */
+export function addOutOptions(command: Command): Command {
+  return command
+    .option("-o, --out <file>", "write to this file instead of stdout (- = stdout; an existing file needs --force)", parseNonEmpty)
+    .option("--force", "with --out, replace an existing file");
+}
+
+/** Where `emit` writes: undefined for stdout. `--force` without a file is refused. */
+export function outTarget(ctx: ActionContext): string | undefined {
+  const out = ctx.opts["out"] as string | undefined;
+  if (ctx.opts["force"] === true && out === undefined) {
+    throw new UsageError("--force needs --out (it only allows overwriting the --out file).");
+  }
+  return out === "-" ? undefined : out;
 }
 
 /**

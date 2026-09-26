@@ -98,6 +98,9 @@ ka feed --party GRÜNE --limit 50 --out gruene.atom
 ka feed --query "brücken" --title "Brücken-Anfragen"
 ```
 
+`-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
+An existing file is not replaced unless `--force` is given.
+
 ## `ka sources` / `ka stats` / `ka schema` / `ka reindex`
 
 ```bash

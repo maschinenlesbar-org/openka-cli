@@ -11,7 +11,11 @@ import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 export interface CliIO {
   out(text: string): void;
   err(text: string): void;
-  writeFile(path: string, data: Buffer): void;
+  /**
+   * Write a file. Without `overwrite` the file must not exist yet: an exclusive
+   * create, which also never follows a symlink at the path.
+   */
+  writeFile(path: string, data: Buffer, options?: { overwrite?: boolean }): void;
 }
 
 export interface CliDeps {
@@ -27,7 +31,7 @@ export interface CliDeps {
 export const defaultIO: CliIO = {
   out: (text) => process.stdout.write(text + "\n"),
   err: (text) => process.stderr.write(text + "\n"),
-  writeFile: (path, data) => writeFileSync(path, data),
+  writeFile: (path, data, options) => writeFileSync(path, data, { flag: options?.overwrite === true ? "w" : "wx" }),
 };
 
 export const defaultDeps: CliDeps = {

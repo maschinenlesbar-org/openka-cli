@@ -14,6 +14,8 @@ import {
   action,
   addCorpusFilters,
   emit,
+  addOutOptions,
+  outTarget,
   choiceOption,
   corpusFiltersFrom,
   parseBoundedInt,
@@ -184,24 +186,25 @@ export function registerQuery(program: Command, deps: CliDeps): void {
     }),
   );
 
-  program
-    .command("get")
-    .description("print one record in a machine-readable format")
-    .argument("<id>", "record id, e.g. berlin-19-10006", parseRecordId)
-    .addOption(choiceOption("--format <format>", "output format", RENDER_FORMATS))
-    .option("-o, --out <file>", "write to this file instead of stdout", parseNonEmpty)
-    .action(
-      action(deps, async (ctx, positionals) => {
-        const id = positionals[0] as string;
-        const record = ctx.existingStore().getRecord(id);
-        if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
-        const format = ((ctx.opts["format"] as RenderFormat | undefined) ?? "json") as RenderFormat;
-        // `emit` wraps the write in a typed error; writing directly meant a bad
-        // path surfaced as "Unexpected error: ENOENT" while `ka export -o` gave a
-        // clean message for the identical failure.
-        emit(ctx, renderRecord(record, format), ctx.opts["out"] as string | undefined);
-      }),
-    );
+  addOutOptions(
+    program
+      .command("get")
+      .description("print one record in a machine-readable format")
+      .argument("<id>", "record id, e.g. berlin-19-10006", parseRecordId)
+      .addOption(choiceOption("--format <format>", "output format", RENDER_FORMATS)),
+  ).action(
+    action(deps, async (ctx, positionals) => {
+      const out = outTarget(ctx);
+      const id = positionals[0] as string;
+      const record = ctx.existingStore().getRecord(id);
+      if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
+      const format = ((ctx.opts["format"] as RenderFormat | undefined) ?? "json") as RenderFormat;
+      // `emit` wraps the write in a typed error; writing directly meant a bad
+      // path surfaced as "Unexpected error: ENOENT" while `ka export -o` gave a
+      // clean message for the identical failure.
+      emit(ctx, renderRecord(record, format), out);
+    }),
+  );
 
   program
     .command("show")
