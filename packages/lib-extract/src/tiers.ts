@@ -162,8 +162,11 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
   }
 
   // The recorded tier is what actually happened, not what was asked for: a
-  // structured source whose PDF parsed really did run the text-layer path.
-  if (request.tier !== "ocr") tier = parsed.length === 0 ? "structured" : "text_layer";
+  // structured source whose PDF parsed really did run the text-layer path. When
+  // nothing parsed, the record is what the source handed over, so it keeps the
+  // source's own tier — a text_layer source whose PDF failed used to be labelled
+  // `structured`, the highest-trust tier, for a record built from scraped rows.
+  if (request.tier !== "ocr") tier = parsed.length === 0 ? request.tier : "text_layer";
 
   const text = parsed.length === 0 ? undefined : parsed.map((document) => document.text).join(PAGE_SEPARATOR);
   const qa: QaPair[] = segmentDocuments(parsed, request.ruleSets ?? RULE_SETS, abstentions);

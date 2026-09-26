@@ -490,6 +490,19 @@ describe("ka verify", () => {
     strictEqual(result.ok, true, `${result.reason} ${result.differences.join(", ")}`);
   });
 
+  it("reproduces a record whose source tier was kept because nothing parsed", async () => {
+    // verify used to re-request text_layer for every non-OCR record, which only
+    // worked because an unparsed record was always labelled structured.
+    for (const tier of ["structured", "text_layer"] as const) {
+      const store = new MemoryStore();
+      const source = Object.assign(new StubSource(), { tier });
+      await sync({ source, store, engine: testEngine(async () => ({ status: 200, headers: {}, body: PDF.subarray(0, 200) })) });
+      strictEqual(store.getRecord("berlin-19-10006")?.extraction.tier, tier);
+      const result = await verifyRecord("berlin-19-10006", { store, env: {} });
+      strictEqual(result.ok, true, `${tier}: ${result.reason} ${result.differences.join(", ")}`);
+    }
+  });
+
   it("names every differing path", () => {
     deepStrictEqual(diffPaths({ a: 1, b: { c: 2 } }, { a: 1, b: { c: 3 } }), ["b.c"]);
     deepStrictEqual(diffPaths([1, 2], [1, 3]), ["[1]"]);

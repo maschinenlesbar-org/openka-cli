@@ -23,7 +23,7 @@
       "answered_by.ministry",
       "qa"
     ],
-    "extractor_version": "pkg:0.0.1+extract:3cff15674274",
+    "extractor_version": "pkg:0.0.1+extract:f3338237fc74",
     "input_sha256": "71f7105a24fc2012a8c3c31f9b7c95acabfac3a63bfff39ff3db6fa1067724f4",
     "model_artifacts": [],
     "parse_complete": false,

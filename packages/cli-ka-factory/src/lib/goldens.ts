@@ -133,7 +133,11 @@ export function addGolden(
   const meta: GoldenMeta = {
     id,
     source,
-    tier: record.extraction.model_artifacts.some((artifact) => artifact.name === "ocr") ? "ocr" : "text_layer",
+    tier: record.extraction.model_artifacts.some((artifact) => artifact.name === "ocr")
+      ? "ocr"
+      : record.extraction.tier === "structured"
+        ? "structured"
+        : "text_layer",
     extractor_version: record.extraction.extractor_version,
     human_verified: record.extraction.review_status === "human_verified",
     ...(options.note === undefined ? {} : { note: options.note }),

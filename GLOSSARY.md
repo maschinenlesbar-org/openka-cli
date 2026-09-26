@@ -78,11 +78,18 @@ factory's own deterministic tooling; the agent that drives it is not shipped.
 
 **Tier** — which deterministic path an adapter declares: `structured` (map fields),
 `text_layer` (parse the PDF's text), `ocr` (a pinned perceptual model, then parse).
+A record's `extraction.tier` says what actually ran: `text_layer` when a document's
+text was read, otherwise the source's own tier — a text-layer source whose PDF failed
+is not promoted to `structured`.
 
 **Abstention** — the extractor refusing to produce a value it cannot derive with
 certainty. Recorded in `abstained_fields`, surfaced by `ka review`. The project's
 central safety mechanism: a record may publish with holes, because holes are honest
 and invented content is not.
+A field the schema requires keeps a placeholder while it is abstained — `markers`
+still reads `classified: false`, `contains_tables: false`, `attachments_referenced:
+[]` — and that placeholder is not a finding: when `markers` is in `abstained_fields`,
+nothing was checked.
 
 **Golden fixture** — a verified input→record pair, frozen on disk with the exact
 input bytes. Because the line is deterministic these are real asserts, not fuzzy

@@ -136,7 +136,10 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
  * behaves identically for both declarations.
  */
 function requestedTier(record: KaRecord): Tier {
-  return record.extraction.model_artifacts.some((artifact) => artifact.name === "ocr") ? "ocr" : "text_layer";
+  if (record.extraction.model_artifacts.some((artifact) => artifact.name === "ocr")) return "ocr";
+  // A record with nothing parsed carries its source's tier; asking for it again is
+  // what reproduces it. With text parsed, either request records text_layer.
+  return record.extraction.tier === "structured" ? "structured" : "text_layer";
 }
 
 /** Field paths that differ between two records, deepest path first seen. */

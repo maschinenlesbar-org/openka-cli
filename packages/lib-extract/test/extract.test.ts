@@ -1085,6 +1085,17 @@ describe("the tier stack", () => {
     ok(record.extraction.abstained_fields.includes("full_text"));
   });
 
+  it("keeps the source's tier when no document parsed, instead of claiming structured", async () => {
+    // A text_layer source (Bayern, Bremen) whose PDF would not parse was recorded
+    // as `structured` — "API / XML export; highest trust".
+    const truncated = [{ ...documents[0], bytes: pdf.subarray(0, 200) } as (typeof documents)[number]];
+    const fromTextLayer = await extract({ parliament: "berlin", documentType: "schriftliche_anfrage", tier: "text_layer", metadata, documents: truncated, env: {} });
+    strictEqual(fromTextLayer.record.extraction.tier, "text_layer");
+    ok(fromTextLayer.record.extraction.abstained_fields.includes("full_text"));
+    const fromStructured = await extract({ parliament: "berlin", documentType: "schriftliche_anfrage", tier: "structured", metadata, documents: truncated, env: {} });
+    strictEqual(fromStructured.record.extraction.tier, "structured");
+  });
+
   it("hashes metadata-only input independently of how the object was built", async () => {
     // `input_sha256` must identify the data, not the insertion order an adapter
     // happened to use. JSON.stringify would have given these two different digests.
