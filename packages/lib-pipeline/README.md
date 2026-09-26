@@ -32,6 +32,15 @@ User-Agent the engine sends. A disallowed document is a gap in the record, named
 anyway, warns once per host that it did, and slows that host to one request every four
 seconds for the rest of the run.
 
+## A document that goes away
+
+A document that now answers 404, or that robots.txt now disallows, is a gap only for
+a record that never had it. A record that already holds it keeps it: the pipeline
+reads the archived bytes again (dated when they were actually retrieved), so an
+unchanged record stays unchanged and the report carries a warning naming the URL. If
+the archived bytes are missing too, the ref fails with an error and the stored record
+is left as it was — a transient 404 or a robots.txt change never empties a corpus.
+
 ## Depends on
 
 - `lib-errors` — the shared error hierarchy

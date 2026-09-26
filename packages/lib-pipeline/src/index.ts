@@ -203,13 +203,53 @@ async function syncRef(
       `${ref.reference}: neither the ref nor the ${source.key} adapter names a parliament`,
     );
   }
+  const metadata: SourceMetadata = {
+    reference: ref.reference,
+    legislative_period: ref.legislative_period,
+    title: ref.title,
+    askers: ref.askers,
+    answered_by: ref.answered_by,
+    dates: ref.dates,
+  };
+  const existing = store.getRecord(recordIdFor({ parliament, metadata }));
+
   const documents: FetchedDocument[] = [];
   let bytesFetched = 0;
 
   if (!options.metadataOnly) {
     for (const wanted of ref.documents) {
       const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run);
-      if (fetched === undefined) continue;
+      if ("gap" in fetched) {
+        // The upstream no longer hands this document out — a 404, or a robots.txt
+        // that now disallows it. A record that already holds it must not be
+        // re-extracted from nothing: that overwrote complete records with empty
+        // ones and reported them as stored, and `ka verify` then "reproduced" the
+        // empty one. The archived bytes are what the record was built from, so
+        // they are read again, dated when they were actually retrieved.
+        const archived = existing?.source_documents.find((document) => document.url === wanted.url);
+        if (archived?.sha256 === undefined) {
+          if (fetched.gap === "404") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}`);
+          continue;
+        }
+        if (!store.hasBlob(archived.sha256)) {
+          throw new OpenKaError(
+            `${wanted.url} ${gapText(fetched.gap)}, and the archived copy the stored record was built from is missing; ` +
+              "the stored record was left as it was",
+          );
+        }
+        run.warnings.push(
+          `${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}; ` +
+            `kept the archived copy${archived.retrieved_at === undefined ? "" : ` retrieved ${archived.retrieved_at}`}`,
+        );
+        documents.push({
+          role: wanted.role,
+          url: wanted.url,
+          bytes: store.getBlob(archived.sha256),
+          urlStable: wanted.urlStable,
+          ...(archived.retrieved_at === undefined ? {} : { retrievedAt: archived.retrieved_at }),
+        });
+        continue;
+      }
       bytesFetched += fetched.fromCache ? 0 : fetched.bytes.length;
       documents.push({
         role: wanted.role,
@@ -220,15 +260,6 @@ async function syncRef(
       });
     }
   }
-
-  const metadata: SourceMetadata = {
-    reference: ref.reference,
-    legislative_period: ref.legislative_period,
-    title: ref.title,
-    askers: ref.askers,
-    answered_by: ref.answered_by,
-    dates: ref.dates,
-  };
 
   const request = {
     parliament,
@@ -242,7 +273,6 @@ async function syncRef(
 
   // Idempotence: the inputs are the document bytes and the extractor version, so a
   // record whose stored provenance already matches both needs no work.
-  const existing = store.getRecord(recordIdFor(request));
   if (!options.force && existing !== undefined && isUpToDate(existing, documents, metadata)) {
     return { id: existing.id, action: "unchanged", bytesFetched };
   }
@@ -316,11 +346,18 @@ interface FetchedBytes {
   fromCache: boolean;
 }
 
+/** Why a document could not be fetched although nothing failed: the upstream said no. */
+type FetchGap = { gap: "404" | "robots" };
+
+function gapText(gap: FetchGap["gap"]): string {
+  return gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
+}
+
 /**
  * Fetch a document, or take it from the blob store when the upstream says it has
- * not changed. Returns `undefined` for a document the upstream no longer serves,
- * or one its host's robots.txt disallows and the operator did not override; either
- * is a gap in the record, not a reason to abort the whole sync.
+ * not changed. Returns a gap for a document the upstream no longer serves, or one
+ * its host's robots.txt disallows and the operator did not override; either is a
+ * gap in the record, not a reason to abort the whole sync.
  *
  * Two things keep this polite. The conditional request means an unchanged PDF costs
  * one 304 and no bytes. And because the blob store is content-addressed, a document
@@ -335,7 +372,7 @@ async function fetchDocument(
   now: () => Date,
   httpCache: SourceState["http_cache"],
   run: RunContext,
-): Promise<FetchedBytes | undefined> {
+): Promise<FetchedBytes | FetchGap> {
   // CONCEPT.md §7, at the one place every document URL passes through. A blob
   // already archived under a validator is still re-asked: the rule is about
   // requests, and a 304 is a request.
@@ -347,7 +384,7 @@ async function fetchDocument(
       run.warnings.push(verdict.note);
     }
   }
-  if (!verdict.allowed) return undefined;
+  if (!verdict.allowed) return { gap: "robots" };
 
   const cached = httpCache[url];
   const validators: { etag?: string; last_modified?: string } = {};
@@ -359,7 +396,7 @@ async function fetchDocument(
   try {
     response = await engine.get(url, canRevalidate ? { validators } : {});
   } catch (err) {
-    if (err instanceof OpenKaApiError && err.status === 404) return undefined;
+    if (err instanceof OpenKaApiError && err.status === 404) return { gap: "404" };
     throw err;
   }
 

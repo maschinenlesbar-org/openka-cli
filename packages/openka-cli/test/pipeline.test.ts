@@ -99,6 +99,89 @@ describe("sync pipeline", () => {
     ok(record?.extraction.abstained_fields.includes("full_text"));
   });
 
+  describe("a document that can no longer be fetched", () => {
+    // First run: robots.txt allows everything and the PDF is served. Later runs:
+    // the PDF answers 404, or robots.txt disallows it.
+    const changingUpstream = () => {
+      const upstream = { mode: "ok" as "ok" | "404" | "robots" };
+      const engine = testEngine(async (request) => {
+        if (request.url.endsWith("/robots.txt")) {
+          const body = upstream.mode === "robots" ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n";
+          return { status: 200, headers: {}, body: Buffer.from(body) };
+        }
+        if (upstream.mode === "404") return { status: 404, headers: {}, body: Buffer.from("gone") };
+        return { status: 200, headers: {}, body: PDF };
+      });
+      return { upstream, engine };
+    };
+
+    for (const mode of ["404", "robots"] as const) {
+      it(`keeps the stored record when the document now ${mode === "404" ? "answers 404" : "is robots-disallowed"}`, async () => {
+        // It used to be re-extracted from nothing and written over the complete
+        // one: 6 Q/A pairs became 0, reported as stored, with no error.
+        const store = new MemoryStore();
+        const { upstream, engine } = changingUpstream();
+        const source = new StubSource();
+        await sync({ source, store, engine, now: () => new Date("2026-01-02T03:04:05Z") });
+        const before = store.getRecordBytes("berlin-19-10006");
+        strictEqual(store.getRecord("berlin-19-10006")?.qa.length, 6);
+
+        upstream.mode = mode;
+        const report = await sync({ source, store, engine, now: () => new Date("2026-03-04T05:06:07Z") });
+        strictEqual(report.stored, 0);
+        strictEqual(report.unchanged, 1);
+        deepStrictEqual(report.errors, []);
+        ok(
+          report.warnings.some((warning) => warning.includes(PDF_URL) && warning.includes("kept the archived copy retrieved 2026-01-02T03:04:05Z")),
+          JSON.stringify(report.warnings),
+        );
+        deepStrictEqual(store.getRecordBytes("berlin-19-10006"), before);
+      });
+    }
+
+    it("re-extracts from the archived copy when a re-extraction is forced", async () => {
+      const store = new MemoryStore();
+      const { upstream, engine } = changingUpstream();
+      const source = new StubSource();
+      await sync({ source, store, engine, now: () => new Date("2026-01-02T03:04:05Z") });
+      upstream.mode = "404";
+      const report = await sync({ source, store, engine, force: true, now: () => new Date("2026-03-04T05:06:07Z") });
+      strictEqual(report.stored, 1);
+      const record = store.getRecord("berlin-19-10006");
+      strictEqual(record?.qa.length, 6);
+      strictEqual(record?.source_documents[0]?.retrieved_at, "2026-01-02T03:04:05Z");
+    });
+
+    it("fails the ref and leaves the record alone when the archived copy is gone too", async () => {
+      const first = new MemoryStore();
+      const { upstream, engine } = changingUpstream();
+      const source = new StubSource();
+      await sync({ source, store: first, engine });
+      // A corpus holding the record but not its bytes.
+      const store = new MemoryStore();
+      const record = first.getRecord("berlin-19-10006");
+      ok(record !== undefined);
+      store.putRecord(record);
+      const before = store.getRecordBytes("berlin-19-10006");
+      upstream.mode = "404";
+      const report = await sync({ source, store, engine });
+      strictEqual(report.stored, 0);
+      strictEqual(report.failed, 1);
+      match(report.errors[0] ?? "", /now answers 404, and the archived copy .* is missing; the stored record was left as it was/);
+      deepStrictEqual(store.getRecordBytes("berlin-19-10006"), before);
+    });
+
+    it("names a 404 for a document it never had", async () => {
+      const store = new MemoryStore();
+      const { upstream, engine } = changingUpstream();
+      upstream.mode = "404";
+      const report = await sync({ source: new StubSource(), store, engine });
+      strictEqual(report.stored, 1);
+      ok(report.warnings.some((warning) => warning === `19/10006: ${PDF_URL} now answers 404`), JSON.stringify(report.warnings));
+      ok(store.getRecord("berlin-19-10006")?.extraction.abstained_fields.includes("full_text"));
+    });
+  });
+
   it("fetches under --ignore-robots and records that it did", async () => {
     const store = new MemoryStore();
     const { transport, requests } = scriptedTransport([
