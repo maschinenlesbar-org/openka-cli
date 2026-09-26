@@ -557,6 +557,27 @@ describe("metadata rules", () => {
     );
   });
 
+  it("joins a letterhead that wraps, instead of storing its first half", () => {
+    // Berlin's own layout; "Senatsverwaltung für" was stored with review_status ok.
+    strictEqual(
+      findMinistry("Senatsverwaltung für\nUmwelt, Verkehr und Klimaschutz\nHerrn Abgeordneten"),
+      "Senatsverwaltung für Umwelt, Verkehr und Klimaschutz",
+    );
+    strictEqual(findMinistry("Senatsverwaltung für Bildung,\nJugend und Familie\n\nHerrn"), "Senatsverwaltung für Bildung, Jugend und Familie");
+    strictEqual(findMinistry("Senatsverwaltung für Inneres und Sport\nFrau Abgeordnete"), "Senatsverwaltung für Inneres und Sport");
+    strictEqual(findMinistry("Bundesministerium der Verteidigung"), "Bundesministerium der Verteidigung");
+    // Still unfinished where the text stops: abstain rather than store half.
+    strictEqual(findMinistry("Senatsverwaltung für\n\nHerrn Abgeordneten"), undefined);
+    strictEqual(findMinistry("Ministerium für Soziales und\nfür\nund"), undefined);
+  });
+
+  it("does not take a sentence that starts with an office for a letterhead", () => {
+    strictEqual(findMinistry("Ministerium ist der Auffassung, dass dies nicht zutrifft."), undefined);
+    strictEqual(findMinistry("Der Senat beantwortet die Anfrage wie folgt:"), undefined);
+    strictEqual(findMinistry("Der Senat von Berlin hat beschlossen, dass"), undefined);
+    strictEqual(findMinistry("Ministerium der Finanzen hat mitgeteilt"), undefined);
+  });
+
   it("collects attachment references and the classification marker", () => {
     const markers = findMarkers("siehe Anlage 2 und Anlage 10.\nVS-NUR FÜR DEN DIENSTGEBRAUCH");
     strictEqual(markers.classified, true);
@@ -1029,7 +1050,8 @@ describe("the tier stack", () => {
     strictEqual(record.extraction.parse_complete, true);
     strictEqual(record.extraction.review_status, "ok");
     strictEqual(record.qa.length, 6);
-    match(record.answered_by.ministry ?? "", /Senatsverwaltung/);
+    // The letterhead wraps after "für"; the whole name, not its first line.
+    strictEqual(record.answered_by.ministry, "Senatsverwaltung für Umwelt, Verkehr und Klimaschutz");
   });
 
   it("is a pure function of its inputs", async () => {

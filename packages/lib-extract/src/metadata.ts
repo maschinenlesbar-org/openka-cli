@@ -259,13 +259,44 @@ export function findMarkers(text: string): DocumentMarkers {
   };
 }
 
-/** The Senatsverwaltung / Ministerium that signed an answer, if the text names one. */
+/**
+ * A letterhead line naming the answering body: the office, then `für`/`des`/`der`
+ * and its portfolio ("Senatsverwaltung für Inneres und Sport", "Bundesministerium
+ * der Verteidigung"), or the Senat itself. A sentence that merely starts with
+ * "Ministerium" ("Ministerium ist der Auffassung, dass …") is not one.
+ */
+const MINISTRY_LINE =
+  /^[ \t]*((?:(?:Senatsverwaltung|Staatsministerium|Bundesministerium|Ministerium|Senator(?:in)?)[ \t]+(?:für|des|der)(?![\p{L}])|Der Senat(?:[ \t]+(?:von|der)(?![\p{L}]))?)[^\n]{0,120})$/imu;
+
+/** A letterhead line that stops here is not finished: the portfolio goes on below. */
+const UNFINISHED = /(?:[ \t](?:für|des|der|die|und|von|zur|zum|im|in|sowie)|,)$/i;
+
+/** A portfolio has no finite verb; "Der Senat von Berlin hat beschlossen, dass" is a sentence. */
+const SENTENCE_VERB = /(?<![\p{L}])(?:ist|sind|hat|haben|wird|werden|wurde|wurden|teilt|teilte)(?![\p{L}])/iu;
+
+/** How many lines a wrapped letterhead may continue over. */
+const MAX_MINISTRY_CONTINUATIONS = 2;
+
+/**
+ * The Senatsverwaltung / Ministerium that signed an answer, if the text names one.
+ *
+ * Berlin's letterhead wraps the name — "Senatsverwaltung für" on one line, "Umwelt,
+ * Verkehr und Klimaschutz" on the next — and reading one line stored
+ * "Senatsverwaltung für" with `review_status: ok`. A line that ends in a
+ * preposition, an article, a conjunction or a comma is joined with the next; if
+ * the name is still unfinished after that, or ends in a sentence's punctuation or a
+ * hyphenation, nothing is returned and the caller abstains.
+ */
 export function findMinistry(text: string): string | undefined {
-  const match =
-    /^[ \t]*((?:Senatsverwaltung|Ministerium|Staatsministerium|Senator(?:in)?|Der Senat|Bundesministerium)[^\n]{0,120})$/im.exec(
-      text,
-    );
+  const match = MINISTRY_LINE.exec(text);
   if (match === null) return undefined;
-  const line = (match[1] as string).trim().replace(/\s+/g, " ");
-  return line === "" ? undefined : line;
+  let name = (match[1] as string).trim().replace(/\s+/g, " ");
+  const following = text.slice(match.index + match[0].length).split("\n").slice(1);
+  for (let i = 0; i < MAX_MINISTRY_CONTINUATIONS && UNFINISHED.test(name); i++) {
+    const next = (following[i] ?? "").trim().replace(/\s+/g, " ");
+    if (next === "") return undefined;
+    name = `${name} ${next}`;
+  }
+  if (UNFINISHED.test(name) || /[.?!:;\-–]$/.test(name) || SENTENCE_VERB.test(name)) return undefined;
+  return name;
 }
