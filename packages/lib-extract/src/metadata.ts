@@ -134,6 +134,14 @@ const OFFICE =
 /** A Land's ministry spelled out with its Land in front, as Niedersachsen writes it. */
 const LAND_OFFICE = /^\p{Lu}[\p{L}-]+(es|e|er)\s+(Ministerium|Staatskanzlei|Landesamt)/u;
 
+/**
+ * What stands in the party slot for a member of no Fraktion. It is written in lower
+ * case, so the capitalised-party rule missed it and Hessen's "Herr, Sascha,
+ * fraktionslos" became the person "Sascha fraktionslos Herr", with no party — and
+ * `--party fraktionslos` could not find the record.
+ */
+const NO_FRAKTION = /^(?:fraktionslos|parteilos)$/i;
+
 export interface ParsedUrheber {
   /** The people who asked. */
   askers: ParsedAsker[];
@@ -168,7 +176,10 @@ export function parseUrheber(value: string): ParsedUrheber {
       const parts = entry.split(",").map((part) => part.trim());
       if (parts.length >= 3) {
         const last = parts[parts.length - 1] as string;
-        if (/^[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß.\-/ ]{1,28}$/.test(last) && !/^(Dr|Prof)\.?$/.test(last)) {
+        if (
+          (/^[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß.\-/ ]{1,28}$/.test(last) || NO_FRAKTION.test(last)) &&
+          !/^(Dr|Prof)\.?$/.test(last)
+        ) {
           party = last;
           parts.pop();
         }

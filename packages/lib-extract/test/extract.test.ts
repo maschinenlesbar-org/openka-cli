@@ -550,6 +550,14 @@ describe("metadata rules", () => {
     deepStrictEqual(parseUrheber("Ministerowitsch, Anna (CDU)").bodies, []);
   });
 
+  it("reads fraktionslos as the party slot, not as a given name", () => {
+    // Live Hessen data: "Herr, Sascha, fraktionslos" was stored as the asker
+    // "Sascha fraktionslos Herr", with no party.
+    deepStrictEqual(parseUrheber("Herr, Sascha, fraktionslos").askers, [{ name: "Sascha Herr", party: "fraktionslos" }]);
+    deepStrictEqual(parseUrheber("Herr, Sascha (fraktionslos)").askers, [{ name: "Sascha Herr", party: "fraktionslos" }]);
+    deepStrictEqual(parseUrheber("Muster, Erika, Dr., parteilos").askers, [{ name: "Dr. Erika Muster", party: "parteilos" }]);
+  });
+
   it("finds the answering ministry", () => {
     strictEqual(
       findMinistry("Senatsverwaltung für Umwelt, Verkehr und Klimaschutz\nHerrn Abgeordneten"),
