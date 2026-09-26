@@ -58,10 +58,20 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
     if (!options.store.hasBlob(document.sha256)) {
       return { ...base, reason: `archived bytes for ${document.url} (${document.sha256}) are missing` };
     }
+    let bytes: Buffer;
+    try {
+      bytes = options.store.getBlob(document.sha256);
+    } catch (err) {
+      // Bytes that no longer match their digest (or cannot be read at all) cannot
+      // be re-extracted into anything meaningful; "the extractor is
+      // non-deterministic" would name the wrong culprit.
+      const reason = err instanceof Error ? err.message : String(err);
+      return { ...base, reason: `archived bytes for ${document.url} are unreadable: ${reason}` };
+    }
     const fetched: FetchedDocument = {
       role: document.role,
       url: document.url,
-      bytes: options.store.getBlob(document.sha256),
+      bytes,
       urlStable: document.url_stable,
     };
     if (document.retrieved_at !== undefined) fetched.retrievedAt = document.retrieved_at;

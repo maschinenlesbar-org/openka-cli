@@ -235,6 +235,8 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         if (!store.hasBlob(document.sha256)) {
           throw new OpenKaError(`The archived bytes for ${document.url} (${document.sha256}) are missing.`);
         }
+        // Checked, not just present: a path to altered bytes is not the archive.
+        store.getBlob(document.sha256);
         // The path is printed rather than handed to an opener: the CLI does not
         // launch other programs, and `open "$(ka open <id>)"` is one keystroke more.
         ctx.deps.io.out(store.blobPath(document.sha256));

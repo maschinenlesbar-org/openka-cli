@@ -124,15 +124,28 @@ export class FileStore implements Store {
     const digest = sha256(data);
     const path = this.blobPath(digest);
     // Content-addressed: identical bytes are already the same file. Re-writing
-    // would only risk replacing a good blob with a truncated one.
-    if (!existsSync(path)) this.writeAtomic(path, data);
+    // would only risk replacing a good blob with a truncated one — unless the file
+    // there no longer hashes to its name, in which case fresh bytes repair it.
+    if (!existsSync(path) || sha256(readFileSync(path)) !== digest) this.writeAtomic(path, data);
     return digest;
   }
 
+  /**
+   * The archived bytes, checked against their own name. The store is
+   * content-addressed, and a blob that no longer hashes to its name is not the
+   * document the record was built from: read unchecked, `ka verify` blamed the
+   * extractor for "different bytes with the same version" and `ka open` handed
+   * the altered file out without comment.
+   */
   getBlob(digest: string): Buffer {
     const path = this.blobPath(digest);
     if (!existsSync(path)) throw new StoreError(`No blob ${digest} in ${this.root}`);
-    return readFileSync(path);
+    const bytes = readFileSync(path);
+    const actual = sha256(bytes);
+    if (actual !== digest) {
+      throw new StoreError(`The archived bytes ${path} are corrupt: they hash to ${actual}, not to their name`);
+    }
+    return bytes;
   }
 
   // -------------------------------------------------------------- records

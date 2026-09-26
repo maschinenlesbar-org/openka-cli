@@ -194,6 +194,27 @@ describe("ka", () => {
     }
   });
 
+  it("names archived bytes that no longer match their digest, instead of blaming the extractor", async () => {
+    const harness = await seeded();
+    try {
+      const store = harness.deps.createStore(harness.corpus);
+      const digest = store.getRecord("berlin-19-10006")?.source_documents[0]?.sha256;
+      ok(digest !== undefined);
+      writeFileSync(store.blobPath(digest), "%PDF-1.4 not the archived document");
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_ERROR);
+      match(harness.stdout(), /FAIL berlin-19-10006: archived bytes for .* are unreadable: .* are corrupt: they hash to [0-9a-f]{64}, not to their name/);
+      doesNotMatch(harness.stdout(), /different bytes with the same extractor version/);
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "open", "berlin-19-10006"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /are corrupt/);
+      // The same bytes, fetched again, repair the file rather than being skipped.
+      store.putBlob(PDF);
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_OK);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("prints the path of an archived document", async () => {
     const harness = await seeded();
     try {
