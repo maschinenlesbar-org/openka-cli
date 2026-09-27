@@ -16,6 +16,8 @@ import {
   groupedAnswerNumbers,
   splitAtAnswerDivider,
   splitAtQuestionMark,
+  splitQuestionListFromAnswers,
+  trimRestatedQuestions,
 } from "../src/segment.js";
 import {
   findDate,
@@ -436,11 +438,169 @@ describe("grouped answers", () => {
     strictEqual(result.segments[0]?.answer, result.segments[1]?.answer);
   });
 
+  it("moves a grouping sentence set directly under the question into the answer", () => {
+    // The Bundestag, 19/1003: no blank line between the question and the answer.
+    const split = splitAtQuestionMark(
+      "2. Wie viel Kindergeld wurde überwiesen?\nDie Fragen 1 und 2 werden zusammen beantwortet.\nSiehe Tabelle.\n\nJahr Betrag",
+    );
+    strictEqual(split.question, "2. Wie viel Kindergeld wurde überwiesen?");
+    strictEqual(split.answer, "Die Fragen 1 und 2 werden zusammen beantwortet.\nSiehe Tabelle.\n\nJahr Betrag");
+  });
+
+  it("keeps a line that still asks or requests in the question", () => {
+    const split = splitAtQuestionMark("5. Ist das geplant?\nWenn nein: Warum nicht? Die Antwort bitte begründen.\n\nEs ist geplant.");
+    strictEqual(split.question, "5. Ist das geplant?\nWenn nein: Warum nicht? Die Antwort bitte begründen.");
+    strictEqual(split.answer, "Es ist geplant.");
+  });
+
+  it("ends the question at the first paragraph that asks nothing", () => {
+    // Bundestag 19/744: a project title in the answer's table ends in a question
+    // mark, and the question used to run on to it.
+    const split = splitAtQuestionMark("19. Welche Projekte werden gefördert?\n\nFolgende Projekte:\n\nWer bin ich? 2.000 Euro\n\nLand in Sicht! 500 Euro");
+    strictEqual(split.question, "19. Welche Projekte werden gefördert?");
+    strictEqual(split.answer, "Folgende Projekte:\n\nWer bin ich? 2.000 Euro\n\nLand in Sicht! 500 Euro");
+  });
+
   it("splits a question that ends in a parenthetical after the question mark", () => {
     // The NRW shape: "… zu gewinnen? (Bitte nach Maßnahmenart differenzieren)".
     const split = splitAtQuestionMark("1. Wie viele?\n(Bitte aufschlüsseln)\n\nEs sind vierzehn.");
     strictEqual(split.question, "1. Wie viele?\n(Bitte aufschlüsseln)");
     strictEqual(split.answer, "Es sind vierzehn.");
+  });
+});
+
+describe("grouped answers in the forms the Länder write them", () => {
+  it("expands a range of sub-numbers over the numbers the document asked", () => {
+    // Bayern 19/12032: "Die Fragen 1.1 bis 2.2 werden … gemeinsam be-antwortet."
+    const known = ["1.1", "1.2", "1.3", "2.1", "2.2", "3.1"];
+    deepStrictEqual(
+      groupedAnswerNumbers("Die Fragen 1.1 bis 2.2 werden aufgrund des Sachzusammenhangs gemeinsam be-\nantwortet.", known),
+      ["1.1", "1.2", "1.3", "2.1", "2.2"],
+    );
+    // Without the document's numbers there is nothing to expand against, and no
+    // number is invented.
+    deepStrictEqual(groupedAnswerNumbers("Die Fragen 1.1 bis 2.2 werden gemeinsam beantwortet."), ["1.1", "2.2"]);
+  });
+
+  it("expands a whole question list however long it is", () => {
+    const known = Array.from({ length: 8 }, (_, i) => [`${i + 1}.1`, `${i + 1}.2`, `${i + 1}.3`, `${i + 1}.4`]).flat();
+    strictEqual(groupedAnswerNumbers("Die Fragen 1.1 bis 8.4 werden gemeinsam beantwortet.", known).length, 32);
+  });
+
+  it("covers only numbers shaped like the ends of the range", () => {
+    // Bayern 19/12143 lists section headings ("2. Fallzahlen") among its questions.
+    deepStrictEqual(
+      groupedAnswerNumbers("Die Fragen 1.1 bis 2.2 werden gemeinsam beantwortet.", ["1", "1.1", "1.2", "2", "2.1", "2.2"]),
+      ["1.1", "1.2", "2.1", "2.2"],
+    );
+    // A range whose ends differ in shape covers both shapes.
+    deepStrictEqual(
+      groupedAnswerNumbers("Die Fragen 1 bis 3 b werden gemeinsam beantwortet.", ["1", "2", "3a", "3b", "4"]),
+      ["1", "2", "3a", "3b"],
+    );
+  });
+
+  it("resolves letter sub-items against the number before them", () => {
+    // Mecklenburg-Vorpommern.
+    deepStrictEqual(
+      groupedAnswerNumbers("Die Fragen 1, a) und b) werden zusammenhängend beantwortet.", ["1", "1a", "1b", "2"]),
+      ["1", "1a", "1b"],
+    );
+    deepStrictEqual(groupedAnswerNumbers("Die Fragen 1 a bis 1 c werden gemeinsam beantwortet.", ["1a", "1b", "1c"]), [
+      "1a", "1b", "1c",
+    ]);
+  });
+
+  it("reads the sentence with the verb first", () => {
+    deepStrictEqual(
+      groupedAnswerNumbers("Aufgrund des Sachzusammenhangs werden die Fragen 1 und 2 gemeinsam beantwortet."),
+      ["1", "2"],
+    );
+  });
+});
+
+describe("an abbreviation at the start of a line", () => {
+  it("is not a letter sub-item", () => {
+    const text = ["1. Ab welcher Schwelle wird von Mobbing gesprochen und nicht von", "z. B. Streitigkeiten?", "Zu 1.: Ab keiner."].join("\n");
+    deepStrictEqual(segmentQa(text).segments.map((segment) => segment.number), ["1"]);
+  });
+});
+
+describe("a later question restated at the end of an answer", () => {
+  it("cuts the restatement off the answer before it", () => {
+    // Saarland restates each question, unnumbered, above its "Zu Frage N:".
+    const segments = trimRestatedQuestions([
+      { number: "1", question: "Wie ist der aktuelle Stand der Umsetzung?", answer: "Es wird geplant.\nVerbleibt es beim Flächen-\nbedarf von 10 Ha?" },
+      { number: "2", question: "Verbleibt es beim Flächenbedarf von 10 Ha?", answer: "Ja." },
+    ]);
+    strictEqual(segments[0]?.answer, "Es wird geplant.");
+    strictEqual(segments[1]?.answer, "Ja.");
+  });
+
+  it("does not let the closing mark decide", () => {
+    // Saarland 16/1631: asked with a full stop, restated with a question mark.
+    const segments = trimRestatedQuestions([
+      { number: "3", question: "Werden die Flächen angekauft?", answer: "Teilweise.\nWelche Auswirkungen hat der Denkmalschutz auf\ndie Umsetzung des Projekts?" },
+      { number: "4", question: "Welche Auswirkungen hat der Denkmalschutz auf die Umsetzung des Projekts.", answer: "Keine." },
+    ]);
+    strictEqual(segments[0]?.answer, "Teilweise.");
+  });
+
+  it("leaves an answer alone that only resembles a later question", () => {
+    const answer = "Es wird geplant, und der Flächenbedarf bleibt bei 10 Ha.";
+    const segments = trimRestatedQuestions([
+      { number: "1", question: "Wie ist der aktuelle Stand?", answer },
+      { number: "2", question: "Verbleibt es beim Flächenbedarf von 10 Ha?", answer: "Ja." },
+    ]);
+    strictEqual(segments[0]?.answer, answer);
+  });
+
+  it("abstains on an answer that was nothing but the next question", () => {
+    const segments = trimRestatedQuestions([
+      { number: "1", question: "Wie ist der aktuelle Stand?", answer: "Verbleibt es beim Flächenbedarf von 10 Ha?" },
+      { number: "2", question: "Verbleibt es beim Flächenbedarf von 10 Ha?", answer: "Ja." },
+    ]);
+    strictEqual(segments[0]?.answer, undefined);
+    strictEqual(segments[0]?.question, "Wie ist der aktuelle Stand?");
+  });
+});
+
+describe("a question list followed by the restated questions and their answers", () => {
+  const BAYERN_LAYOUT = [
+    "Die Staatsregierung wird gefragt:",
+    "1.1 Wie viele Fälle gab es?",
+    "1.2 Wie viele davon im Mai?",
+    "1 https://example.org/quelle",
+    "Antwort",
+    "des Staatsministeriums des Innern",
+    "vom 11.06.2026",
+    "1.1 Wie viele Fälle gab es?",
+    "Es gab zwölf Fälle.",
+    "1.2 Wie viele davon im Mai?",
+    "Drei.",
+  ].join("\n");
+
+  it("is split at the bare word Antwort after at least two question headings", () => {
+    const split = splitQuestionListFromAnswers(BAYERN_LAYOUT);
+    ok(split !== undefined);
+    ok(split.questions.endsWith("1 https://example.org/quelle"));
+    ok(split.answers.startsWith("des Staatsministeriums"));
+  });
+
+  it("is not seen in a cover page or under a single question", () => {
+    // The Bundestag's cover page: a bare "Antwort" with no question list before it.
+    strictEqual(splitQuestionListFromAnswers("Deutscher Bundestag\nAntwort\nder Bundesregierung\n1. Wie viele?\nVier."), undefined);
+    // Schleswig-Holstein writes "Antwort:" under every question.
+    strictEqual(splitQuestionListFromAnswers("1. Wie viele?\n2. Wann?\nAntwort:\nVier."), undefined);
+  });
+
+  it("never takes the start of the answer part as the last listed question's answer", async () => {
+    // Read as one text, the footnote and the "Antwort" cover lines followed 1.2 in
+    // the list, and the real answer under the restated 1.2 was dropped.
+    const result = applyRules(BAYERN_LAYOUT, ANTWORT_FOLGT);
+    const byNumber = new Map(result.segments.map((segment) => [segment.number, segment.answer]));
+    strictEqual(byNumber.get("1.2"), "Drei.");
+    strictEqual(byNumber.get("1.1"), "Es gab zwölf Fälle.");
   });
 });
 
@@ -522,10 +682,24 @@ describe("metadata rules", () => {
   });
 
   it("does not turn a Fraktion spelled out beside its abbreviation into a person", () => {
-    // Schleswig-Holstein repeats the Fraktion in full. Every real person in this
-    // field is written surname-first, so the missing comma is what gives it away.
+    // Schleswig-Holstein repeats the Fraktion in full. Its name is built from the
+    // words Fraktionen are named with, which no person's name carries.
     deepStrictEqual(parseUrheber("Sozialdemokratische Partei Deutschlands (SPD)").askers, []);
     deepStrictEqual(parseUrheber("Freie Demokratische Partei (FDP)").askers, []);
+    deepStrictEqual(parseUrheber("Alternative für Deutschland (AfD)").askers, []);
+    deepStrictEqual(parseUrheber("BÜNDNIS 90/DIE GRÜNEN (Grüne)").askers, []);
+  });
+
+  it("reads a person written given name first", () => {
+    // Bayern's rows in the Parlamentsspiegel: 4,523 of 4,535 AfD Anfragen lost
+    // every asker when this form was taken for a Fraktion.
+    deepStrictEqual(parseUrheber("Florian Köhler (AfD); Oskar Lipp (AfD); Johannes Meier (AfD)").askers, [
+      { name: "Florian Köhler", party: "AfD" },
+      { name: "Oskar Lipp", party: "AfD" },
+      { name: "Johannes Meier", party: "AfD" },
+    ]);
+    deepStrictEqual(parseUrheber("Dr. Ute Eiling-Hütig (CSU)").askers, [{ name: "Dr. Ute Eiling-Hütig", party: "CSU" }]);
+    deepStrictEqual(parseUrheber("Ulrich von Zons (FW)").askers, [{ name: "Ulrich von Zons", party: "FW" }]);
   });
 
   it("keeps an office out of the askers and reports it as a body", () => {

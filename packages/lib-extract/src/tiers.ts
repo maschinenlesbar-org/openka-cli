@@ -26,6 +26,7 @@ import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "@maschinenlesbar.org/openka-lib-pdf";
+import { textForSegmentation } from "./pages.js";
 import { findMarkers, findMinistry } from "./metadata.js";
 import {
   RULE_SETS,
@@ -33,6 +34,8 @@ import {
   restatesSameQuestion,
   segmentQa,
   splitAtAnswerDivider,
+  splitQuestionListFromAnswers,
+  trimRestatedQuestions,
   type QaSegment,
   type SegmentationRules,
 } from "./segment.js";
@@ -99,6 +102,12 @@ export class Abstentions {
 
   get empty(): boolean {
     return this.fields.size === 0;
+  }
+
+  /** Take over what a trial reading recorded, once that reading is the one used. */
+  absorb(other: Abstentions): void {
+    for (const field of other.fields) this.fields.add(field);
+    this.notes.push(...other.notes);
   }
 }
 
@@ -450,11 +459,33 @@ function segmentDocuments(
     return [];
   }
 
-  const flatten = (text: string): string => text.split(PAGE_SEPARATOR).join("\n");
+  // Segmentation reads each page without its running header and footer: joined
+  // as printed, a header lands in the middle of any answer that crosses a page.
+  const flatten = textForSegmentation;
 
   if (parsed.length === 1) {
     const only = parsed[0] as ParsedDocument;
     const whole = flatten(only.text);
+    // Bayern's question list + "Antwort" + restated questions: the split reading is
+    // the right one when it is believable, and the whole-text reading is not tried
+    // first because it believes the list's stray lines are answers.
+    const listed = splitQuestionListFromAnswers(whole, ruleSets);
+    if (listed !== undefined) {
+      const trial = new Abstentions();
+      const qa = mergeReadings(
+        [
+          { role: "question_pdf", text: listed.questions },
+          { role: "answer_pdf", text: listed.answers },
+        ],
+        ruleSets,
+        trial,
+        "the question list and the answers of one document",
+      );
+      if (qa.length > 0) {
+        abstentions.absorb(trial);
+        return qa;
+      }
+    }
     // A question paper has no answers *by definition*, so the guard that refuses a
     // reading with none would refuse every one of them — which it did: the
     // Niedersachsen question PDF produced zero pairs, not the question-only record
@@ -541,14 +572,16 @@ function mergeReadings(
   }
 
   order.sort(compareNumbers);
-  const merged: QaSegment[] = order.map((number) => {
-    const segment: QaSegment = { number };
-    const question = questions.get(number);
-    const answer = answers.get(number);
-    if (question !== undefined && !contested.has(number)) segment.question = question;
-    if (answer !== undefined) segment.answer = answer;
-    return segment;
-  });
+  const merged: QaSegment[] = trimRestatedQuestions(
+    order.map((number) => {
+      const segment: QaSegment = { number };
+      const question = questions.get(number);
+      const answer = answers.get(number);
+      if (question !== undefined && !contested.has(number)) segment.question = question;
+      if (answer !== undefined) segment.answer = answer;
+      return segment;
+    }),
+  );
 
   const problem = checkSegments(merged, used.join(" + "));
   if (problem !== undefined) {

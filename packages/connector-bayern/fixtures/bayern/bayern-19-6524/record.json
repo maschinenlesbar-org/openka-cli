@@ -30,7 +30,7 @@
     "abstained_fields": [
       "answered_by.ministry"
     ],
-    "extractor_version": "pkg:0.0.2+extract:7d9bb81fb22c",
+    "extractor_version": "pkg:0.0.2+extract:758efd703249",
     "input_sha256": "01023f861c2c992eee0787a196f2d26deb0547671bc61f8e5ae4388110520210",
     "model_artifacts": [],
     "parse_complete": false,
@@ -51,27 +51,27 @@
     {
       "answer": "Der Zeitplan für die Besetzung des Managements bestimmt jede Schwammregion für\nsich. Die Schwammregionen werden im Auswahlprozess seitens der Verwaltung für\nLändliche Entwicklung fachlich unterstützt.\nErwartungsgemäß hat sich eine zeitliche Streuung bei der Besetzung ergeben.\nDer Stand Mitte April war wie folgt:\n– ILE Auerbergland (Oberbayern): Ausschreibung für die Vergabe an ein Büro wird\ndemnächst veröffentlicht\n– ARGE Solidarischer Hochwasserschutz (Oberbayern): derzeit Gründung eines\nVereins, dessen Geschäftsführung auch das Management der Schwammregion\nübernehmen soll\n– Landkreis Kelheim (Niederbayern): Management seit Ende des Jahres 2024 besetzt\n– Vorderer Bayerischer Wald (Oberpfalz): Ausschreibung zur Vergabe an ein Büro\nhat stattgefunden, derzeit Auswahl\n– Allianz B303+ (Oberfranken): Personalstelle ist besetzt, beginnt zum 01.05.2025\n– Aisch, Aurach & Zenn (Mittelfranken): Büro wurde ausgewählt\n– MainWerntal (Unterfranken): Personalstelle ist besetzt, beginnt zum 01.06.2025\n– Streu-Saale (Unterfranken): Vorstellungsgespräche für Personalstelle haben\nstattgefunden\n– Holzwinkel-Altenmünster (Schwaben): Vorstellungsgespräche für Personalstelle\nhaben stattgefunden, Auswahl bis Ende April 2025\n– Gennach-Hühnerbach-Singold (Schwaben): Personalstelle ausgeschrieben (Be-\nwerbungsschluss 20.04.2025)",
       "number": "1",
-      "question": "Wie viele Schwammregion-Manager sind im Zuge des Aktions-\nprogramms „Schwammregionen in Bayern“ aktuell beschäftigt? 2"
+      "question": "Wie viele Schwammregion-Manager sind im Zuge des Aktions-\nprogramms „Schwammregionen in Bayern“ aktuell beschäftigt?"
     },
     {
       "answer": "Jede Schwammregion kann im Umfang einer vollen Personalstelle begleitet werden.",
       "number": "2",
-      "question": "In welchem Stundenumfang stehen diese den zehn ausgewählten\nSchwammregionen zur Verfügung? 2"
+      "question": "In welchem Stundenumfang stehen diese den zehn ausgewählten\nSchwammregionen zur Verfügung?"
     },
     {
       "answer": "Das Aktionsprogramm ist auf fünf Jahre ausgelegt und für die zehn Regionen finanziert.",
       "number": "3",
-      "question": "Über welchen Zeitraum ist das Aktionsprogramm angelegt und finan-\nziert? 2"
+      "question": "Über welchen Zeitraum ist das Aktionsprogramm angelegt und finan-\nziert?"
     },
     {
-      "answer": "Alle Regionen befinden sich aktuell am Beginn ihrer Projektphase, sodass noch keine\nMaßnahmen realisiert werden konnten.\nDrucksache 19 / 6524 Bayerischer Landtag 19. Wahlperiode Seite 3 / 4",
+      "answer": "Alle Regionen befinden sich aktuell am Beginn ihrer Projektphase, sodass noch keine\nMaßnahmen realisiert werden konnten.",
       "number": "4",
-      "question": "Welche konkreten Maßnahmen wurden seit Beginn des Aktions-\nprogramms realisiert? 2"
+      "question": "Welche konkreten Maßnahmen wurden seit Beginn des Aktions-\nprogramms realisiert?"
     },
     {
-      "answer": "Da die Maßnahmenumsetzung erst beginnt, wurden noch keine Fördermittel beantragt.\nDrucksache 19 / 6524 Bayerischer Landtag 19. Wahlperiode Seite 4 / 4\nHinweise des Landtagsamts\nZitate werden weder inhaltlich noch formal überprüft. Die korrekte Zitierweise liegt in\nder Verantwortung der Fragestellerin bzw. des Fragestellers sowie der Staatsregierung.\nZur Vereinfachung der Lesbarkeit können Internetadressen verkürzt dargestellt sein.\nDie vollständige Internetadresse ist als Hyperlink hinterlegt und in der digitalen Version\ndes Dokuments direkt aufrufbar. Zusätzlich ist diese als Fußnote vollständig dargestellt.\nDrucksachen, Plenarprotokolle sowie die Tagesordnungen der Vollversammlung und\nder A usschüsse sind im Internet unter www.bayern.landtag.de/parlament/dokumente\nabrufbar.\nDie aktuelle Sitzungsübersicht steht unter www.bayern.landtag.de/aktuelles/sitzungen\nzur Verfügung.",
+      "answer": "Da die Maßnahmenumsetzung erst beginnt, wurden noch keine Fördermittel beantragt.",
       "number": "5",
-      "question": "Für welche Sachkosten wurde bereits eine Förderung beantragt? 3\nHinweise des Landtagsamts 4\nDrucksache 19 / 6524 Bayerischer Landtag 19. Wahlperiode Seite 2 / 4\nAntwort\ndes Staatsministeriums für Ernährung, Landwirtschaft, Forsten und Tourismus\nvom 06.05.2025"
+      "question": "Für welche Sachkosten wurde bereits eine Förderung beantragt?"
     }
   ],
   "reference": "19/6524",

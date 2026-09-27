@@ -21,7 +21,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.2+extract:7d9bb81fb22c",
+    "extractor_version": "pkg:0.0.2+extract:758efd703249",
     "input_sha256": "30ecb55131d5c6fb30ccde605b2fd53b2c8f9093f98c438d6cc25b53b5b7e66e",
     "model_artifacts": [],
     "parse_complete": true,
@@ -40,92 +40,92 @@
   "parliament": "bund",
   "qa": [
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "1",
       "question": "Welche konkreten Liegenschaften in Thüringen sind nach Kenntnis der\nBundesregierung vom genannten Umwandlungsmoratorium betroffen\n(bitte einzeln mit Adresse und Fläche auflisten)?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "2",
       "question": "Welche Kriterien lagen nach Kenntnis der Bundesregierung der Auswahl\nder betroffenen Liegenschaften in Thüringen zugrunde?"
     },
     {
-      "answer": "Die Antwort wurde namens der Bundesregierung mit Schreiben des Bundesministeriums der Verteidigung vom 14. August\n2026 übermittelt.\nDie Drucksache enthält zusätzlich – in kleinerer Schrifttype – den Fragetext.\nDrucksache 21/7627 – 2 – Deutscher Bundestag – 21. Wahlperiode",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "3",
       "question": "Wie ist nach Kenntnis der Bundesregierung die jeweilige mögliche Um-\nweltbelastung der betroffenen Liegenschaften in Thüringen, und inwiefern\ngibt es dabei besonders auffällige Befunde (bitte einzeln für die Liegen-\nschaften auflisten)?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "4",
       "question": "Welche zivile Nutzung gibt es nach Kenntnis der Bundesregierung derzeit\nbei den betroffenen Liegenschaften in Thüringen, und wie will die Bun-\ndesregierung mit der jeweiligen derzeitigen zivilen Nutzung umgehen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "5",
       "question": "Inwieweit wurden bzw. werden nach Kenntnis der Bundesregierung für\ndie betroffenen Liegenschaften in Thüringen alternative Nutzungskonzep-\nte weiterhin geprüft oder berücksichtigt?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "6",
       "question": "Liegen der Bundesregierung Erkenntnisse über bereits begonnene kom-\nmunale Planungen für die betroffenen Liegenschaften in Thüringen vor?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "7",
       "question": "Ist der Bundesregierung bekannt, in welchem Umfang Kommunen in Thü-\nringen bereits Planungskosten infolge des Umwandlungsmoratoriums hat-\nten?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "8",
       "question": "Bekommen Kommunen die in Frage 7 genannten Kosten vom Bund bzw.\nder Bundeswehr erstattet?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "9",
       "question": "Wie bewertet die Bundesregierung die finanziellen und strukturellen Aus-\nwirkungen des Umwandlungsmoratoriums auf die betroffenen Kommunen\nin Thüringen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "10",
       "question": "Wie bewertet die Bundesregierung die Auswirkungen eines möglichen\nweiteren Stillstands bei der Entwicklung der betroffenen Liegenschaften\nin Thüringen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "11",
       "question": "Plant die Bundesregierung Unterstützungsmaßnahmen für betroffene\nKommunen in Thüringen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "12",
       "question": "Welche konkreten Nutzungsabsichten verfolgt die Bundeswehr für die be-\ntroffenen Liegenschaften in Thüringen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "13",
       "question": "Mit welchem Planungs- und Umsetzungszeitraum hin zu einer militäri-\nschen Nutzung ist bei den betroffenen Liegenschaften in Thüringen zu\nrechnen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "14",
       "question": "Wann wurden durch die Bundesregierung oder die Bundeswehr welche\nGespräche mit welchem Ergebnis mit den betroffenen Kommunen der be-\ntroffenen Liegenschaften in Thüringen geführt?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "15",
       "question": "Zu welchen betroffenen Liegenschaften in Thüringen hat bereits eine Ab-\nstimmung zwischen Bundeswehr, BImA und betroffenen Kommunen\nstattgefunden, und mit welchen Ergebnissen?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "16",
       "question": "Wie stellt die Bundesregierung künftig sicher, dass vom Umwandlungs-\nmoratorium betroffene Kommunen in Thüringen frühzeitig und transpa-\nrent informiert werden?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "17",
       "question": "In welchen parlamentarischen Gremien auf Bundes-, Landes- und zwi-\nschenkommunaler Ebene wird die Bundesregierung jeweils wann und wie\nüber den weiteren Verlauf der (Um-)Nutzung der betroffenen Liegen-\nschaften in Thüringen informieren?"
     },
     {
-      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7627\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Die Fragen 1 bis 18 werden zusammen beantwortet.\nDas Bundesland Thüringen ist nicht vom Moratorium zur Konversion und Ver-\nwertung von Liegenschaften im Eigentum der Bundesanstalt für Immobilien-\naufgaben betroffen.",
       "number": "18",
       "question": "Welche öffentlichen Informationsveranstaltungen für die Bevölkerung vor\nOrt sind für die betroffenen Liegenschaften in Thüringen geplant?"
     }

@@ -21,7 +21,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.2+extract:7d9bb81fb22c",
+    "extractor_version": "pkg:0.0.2+extract:758efd703249",
     "input_sha256": "513f34e94eda70ef7ad6ba338e52049b5c58b43b6d88105712a877f0a76839dc",
     "model_artifacts": [],
     "parse_complete": true,
@@ -50,12 +50,12 @@
       "question": "In wie vielen dieser in Frage 1 erfragten Beschwerden haben sich die be-\ntroffenen Personen ausdrücklich als nicht binär oder divers identifiziert\noder wurde eine entsprechende Geschlechtsidentität von der ADS erfasst?"
     },
     {
-      "answer": "Die Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7652",
+      "answer": "Die Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.",
       "number": "3",
       "question": "Wie viele Gerichtsverfahren (Zivil-, Verwaltungs- oder Arbeitsgerichts-\nverfahren) sind der Bundesregierung bekannt, in denen seit 2020 eine Dis-\nkriminierung wegen nicht binärer Geschlechtsidentität im Rahmen des\nAGG geltend gemacht wurde?"
     },
     {
-      "answer": "Die Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.\nDeutscher Bundestag – 21. Wahlperiode – 3 – Drucksache 21/7652",
+      "answer": "Die Fragen 3 und 4 werden aufgrund ihres Sachzusammenhangs gemeinsam\nbeantwortet.\nDer Bundesregierung liegen über die öffentlich zugänglichen Quellen hinaus\nkeine Erkenntnisse zu Gerichtsentscheidungen zum AGG vor. Eine systemati-\nsche Erfassung erfolgt nicht.",
       "number": "4",
       "question": "In wie vielen dieser in Frage 3 erfragten Verfahren wurde das Merkmal\n„Geschlecht“ des AGG auf nicht binäre Personen angewendet?"
     },
@@ -85,7 +85,7 @@
       "question": "In wie vielen Fällen wurde Deadnaming (Verwendung eines früheren Na-\nmens entgegen der aktuellen Geschlechtsidentität) als mögliche Diskrimi-\nnierung oder Belästigung wegen des Geschlechts sowie als Verletzung des\nallgemeinen Persönlichkeitsrechts bei der ADS erfasst?"
     },
     {
-      "answer": "Nein.\nGesamtherstellung: H. Heenemann GmbH & Co. KG, Buch- und Offsetdruckerei, Bessemerstraße 83–91, 12103 Berlin, www.heenemann-druck.de\nVertrieb: Bundesanzeiger Verlag GmbH, Postfach 10 05 34, 50445 Köln, Telefon (02 21) 97 66 83 40, Fax (02 21) 97 66 83 44, www.bundesanzeiger-verlag.de\nISSN 0722-8333",
+      "answer": "Nein.",
       "number": "10",
       "question": "Holt sich die Bundesregierung zur aktuellen Rechtslage von Deadnaming\nim Hinblick auf den Diskriminierungstatbestand des Geschlechts sowie\nauf eine mögliche Belästigung nach § 3 Absatz 3 AGG und das allgemei-\nne Persönlichkeitsrecht, auch unter Berücksichtigung des SBGG (§§ 13,\n14 SBGG) juristischen Rat ein?"
     }

@@ -16,10 +16,9 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [
-      "answered_by.ministry",
-      "qa[9].answer"
+      "answered_by.ministry"
     ],
-    "extractor_version": "pkg:0.0.2+extract:7d9bb81fb22c",
+    "extractor_version": "pkg:0.0.2+extract:758efd703249",
     "input_sha256": "d3bae404b43c6faae74cf024f12b33740401e8083ea56fed13f6449c6f767c1a",
     "model_artifacts": [],
     "parse_complete": false,
@@ -40,7 +39,7 @@
   "parliament": "niedersachsen",
   "qa": [
     {
-      "answer": "1 https://www.destatis.de/DE/Presse/Pressemitteilungen/2024/07/PD24_284_212.html:contentRefe-\nrence%5Boaicite:0%5D%7Bindex=0%7D\n2 Stellungnahme des Nds. Ministeriums zur Petition 01131/89/19\n1\nNiedersächsischer Landtag – 19. Wahlperiode Drucksache 19/8020",
+      "answer": "Die Landesregierung unterstützt die Einführung einer generalistischen Ausbildung in den Pflegebe-\nrufen. Sie hat dies wiederholt in der Öffentlichkeit und im Landtag dargestellt und die Notwendigkeit\nder Pflegeberufereform gerade auch unter Berücksichtigung des drohenden Fachkräftemangels be-\ntont (vgl. Drucksache 17/7484). Da es sich beim Pflegeberufegesetz (PflBG) sowie der dazugehöri-\ngen Ausbildungs- und Prüfungsverordnung um bundesrechtliche Regelungen handelt, obliegt die in-\nhaltliche Ausgestaltung der Pflegeausbildung dem Bund. Vor diesem Hintergrund hat die Landesre-\ngierung keine speziellen Maßnahmen ergriffen, um die Kapazität für Ausbildungsplätze in der Kin-\nderkrankenpflege in Niedersachsen zu erhöhen.\n\n1 https://www.destatis.de/DE/Presse/Pressemitteilungen/2024/07/PD24_284_212.html:contentRefe-\nrence%5Boaicite:0%5D%7Bindex=0%7D\n2 Stellungnahme des Nds. Ministeriums zur Petition 01131/89/19",
       "number": "1",
       "question": "Welche Maßnahmen hat die Landesregierung seit Einführung der generalisierten Pflegeausbil-\ndung gegebenenfalls ergriffen, um die Kapazität für Ausbildungsplätze in der Kinderkranken-\npflege in Niedersachsen signifikant zu erhöhen?"
     },
@@ -55,7 +54,7 @@
       "question": "Fachverbände haben wiederholt auf dringenden Qualifizierungsbedarf in der Kinderkranken-\npflege hingewiesen. Wie bewertet die Landesregierung die Forderung, praktische und theoreti-\nsche Ausbildungsanteile im Bereich Pädiatrie auszuweiten?"
     },
     {
-      "answer": "Mit Einführung der generalistischen Ausbildung wurde auch die Ausbildungsfinanzierung neu aufge-\nstellt. In Niedersachsen wurde für die Abwicklung der Finanzierung die Niedersächsische Pflegeaus-\nbildungsfonds GmbH gegründet. Aus dem Fonds erhalten alle Träger der praktischen Ausbildung\nsowie die Pflegeschulen nach § 29 PflBG ein Ausbildungsbudget entsprechend der Anzahl der Aus-\nzubildenden. Eine gesonderte Förderung von Ausbildungsstätten der Kinderkrankenpflege besteht\nnicht und ist auch nicht geplant.\n2\nNiedersächsischer Landtag – 19. Wahlperiode Drucksache 19/8020",
+      "answer": "Mit Einführung der generalistischen Ausbildung wurde auch die Ausbildungsfinanzierung neu aufge-\nstellt. In Niedersachsen wurde für die Abwicklung der Finanzierung die Niedersächsische Pflegeaus-\nbildungsfonds GmbH gegründet. Aus dem Fonds erhalten alle Träger der praktischen Ausbildung\nsowie die Pflegeschulen nach § 29 PflBG ein Ausbildungsbudget entsprechend der Anzahl der Aus-\nzubildenden. Eine gesonderte Förderung von Ausbildungsstätten der Kinderkrankenpflege besteht\nnicht und ist auch nicht geplant.",
       "number": "4",
       "question": "Sieht der aktuelle Haushaltsplan eine gezielte finanzielle Förderung für Ausbildungsstätten der\nKinderkrankenpflege vor? Falls nein, ist die Förderung für das Haushaltsjahr 2026 geplant?"
     },
@@ -70,7 +69,7 @@
       "question": "Identifiziert die Landesregierung Fehler im Hinblick auf die bisherige Strategie zur Steigerung\nder Attraktivität des Berufsfeldes Gesundheits- und Kinderkrankenpflege? Wenn ja, welche, und\nwie beabsichtigt die Landesregierung diese konkret zu korrigieren?"
     },
     {
-      "answer": "3\nNiedersächsischer Landtag – 19. Wahlperiode Drucksache 19/8020",
+      "answer": "Die Landesregierung kann die in der Frage beschriebene Beobachtung nicht bestätigen. Der Lan-\ndesregierung ist allerdings bekannt, dass es für die 30 Kliniken in Niedersachsen, die über eine Fach-\nabteilung für Kinder- und Jugendmedizin verfügen, seit der Generalisierung der Pflegeausbildung\neine große Herausforderung ist, mehrere Tausend Auszubildende jährlich in der Praxis auszubilden.\nVor der Generalisierung haben ausschließlich die Auszubildenden in der Kinderkrankenpflege ihre\npraktischen Ausbildungszeiten in den Fachabteilungen für Kinder- und Jugendmedizin absolviert.\nSeit der Generalisierung müssen alle Auszubildenden zur Pflegefachkraft eine praktische Ausbil-\ndungszeit von 120 Stunden in der Pädiatrie absolvieren.\nVor diesem Hintergrund hat die Landesregierung mit dem bereits unter der Antwort zu Frage 5 er-\nwähnten Erlass eine Ausweitung der für einen Praxiseinsatz geeigneten Einrichtungen in der Pädi-\natrie vorgenommen.",
       "number": "7",
       "question": "Wie bewertet die Landesregierung den Umstand, dass Kliniken Beobachtern zufolge aus Per-\nsonalmangel immer wieder die Anzahl praktischer Einsatzplätze in der Kinderkrankenpflege\nreduzieren, und gibt es Maßnahmen der Landesregierung, um dem entgegenzuwirken?"
     },
@@ -80,13 +79,9 @@
       "question": "Gibt es ein landesweites Konzept, das über kurzfristige Maßnahmen hinausgeht und gezielt\nden dauerhaften Fachkräftebedarf in der Kinderkrankenpflege adressiert? Wenn nein, warum\nnicht?"
     },
     {
-      "answer": "Davon ausgehend, dass mit „privaten Bildungsträgern“ Pflegeschulen in privater Trägerschaft ge-\nmeint sind, weist die Landesregierung den Vorwurf der Passivität zurück.\nBereits vor Einführung der generalistischen Pflegeausbildung hat die Landesregierung ein breites\nInformationsangebot vorgehalten, welches auch weiterhin besteht und auf dem Bildungsportal Nie-\ndersachsen jederzeit frei zugänglich ist. Die Landesregierung ist im ständigen Austausch mit den\nVerbänden, die in der generalistischen Pflegeausbildung und in ihrer Finanzierung engagiert sind.\nDarüber hinaus bestehen für Bildungsträger verschiedene Möglichkeiten, sich in Niedersachsen be-\nraten zu lassen. Das Beratungsangebot der RLSB kann sowohl von öffentlichen als auch von privaten\nBildungsträgern kostenfrei in Anspruch genommen werden. Im Rahmen dieses Angebots können",
+      "answer": "Davon ausgehend, dass mit „privaten Bildungsträgern“ Pflegeschulen in privater Trägerschaft ge-\nmeint sind, weist die Landesregierung den Vorwurf der Passivität zurück.\nBereits vor Einführung der generalistischen Pflegeausbildung hat die Landesregierung ein breites\nInformationsangebot vorgehalten, welches auch weiterhin besteht und auf dem Bildungsportal Nie-\ndersachsen jederzeit frei zugänglich ist. Die Landesregierung ist im ständigen Austausch mit den\nVerbänden, die in der generalistischen Pflegeausbildung und in ihrer Finanzierung engagiert sind.\nDarüber hinaus bestehen für Bildungsträger verschiedene Möglichkeiten, sich in Niedersachsen be-\nraten zu lassen. Das Beratungsangebot der RLSB kann sowohl von öffentlichen als auch von privaten\nBildungsträgern kostenfrei in Anspruch genommen werden. Im Rahmen dieses Angebots können\nu. a. Fragen zur Umsetzung der Pflegeausbildung oder Neugründung von Pflegeschulen gemeinsam\nmit dem zuständigen Regionalen Landesamt erörtert und geklärt werden.\nDurch die neu gestaltete Finanzierung der Pflegeausbildung nach dem PflBG gibt es keine Unter-\nschiede bezüglich der finanziellen Förderung von Schulen in freier Trägerschaft und öffentlicher\nSchulen. In den alle zwei Jahre stattfindenden Budgetverhandlungen wird für alle Schulen ein ein-\nheitliches Budget pro Schülerin und Schüler verhandelt.\nDabei ist festzuhalten, dass die Ausbildung in Niedersachsen überwiegend an Schulen in freier Trä-\ngerschaft angeboten und durchgeführt wird. Im Jahr 2023 wurde die Ausbildung zur Pflegefachfrau /\nzum Pflegefachmann / zur Pflegefachperson an insgesamt 152 Schulen, davon 95 Schulen in freier\nTrägerschaft und 57 öffentlichen berufsbildenden Schulen, angeboten.\nDie Landesregierung sieht sich daher als verbindende und unterstützende Instanz mit dem Ziel, alle\nBildungsträger und Bildungseinrichtungen in den landesweiten Ausbau der Pflegeausbildung einzu-\nbinden.\n\n3 Siehe hierzu den Zwischenbericht der KAP.Ni auf der Internetseite des Niedersächsischen Ministeriums für\nSoziales, Arbeit, Gesundheit und Gleichstellung.",
       "number": "9",
       "question": "Wie rechtfertigt die Landesregierung ihre - Beobachtern zufolge bislang eher passive - Rolle\ngegenüber privaten Bildungsträgern, und welche Fördermaßnahmen sind gegebenenfalls ge-\nplant, damit diese aktiv zur Lösung des Fachkräfteproblems beitragen können?"
-    },
-    {
-      "number": "9u",
-      "question": "a. Fragen zur Umsetzung der Pflegeausbildung oder Neugründung von Pflegeschulen gemeinsam\nmit dem zuständigen Regionalen Landesamt erörtert und geklärt werden.\nDurch die neu gestaltete Finanzierung der Pflegeausbildung nach dem PflBG gibt es keine Unter-\nschiede bezüglich der finanziellen Förderung von Schulen in freier Trägerschaft und öffentlicher\nSchulen. In den alle zwei Jahre stattfindenden Budgetverhandlungen wird für alle Schulen ein ein-\nheitliches Budget pro Schülerin und Schüler verhandelt.\nDabei ist festzuhalten, dass die Ausbildung in Niedersachsen überwiegend an Schulen in freier Trä-\ngerschaft angeboten und durchgeführt wird. Im Jahr 2023 wurde die Ausbildung zur Pflegefachfrau /\nzum Pflegefachmann / zur Pflegefachperson an insgesamt 152 Schulen, davon 95 Schulen in freier\nTrägerschaft und 57 öffentlichen berufsbildenden Schulen, angeboten.\nDie Landesregierung sieht sich daher als verbindende und unterstützende Instanz mit dem Ziel, alle\nBildungsträger und Bildungseinrichtungen in den landesweiten Ausbau der Pflegeausbildung einzu-\nbinden.\n\n3 Siehe hierzu den Zwischenbericht der KAP.Ni auf der Internetseite des Niedersächsischen Ministeriums für\nSoziales, Arbeit, Gesundheit und Gleichstellung.\n4 (Verteilt am 11.08.2025)"
     }
   ],
   "reference": "19/7659",

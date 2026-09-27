@@ -15,7 +15,7 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.2+extract:7d9bb81fb22c",
+    "extractor_version": "pkg:0.0.2+extract:758efd703249",
     "input_sha256": "a0270ebdf0daa315ee2f481f4d11056f4064c70946bed60d3be61ba1bb99740f",
     "model_artifacts": [],
     "parse_complete": true,
@@ -54,7 +54,7 @@
       "question": "Aus welchen konkreten Gründen wurde eine inhaltliche Beantwortung der KA 5106 zu\nden Fragen 1-3 von der Landesregierung teilweise abgelehnt?"
     },
     {
-      "answer": "Es bestehen regelmäßige Austauschformate zwischen dem MKJFGFI und den ZABen wie z.B.\nein regelmäßig tagender Jour-Fixe Quartalsaustausch zur Landestransportkoordination\n(LTraKo) oder ein Fachaustausch zur Weiterentwicklung der Fachanwendung ZAB.NRW. Wie\nüblich in solchen Formaten werden die Ergebnisse der Besprechungen protokolliert.\n2\nLANDTAG NORDRHEIN-WESTFALEN - 18. Wahlperiode Drucksache 18/14087\n\n3",
+      "answer": "Es bestehen regelmäßige Austauschformate zwischen dem MKJFGFI und den ZABen wie z.B.\nein regelmäßig tagender Jour-Fixe Quartalsaustausch zur Landestransportkoordination\n(LTraKo) oder ein Fachaustausch zur Weiterentwicklung der Fachanwendung ZAB.NRW. Wie\nüblich in solchen Formaten werden die Ergebnisse der Besprechungen protokolliert.",
       "number": "5",
       "question": "In wie vielen Fällen wurden in dieser Legislaturperiode nach Arbeitsgruppensitzungen\nzwischen dem MKJFGFI und den ZABen schriftliche Ergebnisvermerke verfasst?"
     }

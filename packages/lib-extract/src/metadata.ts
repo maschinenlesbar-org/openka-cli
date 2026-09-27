@@ -166,11 +166,12 @@ export function parseUrheber(value: string): ParsedUrheber {
     if (parenthesised) {
       name = (parenthesised[1] as string).trim();
       party = (parenthesised[2] as string).trim();
-      // In this form the portal always writes a person surname-first — every
-      // "Name (Partei)" entry in the recorded payloads has the comma. Without one
-      // it is the Fraktion spelled out beside its abbreviation, as Schleswig-
-      // Holstein repeats it: "Sozialdemokratische Partei Deutschlands (SPD)".
-      if (!name.includes(",")) continue;
+      // Without a comma this is either a person written given name first, which is
+      // how the portal prints Bayern ("Florian Köhler (AfD); Oskar Lipp (AfD)" —
+      // 4,523 of 4,535 AfD rows lost every asker to the comma rule this replaced), or
+      // the Fraktion spelled out beside its abbreviation, as Schleswig-Holstein
+      // repeats it: "Sozialdemokratische Partei Deutschlands (SPD)". The name decides.
+      if (!name.includes(",") && !isPersonName(name)) continue;
     } else {
       // `Surname, Given, Dr., CDU` — a trailing comma-separated party.
       const parts = entry.split(",").map((part) => part.trim());
@@ -198,6 +199,33 @@ export function parseUrheber(value: string): ParsedUrheber {
     askers.push(asker);
   }
   return { askers, bodies };
+}
+
+/**
+ * Words that make a name an organisation. They are the words the Fraktionen's full
+ * names are built from ("Freie Demokratische Partei", "Christlich Demokratische
+ * Union Deutschlands", "Alternative für Deutschland", "Südschleswigscher
+ * Wählerverband"); no person in these rows carries one.
+ */
+const ORGANISATION_WORD =
+  /(?:^|\s)(?:Partei|Union|Bündnis|BÜNDNIS|Alternative|Wählerverband|Wählergemeinschaft|Fraktion|Gruppe|Linke|LINKE|Grüne|GRÜNE|Deutschlands)(?:\s|$)/u;
+
+/** Name particles a German or Dutch surname may carry in lower case. */
+const NAME_PARTICLE = /^(?:von|van|de|der|den|zu|vom|zum|ter)$/;
+
+/**
+ * A person written given name first: two to six words, each capitalised, a title
+ * (`Dr.`, `Prof.`) or a name particle — "Florian Köhler", "Dr. Ute Eiling-Hütig",
+ * "Ulrich von Zons". A number or a lower-case word that is not a particle ("für" in
+ * "Alternative für Deutschland") rules it out, and so does an organisation word.
+ */
+function isPersonName(name: string): boolean {
+  if (ORGANISATION_WORD.test(name)) return false;
+  const words = name.split(/\s+/).filter((word) => word !== "");
+  if (words.length < 2 || words.length > 6) return false;
+  return words.every(
+    (word) => TITLE.test(word) || NAME_PARTICLE.test(word) || /^\p{Lu}[\p{Ll}'’-]*(?:-\p{Lu}[\p{Ll}'’-]*)*\.?$/u.test(word),
+  );
 }
 
 /** Academic and parliamentary titles, which German records print after the name. */

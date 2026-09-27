@@ -127,6 +127,13 @@ export const FRAGE_ANTWORT: SegmentationRules = {
   ),
 };
 
+/**
+ * A letter sub-item: `a.`, `b)`. Not an abbreviation that happens to start a line —
+ * "z. B. Streitigkeiten" wrapped onto its own line in Bayern 19/12143 and became
+ * question "1z".
+ */
+const SUB_ITEM = /^[ \t]*([a-z])[.)][ \t]+(?![A-Za-zÄÖÜäöü]\.)(?=\S)/;
+
 /** The style where the question is a numbered list item and the answer says `Zu N`. */
 export const NUMMERIERT: SegmentationRules = {
   key: "nummeriert",
@@ -141,7 +148,7 @@ export const NUMMERIERT: SegmentationRules = {
   // that as a heading would attach the whole document to question one.
   unnumberedAnswer: /^[ \t]*Antwort(?:[ \t]+der[ \t]+Landesregierung)?[ \t]*:[ \t]*/i,
   subAnswer: /^[ \t]*(?:Antwort[ \t]+)?[Zz]u[ \t]+([a-z])[.)][ \t]*:?[ \t]*/,
-  subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
+  subQuestion: SUB_ITEM,
   bareNumbering: true,
 };
 
@@ -156,7 +163,7 @@ export const ANTWORT_FOLGT: SegmentationRules = {
   key: "antwort_folgt",
   description: "numbered questions whose answer follows directly (Bundestag answer Drucksachen)",
   question: new RegExp(`^[ \\t]*${BARE_ITEM}[ \\t]+(?!${MONTH}\\b)(?=\\S)`),
-  subQuestion: /^[ \t]*([a-z])[.)][ \t]+(?=\S)/,
+  subQuestion: SUB_ITEM,
   bareNumbering: true,
   answerFollowsQuestion: true,
   onlyWhenUnmarked: true,
@@ -193,17 +200,134 @@ export const RULE_SETS: readonly SegmentationRules[] = [
  * questions and the earlier ones look unanswered — which is a hole we would
  * otherwise report, in a document that answered everything it was asked.
  */
+//
+// The list may name letter sub-items on their own — Mecklenburg-Vorpommern writes
+// "Die Fragen 1, a) und b) werden zusammenhängend beantwortet" — and the sentence
+// comes in both word orders ("Aufgrund des Sachzusammenhangs werden die Fragen 1 und
+// 2 gemeinsam beantwortet"). "be-antwortet" is how the text layer returns the word
+// when the line broke inside it, which is how Bayern printed the grouping of 1.1 to
+// 2.2 in 19/12032 and why four of its answers were missing.
+const GROUP_LIST = `(${NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*(?:${NUMBER}|[a-z]\\)))*)`;
 const GROUPED_ANSWER = new RegExp(
-  `\\bDie\\s+Frage[n]?\\s+${NUMBER_LIST}\\s+werden\\b[^.]{0,160}?\\bbeantwortet\\b`,
+  `(?:\\bDie\\s+Frage[n]?\\s+${GROUP_LIST}\\s+werden\\b|\\bwerden\\s+die\\s+Fragen\\s+${GROUP_LIST})` +
+    `[^.]{0,160}?\\bbe-?\\s*antwortet\\b`,
   "i",
 );
 
-/** The question numbers an answer body says it also covers. */
-export function groupedAnswerNumbers(body: string): string[] {
+/**
+ * The question numbers an answer body says it also covers.
+ *
+ * `known` is the document's own question numbers, in document order. It is what a
+ * range between sub-numbers is expanded against: "1.1 bis 2.2" covers 1.2, 1.3 and
+ * 2.1 only because the document asked them, and a number it never asked is not
+ * produced — the same rule the plain integer range follows, applied to numbering
+ * that cannot be counted.
+ */
+export function groupedAnswerNumbers(body: string, known: readonly string[] = []): string[] {
   // Only the opening of the answer is considered: a sentence deep inside a long
   // answer is discussing something else, not announcing this answer's scope.
   const match = GROUPED_ANSWER.exec(body.slice(0, 400));
-  return match === null ? [] : expandNumbers(match[1] as string);
+  return match === null ? [] : expandGroup((match[1] ?? match[2]) as string, known);
+}
+
+function expandGroup(list: string, known: readonly string[]): string[] {
+  const out: string[] = [];
+  let pendingRange = false;
+  let lastInteger: string | undefined;
+  for (const part of list.split(/\s*(,|und|bis|sowie|-|–|—)\s*/i)) {
+    const raw = part.trim();
+    if (raw === "") continue;
+    if (/^(,|und|sowie)$/i.test(raw)) {
+      pendingRange = false;
+      continue;
+    }
+    if (/^(bis|-|–|—)$/i.test(raw)) {
+      pendingRange = true;
+      continue;
+    }
+    let token = normaliseNumber(raw);
+    if (/^[a-z]$/.test(token)) {
+      if (lastInteger === undefined) continue;
+      token = `${lastInteger}${token}`;
+    }
+    const integer = /^[0-9]+/.exec(token)?.[0];
+    if (integer !== undefined) lastInteger = integer;
+    if (pendingRange) {
+      pendingRange = false;
+      const from = out[out.length - 1];
+      const a = Number(from);
+      const b = Number(token);
+      if (Number.isInteger(a) && Number.isInteger(b) && b > a && b - a <= 30) {
+        for (let n = a + 1; n <= b; n++) if (!out.includes(String(n))) out.push(String(n));
+        continue;
+      }
+      const i = from === undefined ? -1 : known.indexOf(from);
+      const j = known.indexOf(token);
+      // Both ends are numbers the document asked, and so is everything between
+      // them, so there is nothing to invent and no cap: Bayern groups 1.1 to 8.3,
+      // thirty-three questions, in one sentence. Only numbers shaped like one of the
+      // ends are covered — Bayern's question list also carries section headings
+      // ("2. Fallzahlen") between 1.3 and 2.1, and those asked nothing — while
+      // "Die Fragen 1 bis 7 b" (Bayern 19/12773) spans 2, 3a … 7b.
+      if (i >= 0 && j > i) {
+        const shapes = new Set([numberShape(from as string), numberShape(token)]);
+        for (const number of known.slice(i + 1, j + 1)) {
+          if (shapes.has(numberShape(number)) && !out.includes(number)) out.push(number);
+        }
+        continue;
+      }
+    }
+    if (!out.includes(token)) out.push(token);
+  }
+  return out;
+}
+
+/** `1.1` -> `#.#`, `2a` -> `#a`, `3` -> `#`: the form of a number, not its value. */
+function numberShape(number: string): string {
+  return number.replace(/[0-9]+/g, "#").replace(/[a-z]/g, "a");
+}
+
+/**
+ * Remove a later question's text from the end of an answer.
+ *
+ * Saarland's answer papers restate each question, without its number, *above* the
+ * "Zu Frage N:" heading that answers it. Read by heading, the text under "Zu Frage
+ * 1:" therefore runs on into the restated question 2, and 217 answers in the corpus
+ * ended with the next question — in records that reported nothing missing.
+ *
+ * Only an exact restatement is cut (whitespace, soft hyphens and hyphens ignored,
+ * as `restatesSameQuestion` does), and only at the end of an answer. An answer that
+ * was nothing but the next question had no text of its own, and abstains.
+ */
+export function trimRestatedQuestions(segments: QaSegment[]): QaSegment[] {
+  // Whitespace, soft hyphens and hyphens go, as in `restatesSameQuestion`, and so
+  // does the closing mark: Saarland's question paper ends question 4 with a full
+  // stop and its answer paper restates it with a question mark.
+  const squeeze = (value: string): string => value.replace(/[\s\u00ad-]+/g, "").toLowerCase();
+  const unpunctuated = (value: string): string => value.replace(/[.?!:;]+$/, "");
+  return segments.map((segment, index) => {
+    if (segment.answer === undefined) return segment;
+    const lines = segment.answer.split("\n");
+    for (const later of segments.slice(index + 1)) {
+      if (later.question === undefined) continue;
+      const question = unpunctuated(squeeze(later.question));
+      // A question this short ("Mit welchem Erfolg?") also occurs as ordinary text.
+      if (question.length < 20) continue;
+      let tail = "";
+      for (let k = lines.length - 1; k >= 0; k--) {
+        tail = squeeze(lines[k] as string) + tail;
+        const candidate = unpunctuated(tail);
+        if (candidate.length > question.length) break;
+        if (candidate !== question) continue;
+        const kept = lines.slice(0, k).join("\n").trim();
+        const trimmed: QaSegment = { number: segment.number };
+        if (segment.question !== undefined) trimmed.question = segment.question;
+        if (kept !== "") trimmed.answer = kept;
+        return trimmed;
+      }
+    }
+    return segment;
+  });
 }
 
 /** Any answer heading at all — the guard for `onlyWhenUnmarked`. */
@@ -233,6 +357,31 @@ const ANY_ANSWER_HEADING = new RegExp(
 export function splitAtQuestionMark(body: string): { question: string; answer?: string } {
   const paragraphs = body.split(/\n[ \t]*\n/);
   if (paragraphs.length > 1) {
+    // The question is the *leading run* of paragraphs that ask something, not
+    // everything up to the last question mark in the block: an answer's table can
+    // hold a project title that ends in one, and in the Bundestag's 19/744 that
+    // made the whole answer to question 19 but its last rows part of the question.
+    let run = 0;
+    while (run < paragraphs.length && (paragraphs[run] as string).includes("?")) run++;
+    if (run > 0 && run < paragraphs.length) {
+      const asked = paragraphs.slice(0, run);
+      const rest = paragraphs.slice(run);
+      // Lines after the last question mark in the run are the start of the answer,
+      // unless they continue the question — a parenthetical, "(Bitte nach Jahren
+      // aufschlüsseln)", or "Bitte …". The Bundestag sets "Die Fragen 1 und 2 werden
+      // zusammen beantwortet." directly under the question, with no blank line.
+      const lastLines = (asked[run - 1] as string).split("\n");
+      let lastAsk = -1;
+      lastLines.forEach((line, i) => {
+        if (line.trimEnd().endsWith("?")) lastAsk = i;
+      });
+      const trailing = lastAsk < 0 ? [] : lastLines.slice(lastAsk + 1);
+      if (trailing.length > 0 && !QUESTION_CONTINUES.test(trailing[0] as string)) {
+        asked[run - 1] = lastLines.slice(0, lastAsk + 1).join("\n");
+        rest.unshift(trailing.join("\n"));
+      }
+      return { question: asked.join("\n\n").trim(), answer: rest.join("\n\n").trim() };
+    }
     let lastParagraph = -1;
     for (let i = 0; i < paragraphs.length; i++) {
       if ((paragraphs[i] as string).includes("?")) lastParagraph = i;
@@ -255,6 +404,13 @@ export function splitAtQuestionMark(body: string): { question: string; answer?: 
   const answer = lines.slice(last + 1).join("\n").trim();
   return answer === "" ? { question } : { question, answer };
 }
+
+/**
+ * A line after a question mark that still belongs to the question: a parenthetical,
+ * a line asking for something ("Die Antwort bitte begründen." — Hessen closes its
+ * questions that way), or one that asks again ("Wenn nein: Warum nicht? …").
+ */
+const QUESTION_CONTINUES = /^[ \t]*\(|\bbitte\b|\?/i;
 
 /**
  * How much of the range `1..max` a rule set has to account for before its reading
@@ -527,6 +683,58 @@ export function splitAtAnswerDivider(
   return undefined;
 }
 
+/** How many leading lines of an inferred answer are checked for the divider. */
+const DIVIDER_LOOKAHEAD = 4;
+
+/**
+ * The divider as a line of its own, without a colon. "Antwort:" is a different
+ * thing — an answer heading under one question, as Bayern also writes it — and an
+ * answer that begins with one is exactly the answer.
+ */
+const BARE_DIVIDER = /^[ \t]*Antwort(?:en)?(?:[ \t]+(?:der|des)[ \t]+[^\n:]{0,60})?[ \t]*$/i;
+
+function opensAnswerPart(text: string): boolean {
+  return text
+    .split("\n")
+    .slice(0, DIVIDER_LOOKAHEAD)
+    .some((line) => BARE_DIVIDER.test(line));
+}
+
+/**
+ * Bayern's layout, recognised before any reading is attempted: a list of question
+ * headings, a line that says only "Antwort", then the questions restated with the
+ * government's reply under each.
+ *
+ * Read as one text, that layout gives every question two occurrences and the
+ * first-read answer wins — and the first occurrence is the list, where whatever
+ * follows a question (a page's footnote "1 https://archive.is/…", the table of
+ * contents' last entry) was published as its answer while the real one was
+ * dropped. Split here instead, the list supplies the questions and the restatement
+ * the answers, which is what the document means.
+ *
+ * Stricter than `splitAtAnswerDivider` on purpose: the divider must be the bare
+ * word, and at least two question headings must precede it. Schleswig-Holstein
+ * writes "Antwort:" under every question, and the Bundestag's cover page carries a
+ * bare "Antwort" with no question list in front of it; neither is this layout.
+ */
+export function splitQuestionListFromAnswers(
+  text: string,
+  ruleSets: readonly SegmentationRules[] = RULE_SETS,
+): { questions: string; answers: string } | undefined {
+  const lines = text.split("\n");
+  let listed = 0;
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i] as string;
+    if (/^[ \t]*Antwort[ \t]*$/.test(line)) {
+      const answers = lines.slice(i + 1).join("\n");
+      if (listed >= 2 && answers.trim() !== "") return { questions: lines.slice(0, i).join("\n"), answers };
+      continue;
+    }
+    if (ruleSets.some((rules) => rules.question.test(line))) listed++;
+  }
+  return undefined;
+}
+
 export interface SegmentOptions {
   /**
    * Whether a reading must include answers to be believed. True for a document
@@ -586,10 +794,17 @@ export function applyRules(
       ? splitAtQuestionMark(whole)
       : undefined;
     const body = split === undefined ? whole : split.question;
+    // Text that opens with the answer divider is where the answer part *starts*,
+    // not an answer. Bayern's last listed question is followed directly by
+    // "Antwort / des Staatsministeriums … / vom …"; read as that question's answer it
+    // took the slot, and the real answer under the restated question was dropped.
+    // The divider need not be the first line: a page's footnote ("1 https://…") or
+    // the table of contents' last entry ("Anlage 7") can sit between them.
+    const inferred = split?.answer !== undefined && !opensAnswerPart(split.answer) ? split.answer : undefined;
     for (const number of marker.numbers) {
       if (marker.kind === "question") {
         if (!order.includes(number)) order.push(number);
-        if (split?.answer !== undefined && !answers.has(number)) answers.set(number, split.answer);
+        if (inferred !== undefined && !answers.has(number)) answers.set(number, inferred);
         // A number repeated as a question heading usually means the document
         // restates it — once in the question part, again above the answer — and the
         // first occurrence is the question as asked. When the restatement says
@@ -615,19 +830,21 @@ export function applyRules(
   // that has no heading anywhere is a misread of the sentence, not a discovery of a
   // question, and adding it would invent a Q/A pair with no question in it.
   for (const body of [...answers.values()]) {
-    for (const covered of groupedAnswerNumbers(body)) {
+    for (const covered of groupedAnswerNumbers(body, order)) {
       if (order.includes(covered) && !answers.has(covered)) answers.set(covered, body);
     }
   }
 
-  const segments: QaSegment[] = order.map((number) => {
-    const segment: QaSegment = { number };
-    const question = questions.get(number);
-    const answer = answers.get(number);
-    if (question !== undefined && question !== "" && !contested.has(number)) segment.question = question;
-    if (answer !== undefined && answer !== "") segment.answer = answer;
-    return segment;
-  });
+  const segments: QaSegment[] = trimRestatedQuestions(
+    order.map((number) => {
+      const segment: QaSegment = { number };
+      const question = questions.get(number);
+      const answer = answers.get(number);
+      if (question !== undefined && question !== "" && !contested.has(number)) segment.question = question;
+      if (answer !== undefined && answer !== "") segment.answer = answer;
+      return segment;
+    }),
+  );
 
   const rejection = consistencyProblem(
     segments,

@@ -1,0 +1,8 @@
+{
+  "extractor_version": "pkg:0.0.2+extract:758efd703249",
+  "human_verified": false,
+  "id": "mecklenburg-vorpommern-8-6344",
+  "note": "Mecklenburg-Vorpommern: running header on every page and the two-line transmission note at the foot of the answer's first page; 'Die Fragen 4 und 5 werden zusammenhängend beantwortet'",
+  "source": "mecklenburg-vorpommern",
+  "tier": "text_layer"
+}
