@@ -1,7 +1,7 @@
 {
   "name": "openka-workspace",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Workspace for @maschinenlesbar.org/openka-cli \u2014 every package lives under packages/.",
   "workspaces": [
