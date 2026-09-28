@@ -9,7 +9,7 @@
   "document_type": "schriftliche_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.0.2+extract:758efd703249",
+    "extractor_version": "pkg:0.0.3+extract:758efd703249",
     "input_sha256": "cb339c218d1db37c21166aab6cc63b3604313ad4ba762ed5a87c5768743c88f1",
     "model_artifacts": [],
     "parse_complete": true,
