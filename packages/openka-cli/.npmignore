@@ -12,7 +12,7 @@
 /test/
 /dist/test/
 
-# Source maps point at src/*.ts, which is not shipped
+# No source maps are emitted; this keeps out any an older build left behind
 /dist/**/*.map
 
 # Tooling & config

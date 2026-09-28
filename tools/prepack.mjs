@@ -19,8 +19,9 @@
 // place for the length of the pack, and the package README waits beside it under a
 // gitignored name until `postpack` puts it back.
 //
-// Source maps stay behind. They point at `src/*.ts`, which the tarball does not
-// carry, so a shipped map is a reference to a file nobody has.
+// No source maps. `tsconfig.base.json` emits none — they would point at `src/*.ts`,
+// which the tarball does not carry — and the copy below skips any that an older
+// build left in a `dist/`.
 //
 // Everything written here is generated and gitignored. The originals stay the
 // single source of truth.

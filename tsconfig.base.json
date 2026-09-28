@@ -11,8 +11,8 @@
       "node"
     ],
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    "declarationMap": false,
+    "sourceMap": false,
     "removeComments": false,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

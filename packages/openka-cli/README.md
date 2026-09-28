@@ -41,8 +41,10 @@ differently from a maintainer reading this directory:
   installs it. For the length of the pack the repository README stands in for it,
   and this one waits as `package-readme.parked.md`. A pack that dies before
   `postpack` leaves it parked; the next `prepack` puts it back first.
-- **Source maps stay behind.** They point at `src/*.ts`, which the tarball does not
-  carry. `files` excludes this package's own and `prepack` skips the bundled ones.
+- **No source maps.** `tsconfig.base.json` emits none, because they would point at
+  `src/*.ts`, which the tarball does not carry. Any an older build left in a `dist/`
+  stay out anyway: `files` excludes this package's own and `prepack` skips the
+  bundled ones.
 - **Bundled manifests name their licence.** A workspace package never ships alone,
   so its `package.json` has no `license`, `author` or `repository`. A consumer's
   licence scanner reads every bundled manifest on its own, so `prepack` stamps those
