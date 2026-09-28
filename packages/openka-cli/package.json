@@ -18,6 +18,7 @@
   },
   "files": [
     "dist/src",
+    "!dist/src/**/*.map",
     "LICENSING.md",
     "CONTRIBUTING.md",
     "DATA_LICENSE.md",
@@ -112,6 +113,17 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/maschinenlesbar-org/openka-cli/issues"
+  },
+  "homepage": "https://maschinenlesbar-org.github.io/openka-cli/",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/sebs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22"

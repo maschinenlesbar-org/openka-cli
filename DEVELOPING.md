@@ -35,6 +35,15 @@ literal, because the line reads no manifest at run time — which is what `ka --
 lifecycle script (`tools/version.mjs`) rewrites and stages it during `npm version`,
 and a test in `lib-repro` fails if the two ever disagree.
 
+**The first publish is local; every one after it is `publish.yml`.** npm Trusted
+Publishing can only be configured for a package that already exists, so the first
+version goes up from a maintainer's machine, from a clean checkout of its tag:
+`npm publish --workspace @maschinenlesbar.org/openka-cli --access public`. Not
+`npm run publish:npm` — its `--provenance` needs the OIDC token of a GitHub Actions
+run and fails anywhere else. Then set the trusted publisher on npmjs.com (this
+repository, workflow `publish.yml`), and later versions go tag → `release.yml` →
+dispatch `publish.yml`, like every other repository in the workspace.
+
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
 `node packages/cli-ka/dist/src/index.js --help`.

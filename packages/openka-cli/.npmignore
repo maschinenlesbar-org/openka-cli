@@ -1,0 +1,30 @@
+# The published package ships the compiled library (dist/src), the documents
+# tools/prepack.mjs copies in, and the workspace packages it bundles under
+# node_modules/ — declared via the "files" allowlist and "bundleDependencies" in
+# package.json. This .npmignore is a second line of defence so source, tests and
+# tooling never end up in the tarball even if the allowlist is loosened.
+#
+# Every pattern is anchored to this directory: an unanchored `src/` would also
+# match `dist/src/`, which is the one thing the tarball exists to carry.
+
+# Sources & tests
+/src/
+/test/
+/dist/test/
+
+# Source maps point at src/*.ts, which is not shipped
+/dist/**/*.map
+
+# Tooling & config
+/tsconfig.json
+/tsconfig.test.json
+/dist/*.tsbuildinfo
+/.npmignore
+
+# The package README, parked by tools/prepack.mjs while the repository README
+# stands in for it on the registry page
+/package-readme.parked.md
+
+# Build/scratch artifacts
+*.log
+.DS_Store

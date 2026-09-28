@@ -28,16 +28,36 @@ is silent: `npm pack` succeeds and the tarball is simply 20 kB instead of 300.
 `tools/prepack.mjs` handles it. It copies each workspace dependency's manifest and
 built `dist` into this package's `node_modules`, walks the dependency graph
 **transitively** — bundling only the direct ones leaves half the graph missing — and
-copies in the repository-level documents the tarball carries, because npm cannot
-reach outside a package directory when it builds one. Everything it writes is
-generated and gitignored; the originals stay the single source of truth.
+copies in the repository-level documents the tarball carries, `LICENSE` among them,
+because npm cannot reach outside a package directory when it builds one. Everything
+it writes is generated and gitignored; the originals stay the single source of truth.
+`tools/postpack.mjs` removes it all again as soon as the tarball exists.
+
+Three more things happen on the way, each because the registry reads the tarball
+differently from a maintainer reading this directory:
+
+- **The README is swapped.** npm shows this directory's `README.md` on the package
+  page, and this file is written for whoever maintains the package, not whoever
+  installs it. For the length of the pack the repository README stands in for it,
+  and this one waits as `package-readme.parked.md`. A pack that dies before
+  `postpack` leaves it parked; the next `prepack` puts it back first.
+- **Source maps stay behind.** They point at `src/*.ts`, which the tarball does not
+  carry. `files` excludes this package's own and `prepack` skips the bundled ones.
+- **Bundled manifests name their licence.** A workspace package never ships alone,
+  so its `package.json` has no `license`, `author` or `repository`. A consumer's
+  licence scanner reads every bundled manifest on its own, so `prepack` stamps those
+  fields onto each copy from this package's manifest.
+
+`.npmignore` is only a second line of defence behind `files`. Its patterns are
+anchored to this directory, because an unanchored `src/` would also match
+`dist/src/`.
 
 Verify a change to any of that the only way that means anything:
 
 ```bash
 npm run pack                      # from the workspace root
 cd /tmp && mkdir t && cd t && npm init -y
-npm install /path/to/maschinenlesbar.org-openka-cli-0.0.1.tgz
+npm install /path/to/maschinenlesbar.org-openka-cli-<version>.tgz
 ./node_modules/.bin/ka sources list
 ```
 

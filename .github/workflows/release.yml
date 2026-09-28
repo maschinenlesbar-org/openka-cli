@@ -75,21 +75,22 @@ jobs:
       - name: Test
         run: npm test
 
-      # `npm pack` produces the npm-native package tarball (.tgz), ready to upload.
-      - name: Pack npm tarball
-        run: |
-          mkdir -p dist-artifacts
-          npm pack --workspace @maschinenlesbar.org/openka-cli --pack-destination dist-artifacts
-          ls -la dist-artifacts
-
       # CycloneDX SBOMs with exact, pinned versions and the full transitive
       # closure, read from the installed tree (npm ci ran above). Two files:
       #  - *.cdx.json      runtime/production graph — what consumers install
       #  - *.dev.cdx.json  full graph incl. devDependencies — the build env
+      #
+      # Runs BEFORE `npm pack`: the pinned-but-transitively-unpinned cyclonedx tool
+      # must not execute while a built .tgz already sits in dist-artifacts/, where a
+      # compromised transitive dep could tamper it before the Release upload. It only
+      # reads the installed tree and writes its own JSON, so the tarball does not yet
+      # exist when it runs. (npm publishing is unaffected: publish.yml rebuilds from
+      # the tag.)
       - name: Generate SBOMs (CycloneDX)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          mkdir -p dist-artifacts
           base="dist-artifacts/openka-cli-${VERSION}"
           npx --yes @cyclonedx/cyclonedx-npm@4.2.1 \
             --omit dev \
@@ -100,6 +101,14 @@ jobs:
             --spec-version 1.6 \
             --output-format JSON \
             --output-file "${base}.dev.cdx.json"
+          ls -la dist-artifacts
+
+      # `npm pack` produces the npm-native package tarball (.tgz), ready to upload.
+      # Packed last so the SBOM tool above never runs with a built tarball present.
+      - name: Pack npm tarball
+        run: |
+          mkdir -p dist-artifacts
+          npm pack --workspace @maschinenlesbar.org/openka-cli --pack-destination dist-artifacts
           ls -la dist-artifacts
 
       # The runner's preinstalled gh CLI rather than a third-party action, so no
