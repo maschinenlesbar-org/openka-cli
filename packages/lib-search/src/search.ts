@@ -5,6 +5,7 @@
 
 import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "@maschinenlesbar.org/openka-lib-store";
 import type { CatalogEntry, Store } from "@maschinenlesbar.org/openka-lib-store";
+import { normalizeSearchFilters } from "./filters.js";
 
 export interface SearchFilters {
   parliament?: string[];
@@ -41,7 +42,11 @@ export interface SearchResult {
   hits: SearchHit[];
 }
 
-/** True when a catalog row passes every structured filter. */
+/**
+ * True when a catalog row passes every structured filter. Expects filters in the
+ * canonical form `normalizeSearchFilters` returns; `search()` and `searchLike()`
+ * normalise before they call it.
+ */
 export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boolean {
   if (filters.parliament?.length && !filters.parliament.includes(entry.parliament)) return false;
   if (filters.period?.length && !filters.period.includes(entry.legislative_period)) return false;
@@ -62,8 +67,12 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
 /**
  * Run a search. An empty query means "every record that passes the filters",
  * ordered by id, which is what `ka search --parliament berlin --year 2024` needs.
+ * The filters are checked and normalised first (`normalizeSearchFilters`): a
+ * filter that cannot match throws `OpenKaValidationError` instead of answering
+ * "no matches".
  */
-export function search(store: Store, query: string, options: SearchOptions = {}): SearchResult {
+export function search(store: Store, query: string, searchOptions: SearchOptions = {}): SearchResult {
+  const options: SearchOptions = { ...searchOptions, ...normalizeSearchFilters(searchOptions) };
   const parsed = parseQuery(query);
   const limit = options.limit ?? 20;
   const offset = options.offset ?? 0;
@@ -244,7 +253,10 @@ export interface ReviewQueue {
  * holes, which is what the queue is for.
  */
 export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): ReviewQueue {
-  const filters: SearchFilters = { onlyAbstained: true, ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }) };
+  const filters = normalizeSearchFilters({
+    onlyAbstained: true,
+    ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),
+  });
   const queue = store
     .catalog()
     .filter((entry) => entry.review_status !== "human_verified" && matchesFilters(entry, filters))

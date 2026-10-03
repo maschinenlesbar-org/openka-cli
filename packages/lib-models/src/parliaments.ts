@@ -93,3 +93,19 @@ export function parliamentByHerkunft(code: string): Parliament | undefined {
 export function isParliamentKey(value: string): value is ParliamentKey {
   return BY_KEY.has(value);
 }
+
+/** The canonical form of a parliament key a caller typed: trimmed, lower case. */
+export function normalizeParliamentKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * Why `value` names no parliament, or `undefined` when it names one (in any case,
+ * with any padding — `normalizeParliamentKey` folds it). An unknown key used to
+ * filter everything away and read as "No matches."
+ */
+export function parliamentKeyProblem(value: string): string | undefined {
+  return isParliamentKey(normalizeParliamentKey(value))
+    ? undefined
+    : `Unknown parliament "${value}". Known: ${ParliamentKeys.join(", ")}.`;
+}

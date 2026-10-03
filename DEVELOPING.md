@@ -199,6 +199,13 @@ What the library rejects with `OpenKaValidationError`, so far:
   hex digits (`modelSha256Problem`); `loadBaseline`/`saveBaseline` a blank path. The
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so
   `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
+- **A search filter that cannot match** — `search()`, `searchLike()` and
+  `reviewQueue()` run `normalizeSearchFilters` (`lib-search`): an unknown parliament
+  (keys are trimmed and case-folded, so `Berlin` works), a blank party, an unknown
+  review status, a year outside 1949–2999 or a period outside 1–99 (`YEAR_RANGE`,
+  `PERIOD_RANGE`), a date that is not a `YYYY-MM-DD` calendar date (padding is
+  trimmed; `isoDateProblem` in `lib-models`). `ka`'s `--parliament`, `--from`/`--to`,
+  `--year`/`--period` parsers call the same rules.
 
 What the library now computes that a `ka` action used to compute on its own:
 

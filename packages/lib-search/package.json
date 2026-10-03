@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@maschinenlesbar.org/openka-lib-errors": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-models": "0.0.1",
     "@maschinenlesbar.org/openka-lib-store": "0.0.1"
   },
   "scripts": {

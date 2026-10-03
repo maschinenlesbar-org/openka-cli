@@ -11,6 +11,8 @@ import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-l
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
+import { PERIOD_RANGE, YEAR_RANGE, intRangeProblem, normalizeSearchFilters, reviewStatusProblem, searchParliamentProblem } from "../src/filters.js";
+import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -559,5 +561,48 @@ describe("corpus statistics", () => {
       by_tier: { text_layer: 3 },
     });
     deepStrictEqual(corpusStats(new MemoryStore()), { records: 0, parse_complete: 0, needs_review: 0, by_parliament: {}, by_tier: {} });
+  });
+});
+
+describe("search filter rules", () => {
+  it("normalises what has one canonical form and keeps the rest", () => {
+    deepStrictEqual(
+      normalizeSearchFilters({ parliament: ["Berlin", " BUND "], party: [" CDU "], from: " 2024-03-01", to: "2024-06-30 ", year: [2024], period: [19], reviewStatus: ["ok"], onlyAbstained: true }),
+      { parliament: ["berlin", "bund"], party: ["cdu"], from: "2024-03-01", to: "2024-06-30", year: [2024], period: [19], reviewStatus: ["ok"], onlyAbstained: true },
+    );
+    deepStrictEqual(normalizeSearchFilters({}), {});
+  });
+
+  it("refuses a filter that cannot match, naming it", () => {
+    const cases: [object, string][] = [
+      [{ parliament: ["narnia"] }, `Invalid parliament: Unknown parliament "narnia". Known: `],
+      [{ parliament: [""] }, "Invalid parliament: Expected a non-empty value."],
+      [{ party: ["  "] }, "Invalid party: Expected a non-empty value."],
+      [{ reviewStatus: ["verified"] }, "Invalid reviewStatus: Allowed choices are ok, needs_review, human_verified."],
+      [{ year: [24] }, "Invalid year: Must be >= 1949."],
+      [{ year: [2024.5] }, "Invalid year: Expected an integer."],
+      [{ period: [0] }, "Invalid period: Must be >= 1."],
+      [{ period: [100] }, "Invalid period: Must be <= 99."],
+      [{ from: "2024-02-30" }, "Invalid from: Not a calendar date."],
+      [{ to: "2024-1-5" }, "Invalid to: Expected a date as YYYY-MM-DD."],
+    ];
+    for (const [filters, message] of cases) {
+      throws(
+        () => normalizeSearchFilters(filters),
+        (error: unknown) => error instanceof OpenKaValidationError && error.message.startsWith(message),
+        JSON.stringify(filters),
+      );
+    }
+  });
+
+  it("exposes its rules and bounds for the CLI's parsers", () => {
+    deepStrictEqual([YEAR_RANGE, PERIOD_RANGE], [[1949, 2999], [1, 99]]);
+    strictEqual(intRangeProblem(1, 99)(50), undefined);
+    strictEqual(searchParliamentProblem("Bund"), undefined);
+    strictEqual(reviewStatusProblem("human_verified"), undefined);
+  });
+
+  it("is enforced by search() before it reads anything", () => {
+    throws(() => search(new MemoryStore(), "", { parliament: ["narnia"] }), OpenKaValidationError);
   });
 });

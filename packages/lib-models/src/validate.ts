@@ -38,6 +38,23 @@ export function isCalendarDate(value: string): boolean {
   return d <= daysInMonth;
 }
 
+/** The canonical form of a date a caller typed: padding trimmed. */
+export function normalizeIsoDate(value: string): string {
+  return value.trim();
+}
+
+/**
+ * Why `value` is not a `YYYY-MM-DD` calendar date, or `undefined` when it is one
+ * (padding aside — `normalizeIsoDate` trims it). Compared as a string, a padded or
+ * unpadded date silently moved a date window: `" 2024-03-01"` sorts before every
+ * real date, `"2024"` after none of them.
+ */
+export function isoDateProblem(value: string): string | undefined {
+  const trimmed = normalizeIsoDate(value);
+  if (!ISO_DATE.test(trimmed)) return "Expected a date as YYYY-MM-DD.";
+  return isCalendarDate(trimmed) ? undefined : "Not a calendar date.";
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

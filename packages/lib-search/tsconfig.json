@@ -12,6 +12,9 @@
       "path": "../lib-errors"
     },
     {
+      "path": "../lib-models"
+    },
+    {
       "path": "../lib-store"
     }
   ]

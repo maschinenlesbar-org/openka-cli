@@ -6,9 +6,9 @@ import { describe, it } from "node:test";
 import { canonicalJson, canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256, sha256Canonical } from "@maschinenlesbar.org/openka-lib-repro";
 import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/schema.js";
-import { isCalendarDate, validateRecord } from "../src/validate.js";
+import { isCalendarDate, isoDateProblem, normalizeIsoDate, validateRecord } from "../src/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/json-schema.js";
-import { isParliamentKey, parliamentByHerkunft, parliamentByKey, PARLIAMENTS } from "../src/parliaments.js";
+import { isParliamentKey, normalizeParliamentKey, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
 import { extractorVersion, VERSION_ENV } from "@maschinenlesbar.org/openka-lib-repro";
 import { EXTRACTION_DIGEST } from "@maschinenlesbar.org/openka-lib-repro";
 import { computeExtractionDigest, extractionSourceFiles } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -266,4 +266,23 @@ describe("extractor version", () => {
     ok(!files.some((file) => file.startsWith("src/core/repro/")));
   });
 
+});
+
+describe("the input rules for dates and parliament keys", () => {
+  it("takes a calendar date as YYYY-MM-DD, padding trimmed", () => {
+    for (const date of ["2024-03-01", " 2024-03-01", "2024-02-29 "]) strictEqual(isoDateProblem(date), undefined, date);
+    strictEqual(normalizeIsoDate(" 2024-03-01 "), "2024-03-01");
+    for (const date of ["", "  ", "2024", "2024-1-5", "01.03.2024"]) {
+      strictEqual(isoDateProblem(date), "Expected a date as YYYY-MM-DD.", JSON.stringify(date));
+    }
+    for (const date of ["2024-02-30", "2023-02-29", "2024-13-01"]) strictEqual(isoDateProblem(date), "Not a calendar date.", date);
+  });
+
+  it("takes a parliament key in any case and padding, and names the known ones otherwise", () => {
+    for (const key of ["berlin", "Berlin", " BERLIN "]) {
+      strictEqual(parliamentKeyProblem(key), undefined, key);
+      strictEqual(normalizeParliamentKey(key), "berlin");
+    }
+    match(parliamentKeyProblem("narnia") ?? "", /^Unknown parliament "narnia"\. Known: bund, /);
+  });
 });

@@ -10,6 +10,7 @@
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { matchesFilters, type SearchFilters, type SearchHit } from "./search.js";
+import { normalizeSearchFilters } from "./filters.js";
 
 /** Cosine similarity of two equal-length vectors. */
 export function cosine(a: readonly number[], b: readonly number[]): number {
@@ -42,8 +43,10 @@ export interface SemanticOptions extends SearchFilters {
 export function searchLike(
   store: EmbeddingStore & CatalogStore,
   id: string,
-  options: SemanticOptions = {},
+  semanticOptions: SemanticOptions = {},
 ): SearchHit[] {
+  // The same filter rules as keyword search, checked before anything is read.
+  const options: SemanticOptions = { ...semanticOptions, ...normalizeSearchFilters(semanticOptions) };
   const set = store.loadEmbeddings();
   if (set === undefined) {
     throw new OpenKaError(

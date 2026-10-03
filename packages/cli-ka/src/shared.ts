@@ -7,8 +7,14 @@
 // exists to avoid.
 
 import { Command, InvalidArgumentError, Option } from "commander";
-import { ParliamentKeys } from "@maschinenlesbar.org/openka-lib-models";
-import type { SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
+import { ParliamentKeys, isoDateProblem, normalizeIsoDate, normalizeParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
+import {
+  PERIOD_RANGE,
+  YEAR_RANGE,
+  intRangeProblem,
+  searchParliamentProblem,
+  type SearchFilters,
+} from "@maschinenlesbar.org/openka-lib-search";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
@@ -37,13 +43,17 @@ function parseDecimalInt(value: string): number | undefined {
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
-/** commander value-parser: an integer constrained to [min, max]. */
+/**
+ * commander value-parser: an integer constrained to [min, max]. Reading the
+ * decimal is the CLI's part; the range is the library's `intRangeProblem`.
+ */
 export function parseBoundedInt(min: number, max?: number): (value: string) => number {
+  const problem = intRangeProblem(min, max);
   return (value: string) => {
     const parsed = parseDecimalInt(value);
     if (parsed === undefined) throw new InvalidArgumentError("Expected an integer.");
-    if (parsed < min) throw new InvalidArgumentError(`Must be >= ${min}.`);
-    if (max !== undefined && parsed > max) throw new InvalidArgumentError(`Must be <= ${max}.`);
+    const reason = problem(parsed);
+    if (reason !== undefined) throw new InvalidArgumentError(reason);
     return parsed;
   };
 }
@@ -78,16 +88,11 @@ export function parseRecordId(value: string): string {
   return value;
 }
 
-/** commander value-parser: an ISO `YYYY-MM-DD` calendar date. */
+/** commander value-parser: an ISO `YYYY-MM-DD` calendar date — the library's rule. */
 export function parseIsoDate(value: string): string {
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) throw new InvalidArgumentError("Expected a date as YYYY-MM-DD.");
-  const [year, month, day] = trimmed.split("-").map(Number) as [number, number, number];
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    throw new InvalidArgumentError("Not a calendar date.");
-  }
-  return trimmed;
+  const reason = isoDateProblem(value);
+  if (reason !== undefined) throw new InvalidArgumentError(reason);
+  return normalizeIsoDate(value);
 }
 
 /** commander accumulator for repeatable string options; blanks are rejected. */
@@ -102,11 +107,9 @@ export function collect(value: string, previous: string[] = []): string[] {
  * match is a usage error.
  */
 export function parseParliament(value: string): string {
-  const key = parseNonEmpty(value).trim().toLowerCase();
-  if (!(ParliamentKeys as readonly string[]).includes(key)) {
-    throw new InvalidArgumentError(`Unknown parliament "${value}". Known: ${ParliamentKeys.join(", ")}.`);
-  }
-  return key;
+  const reason = searchParliamentProblem(value);
+  if (reason !== undefined) throw new InvalidArgumentError(reason);
+  return normalizeParliamentKey(value);
 }
 
 /** commander accumulator for a repeatable `--parliament`. */
@@ -263,8 +266,8 @@ export function addCorpusFilters(command: Command): Command {
   return command
     .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known, see \`ka sources list\`)`, collectParliament)
     .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
-    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(1949, 2999))
-    .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(1, 99))
+    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(...YEAR_RANGE))
+    .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(...PERIOD_RANGE))
     .option("--from <date>", "asked on or after this date (the answer's date where the question's is unknown)", parseIsoDate)
     .option("--to <date>", "asked on or before this date (the answer's date where the question's is unknown)", parseIsoDate);
 }

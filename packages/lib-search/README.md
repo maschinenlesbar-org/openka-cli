@@ -8,6 +8,14 @@ from disk unless a phrase has to be confirmed or a snippet is requested.
 `selectRecords` is the bulk counterpart: every match, loaded, plus the ids of catalog
 rows whose record file is gone — what `ka export` and `ka feed` work on.
 
+**Filters are checked, not trusted** (`src/filters.ts`). `search()`, `searchLike()` and
+`reviewQueue()` run `normalizeSearchFilters` first: parliament keys and parties are
+trimmed and lower-cased, dates trimmed; an unknown parliament, a blank party, an
+unknown review status, a year outside `YEAR_RANGE` or a period outside `PERIOD_RANGE`,
+or a date that is not `YYYY-MM-DD` on the calendar throws `OpenKaValidationError`. A
+filter that cannot match used to answer "no matches" — or, for a padded date, switch
+the window off. `ka`'s parsers call the same rules.
+
 **The line never embeds anything.** There is no model to call here, only vectors to
 compare. A semantic query therefore has to be a document that already has a vector
 (`--like <id>`), or a term whose vector the factory froze into the corpus. That is
@@ -27,12 +35,13 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
 ```
 
 ## Depends on
 
-- `lib-errors` — the shared error hierarchy
+- `lib-errors` — the shared error hierarchy and the validation layer
+- `lib-models` — the parliament keys, review statuses and the date rule the filters are checked against
 - `lib-store` — the corpus seam
 
 ## Tests

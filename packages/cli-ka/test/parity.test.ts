@@ -11,7 +11,7 @@ import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
-import { reviewQueue, search, selectRecords } from "@maschinenlesbar.org/openka-lib-search";
+import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { rmSync } from "node:fs";
@@ -374,4 +374,103 @@ describe("corpus summaries (finding 14)", () => {
     ok(result.lib.ok);
     deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify(result.lib.value)));
   });
+});
+
+describe("search filter rules (finding 2)", () => {
+  /** Four records over three parliaments and two dates, with vectors for --like. */
+  function seedFilters(corpus: string): void {
+    const store = new FileStore(corpus);
+    const make = (id: string, period: number, submitted: string, party: string) =>
+      sampleRecord({
+        id,
+        parliament: id.split("-")[0] as ReturnType<typeof sampleRecord>["parliament"],
+        reference: `${period}/${id.split("-")[2] as string}`,
+        legislative_period: period,
+        dates: { submitted },
+        askers: [{ name: "Erika Mustermann", party, role: "MdL" }],
+      });
+    const records = [
+      make("berlin-19-1", 19, "2024-01-15", "SPD"),
+      make("berlin-19-2", 19, "2024-03-01", "CDU"),
+      make("bayern-18-3", 18, "2024-05-01", "SPD"),
+      make("sachsen-7-4", 7, "2023-11-11", "SPD"),
+    ];
+    for (const record of records) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    store.flushCatalog();
+    store.saveEmbeddings({
+      model: "test",
+      dimensions: 2,
+      vectors: { "berlin-19-1": [1, 0], "berlin-19-2": [0.9, 0.1], "bayern-18-3": [0.8, 0.2], "sachsen-7-4": [0.1, 0.9] },
+    });
+  }
+  const ids = (value: unknown): string[] => (value as { hits: { entry: { id: string } }[] }).hits.map((hit) => hit.entry.id);
+
+  const agreeing: [string[], SearchFilters][] = [
+    [["--parliament", "Berlin"], { parliament: ["Berlin"] }],
+    [["--parliament", "BERLIN"], { parliament: ["BERLIN"] }],
+    [["--from", " 2024-03-01"], { from: " 2024-03-01" }],
+    [["--to", " 2024-03-01"], { to: " 2024-03-01" }],
+    [["--party", " cdu "], { party: [" cdu "] }],
+  ];
+  for (const [flags, filters] of agreeing) {
+    it(`search ${flags.join(" ")} matches search() with ${JSON.stringify(filters)}`, async () => {
+      const result = await parity({
+        seed: seedFilters,
+        argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", ...flags],
+        lib: ({ store }) => search(store, "", filters),
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      ok(result.lib.ok, JSON.stringify(result.lib));
+      deepStrictEqual(ids(JSON.parse(result.cli.out)), ids(result.lib.value));
+      ok(ids(result.lib.value).length > 0);
+    });
+  }
+
+  it("search --like and export apply the same normalised parliament", async () => {
+    const like = await parity({
+      seed: seedFilters,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", "--like", "berlin-19-1", "--parliament", "Berlin"],
+      lib: ({ store }) => ({ hits: searchLike(store, "berlin-19-1", { parliament: ["Berlin"] }) }),
+    });
+    strictEqual(like.cli.code, 0, like.cli.err);
+    deepStrictEqual(ids(JSON.parse(like.cli.out)), ["berlin-19-2"]);
+    ok(like.lib.ok);
+    deepStrictEqual(ids(like.lib.value), ["berlin-19-2"]);
+
+    const exported = await parity({
+      seed: seedFilters,
+      argv: (corpus) => ["--corpus", corpus, "export", "--format", "csv", "--parliament", "Berlin"],
+      lib: ({ store }) => selectRecords(store, "", { parliament: ["Berlin"] }).records.map((record) => record.id),
+    });
+    strictEqual(exported.cli.code, 0, exported.cli.err);
+    deepStrictEqual(exported.lib, { ok: true, value: ["berlin-19-1", "berlin-19-2"], requests: [] });
+  });
+
+  const refused: [string[], SearchFilters, string, string][] = [
+    [["--parliament", "narnia"], { parliament: ["narnia"] }, "parliament", `Unknown parliament "narnia". Known: `],
+    [["--from", "2024-02-30"], { from: "2024-02-30" }, "from", "Not a calendar date."],
+    [["--to", "2024-1-5"], { to: "2024-1-5" }, "to", "Expected a date as YYYY-MM-DD."],
+    [["--from", "2024"], { from: "2024" }, "from", "Expected a date as YYYY-MM-DD."],
+    [["--party", ""], { party: [""] }, "party", "Expected a non-empty value."],
+    [["--review-status", "verified"], { reviewStatus: ["verified"] }, "reviewStatus", "Allowed choices are ok, needs_review, human_verified."],
+    [["--year", "24"], { year: [24] }, "year", "Must be >= 1949."],
+    [["--period", "0"], { period: [0] }, "period", "Must be >= 1."],
+  ];
+  for (const [flags, filters, name, reason] of refused) {
+    it(`refuses ${flags.join(" ")} on both sides`, async () => {
+      const result = await parity({
+        seed: seedFilters,
+        argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", ...flags],
+        lib: ({ store }) => search(store, "", filters),
+      });
+      strictEqual(result.cli.code, EXIT_USAGE, result.cli.err);
+      ok(result.cli.err.includes(reason), result.cli.err);
+      ok(!result.lib.ok, JSON.stringify(result.lib));
+      strictEqual(result.lib.error.name, "OpenKaValidationError");
+      ok(result.lib.error.message.startsWith(`Invalid ${name}: ${reason}`), result.lib.error.message);
+    });
+  }
 });
