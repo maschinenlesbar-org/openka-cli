@@ -6,7 +6,7 @@ import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { corpusStats } from "@maschinenlesbar.org/openka-lib-store";
 import { selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
-import { csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
+import { DEFAULT_FEED_ID, DEFAULT_FEED_TITLE, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliDeps } from "../io.js";
 import {
@@ -86,8 +86,8 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       .command("feed")
       .description("an Atom feed of the newest matching Anfragen")
       .option("--limit <n>", "entries in the feed", parseBoundedInt(1, 500))
-      .option("--title <text>", "feed title", parseNonEmpty)
-      .option("--id <url>", "feed id / self link", parseNonEmpty),
+      .option("--title <text>", `feed title (default: ${DEFAULT_FEED_TITLE})`, parseNonEmpty)
+      .option("--id <url>", `feed id / self link (default: ${DEFAULT_FEED_ID})`, parseNonEmpty),
   );
   addOutOptions(feedCommand).action(
     action(deps, async (ctx) => {
@@ -100,8 +100,8 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       if (records.length === 0) throw new OpenKaError("Nothing selected — no feed to build.");
 
       const text = renderAtom(records, {
-        title: (ctx.opts["title"] as string | undefined) ?? "OpenKA — Kleine Anfragen",
-        id: (ctx.opts["id"] as string | undefined) ?? "urn:openka:feed",
+        ...(ctx.opts["title"] === undefined ? {} : { title: ctx.opts["title"] as string }),
+        ...(ctx.opts["id"] === undefined ? {} : { id: ctx.opts["id"] as string }),
         updated,
         limit,
       });

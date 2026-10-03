@@ -12,7 +12,7 @@ import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
-import { renderAtom } from "@maschinenlesbar.org/openka-lib-render";
+import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
@@ -473,4 +473,49 @@ describe("search filter rules (finding 2)", () => {
       ok(result.lib.error.message.startsWith(`Invalid ${name}: ${reason}`), result.lib.error.message);
     });
   }
+});
+
+describe("lib-render's formats and feed options (finding 18)", () => {
+  function seedRecord(corpus: string): void {
+    const store = new FileStore(corpus);
+    store.putRecord(sampleRecord());
+    indexRecord(store, sampleRecord());
+    store.flushCatalog();
+  }
+  const updated = "2026-01-02T03:04:05Z";
+
+  for (const format of ["xml", "JSON", "", " json"]) {
+    it(`refuses get --format ${JSON.stringify(format)} on both sides`, async () => {
+      const result = await parity({
+        seed: seedRecord,
+        argv: (corpus) => ["--corpus", corpus, "get", "berlin-19-12345", "--format", format],
+        lib: ({ store }) => renderRecord(store.getRecord("berlin-19-12345") as never, format as never),
+      });
+      bothRefused(result, "format", "Allowed choices are json, jsonld, csv, md, text.");
+    });
+  }
+
+  for (const [flag, name] of [["--title", "title"], ["--id", "id"]] as const) {
+    for (const blank of ["", "  "]) {
+      it(`refuses feed ${flag} ${JSON.stringify(blank)} on both sides`, async () => {
+        const result = await parity({
+          seed: seedRecord,
+          argv: (corpus) => ["--corpus", corpus, "feed", flag, blank],
+          lib: ({ store }) => renderAtom(selectRecords(store, "").records, { updated, [name]: blank }),
+        });
+        bothRefused(result, name, BLANK);
+      });
+    }
+  }
+
+  it("builds the same default feed: the defaults are the library's", async () => {
+    const result = await parity({
+      seed: seedRecord,
+      argv: (corpus) => ["--corpus", corpus, "feed"],
+      lib: ({ store }) => renderAtom(selectRecords(store, "").records, { updated }),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    strictEqual(result.cli.out + "\n", result.lib.value);
+  });
 });

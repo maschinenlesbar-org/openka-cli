@@ -1,7 +1,8 @@
 // The output renderings. The rule every one of them has to follow: an abstained
 // field is visibly absent, never an empty value that reads like "nothing there".
 
-import { deepStrictEqual, doesNotMatch, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
+import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { describe, it } from "node:test";
 import {
   CSV_COLUMNS,
@@ -9,8 +10,11 @@ import {
   csvHeader,
   escapeXml,
   atomEntryUpdated,
+  DEFAULT_FEED_ID,
+  DEFAULT_FEED_TITLE,
   newestFirst,
   renderAtom,
+  renderFormatProblem,
   renderCsvRow,
   renderJson,
   renderJsonLd,
@@ -233,5 +237,32 @@ describe("the feed's order", () => {
     const tied = [dated("b-1-2", "2024-01-01"), dated("b-1-1", "2024-01-01")];
     deepStrictEqual(newestFirst(tied, options.updated).map((record) => record.id), ["b-1-1", "b-1-2"]);
     deepStrictEqual(tied.map((record) => record.id), ["b-1-2", "b-1-1"]);
+  });
+});
+
+describe("what the renderers refuse", () => {
+  const refused = (message: string) => (error: unknown): boolean =>
+    error instanceof OpenKaValidationError && error.message === message;
+
+  it("refuses an unknown format rather than answering JSON", () => {
+    for (const format of ["xml", "JSON", "", " json"]) {
+      throws(() => renderRecord(sampleRecord(), format as never), refused("Invalid format: Allowed choices are json, jsonld, csv, md, text."), format);
+    }
+    strictEqual(renderFormatProblem("md"), undefined);
+  });
+
+  it("refuses a blank feed title or id, which made an invalid feed", () => {
+    const base = { title: "T", id: "urn:x", updated: "2026-01-02T03:04:05Z" };
+    for (const blank of ["", "  "]) {
+      throws(() => renderAtom([sampleRecord()], { ...base, title: blank }), refused("Invalid title: Expected a non-empty value."));
+      throws(() => renderAtom([sampleRecord()], { ...base, id: blank }), refused("Invalid id: Expected a non-empty value."));
+    }
+  });
+
+  it("falls back to the published feed defaults when title or id is omitted", () => {
+    const feed = renderAtom([sampleRecord()], { updated: "2026-01-02T03:04:05Z" });
+    ok(feed.includes(`<title>${DEFAULT_FEED_TITLE}</title>`));
+    ok(feed.includes(`<id>${DEFAULT_FEED_ID}</id>`));
+    deepStrictEqual([DEFAULT_FEED_TITLE, DEFAULT_FEED_ID], ["OpenKA — Kleine Anfragen", "urn:openka:feed"]);
   });
 });

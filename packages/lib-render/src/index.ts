@@ -6,13 +6,18 @@
 // abstentions, and the feed says so in the entry. A hole a consumer cannot see is
 // the same problem as an invented value.
 
-import { canonicalJson, canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { parliamentByKey } from "@maschinenlesbar.org/openka-lib-models";
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 
 export const RENDER_FORMATS = ["json", "jsonld", "csv", "md", "text"] as const;
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
+
+/** Why `value` is not a render format, or `undefined` when it is one (exactly). */
+export const renderFormatProblem: Problem<string> = (value) =>
+  (RENDER_FORMATS as readonly string[]).includes(value) ? undefined : `Allowed choices are ${RENDER_FORMATS.join(", ")}.`;
 
 /** Canonical JSON — the same bytes that are stored and hashed. */
 export function renderJson(record: KaRecord): string {
@@ -216,7 +221,13 @@ export function renderText(record: KaRecord): string {
       .join("\n\n")) + "\n";
 }
 
+/**
+ * Render a record in one of `RENDER_FORMATS`. Any other format throws
+ * `OpenKaValidationError`: it used to fall through to JSON, so a caller passing
+ * user input on got a different format with no error.
+ */
 export function renderRecord(record: KaRecord, format: RenderFormat): string {
+  assertValid("format", format, renderFormatProblem);
   switch (format) {
     case "json":
       return renderJson(record);
@@ -228,8 +239,10 @@ export function renderRecord(record: KaRecord, format: RenderFormat): string {
       return renderMarkdown(record);
     case "text":
       return renderText(record);
-    default:
-      return canonicalJson(record) + "\n";
+    default: {
+      const unreachable: never = format;
+      return unreachable;
+    }
   }
 }
 
@@ -245,10 +258,16 @@ export function escapeXml(value: string): string {
     .replace(/[&<>"']/g, (ch) => XML_ESCAPES[ch] as string);
 }
 
+/** The feed's title when `FeedOptions.title` is omitted. */
+export const DEFAULT_FEED_TITLE = "OpenKA — Kleine Anfragen";
+/** The feed's id and self link when `FeedOptions.id` is omitted. */
+export const DEFAULT_FEED_ID = "urn:openka:feed";
+
 export interface FeedOptions {
-  title: string;
-  /** Self link of the feed. */
-  id: string;
+  /** `DEFAULT_FEED_TITLE` when omitted; a blank one is refused. */
+  title?: string;
+  /** Self link of the feed; `DEFAULT_FEED_ID` when omitted, a blank one is refused. */
+  id?: string;
   /** ISO instant used as the feed's `updated`; injected so output is reproducible. */
   updated: string;
   /** Base for entry links when a record has no source document. */
@@ -316,7 +335,11 @@ export function newestFirst(records: readonly KaRecord[], fallback: string): KaR
  * An Atom 1.0 feed of records, newest first — whatever order they are given in,
  * and with `limit`, the newest N of the whole set.
  */
-export function renderAtom(records: KaRecord[], options: FeedOptions): string {
+export function renderAtom(records: KaRecord[], feedOptions: FeedOptions): string {
+  // A blank title or id is an invalid Atom feed, not an untitled one.
+  assertValid("title", feedOptions.title, nonBlankProblem);
+  assertValid("id", feedOptions.id, nonBlankProblem);
+  const options = { ...feedOptions, title: feedOptions.title ?? DEFAULT_FEED_TITLE, id: feedOptions.id ?? DEFAULT_FEED_ID };
   const newest = newestFirst(records, options.updated);
   const selected = options.limit === undefined ? newest : newest.slice(0, options.limit);
   const entries = selected.map((record) => {

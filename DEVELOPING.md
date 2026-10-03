@@ -206,6 +206,10 @@ What the library rejects with `OpenKaValidationError`, so far:
   `PERIOD_RANGE`), a date that is not a `YYYY-MM-DD` calendar date (padding is
   trimmed; `isoDateProblem` in `lib-models`). `ka`'s `--parliament`, `--from`/`--to`,
   `--year`/`--period` parsers call the same rules.
+- **An unknown render format or a blank feed title or id** — `renderRecord` checks
+  the format against `RENDER_FORMATS` (`renderFormatProblem`) instead of falling back
+  to JSON; `renderAtom` refuses a blank `title`/`id` and applies
+  `DEFAULT_FEED_TITLE`/`DEFAULT_FEED_ID` when they are omitted (`lib-render`).
 
 What the library now computes that a `ka` action used to compute on its own:
 

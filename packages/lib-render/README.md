@@ -16,16 +16,22 @@ a library consumer handing a renderer a record it built itself.
 prints, ties on the id) whatever order it is given, and with `limit` keeps the newest
 N of the whole set — the selection `ka feed` used to make in its own action.
 
+`renderRecord` refuses a format outside `RENDER_FORMATS` and `renderAtom` a blank
+`title` or `id` with `OpenKaValidationError` — an unknown format used to come back as
+JSON, a blank title or id as an invalid feed. An omitted title or id is
+`DEFAULT_FEED_TITLE` / `DEFAULT_FEED_ID`, the defaults `ka feed` prints.
+
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-RENDER_FORMATS, RenderFormat, renderJson, renderJsonLd, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
+RENDER_FORMATS, RenderFormat, renderFormatProblem, renderJson, renderJsonLd, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, DEFAULT_FEED_TITLE, DEFAULT_FEED_ID, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
 ```
 
 ## Depends on
 
+- `lib-errors` — the shared error hierarchy and the validation layer
 - `lib-models` — the canonical record schema, validators and the parliament table
 - `lib-repro` — canonical JSON, hashing and the extractor version stamp
 - `lib-text` — control-character stripping
