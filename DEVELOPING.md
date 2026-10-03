@@ -200,6 +200,10 @@ What the library rejects with `OpenKaValidationError`, so far:
   one that is not a string (`baselinePathProblem`). The
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so
   `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
+- **An embedding size the factory cannot build** — `buildEmbeddings` refuses a
+  `dimensions` that is not an integer in 16–4096 (`dimensionsProblem`,
+  `MIN_DIMENSIONS`, `MAX_DIMENSIONS`); 0 used to build a set of empty vectors that
+  `ka search --like` then served. `ka-factory embed --dimensions` uses the constants.
 - **A search filter that cannot match** — `search()`, `searchLike()` and
   `reviewQueue()` run `normalizeSearchFilters` (`lib-search`): an unknown parliament
   (keys are trimmed and case-folded, so `Berlin` works), a blank party, an unknown

@@ -29,7 +29,15 @@ import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
 import { addGolden, goldenKeyProblem, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
 import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
-import { buildEmbeddings, importEmbeddings, modelSha256Problem, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
+import {
+  buildEmbeddings,
+  importEmbeddings,
+  modelSha256Problem,
+  DEFAULT_DIMENSIONS,
+  HASHED_TFIDF,
+  MAX_DIMENSIONS,
+  MIN_DIMENSIONS,
+} from "../lib/embed.js";
 import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
 
@@ -320,7 +328,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   program
     .command("embed")
     .description("build the frozen embeddings the line uses for `ka search --like`")
-    .option("--dimensions <n>", `vector size (default: ${DEFAULT_DIMENSIONS})`, parseBoundedInt(16, 4096))
+    .option("--dimensions <n>", `vector size (default: ${DEFAULT_DIMENSIONS})`, parseBoundedInt(MIN_DIMENSIONS, MAX_DIMENSIONS))
     .option("--from <file>", "import vectors from JSON Lines instead of computing them", parseNonEmpty)
     .option("--model <name>", "model name to record when importing", parseNonEmpty)
     .option("--model-sha256 <hex>", "model weights hash to record when importing", problemParser(modelSha256Problem))
@@ -330,7 +338,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         const from = ctx.opts["from"] as string | undefined;
         const set =
           from === undefined
-            ? buildEmbeddings(store, (ctx.opts["dimensions"] as number | undefined) ?? DEFAULT_DIMENSIONS)
+            ? buildEmbeddings(store, ctx.opts["dimensions"] as number | undefined)
             : importEmbeddings(from, {
                 model: (ctx.opts["model"] as string | undefined) ?? "imported",
                 ...(ctx.opts["modelSha256"] === undefined ? {} : { modelSha256: ctx.opts["modelSha256"] as string }),

@@ -25,7 +25,24 @@ import type { EmbeddingSet, Store } from "@maschinenlesbar.org/openka-lib-store"
 /** The built-in embedder's name, recorded in the embedding set. */
 export const HASHED_TFIDF = "hashed-tfidf-v1";
 
+/** The vector size `buildEmbeddings` uses when none is given. */
 export const DEFAULT_DIMENSIONS = 256;
+/** The smallest vector size `buildEmbeddings` builds: fewer slots than this and unrelated terms collide on nearly every one. */
+export const MIN_DIMENSIONS = 16;
+/** The largest vector size `buildEmbeddings` builds; the frozen file grows with it for every record. */
+export const MAX_DIMENSIONS = 4096;
+
+/**
+ * Why `value` is not a vector size `buildEmbeddings` can build, or `undefined`:
+ * an integer in `MIN_DIMENSIONS..MAX_DIMENSIONS`. The reasons read as `ka-factory`'s
+ * `--dimensions` parser prints them.
+ */
+export const dimensionsProblem: Problem<number> = (value) => {
+  if (!Number.isSafeInteger(value)) return "Expected an integer.";
+  if (value < MIN_DIMENSIONS) return `Must be >= ${MIN_DIMENSIONS}.`;
+  if (value > MAX_DIMENSIONS) return `Must be <= ${MAX_DIMENSIONS}.`;
+  return undefined;
+};
 
 /** A term's fixed slot and sign, from its hash — the "random" projection. */
 function projection(term: string, dimensions: number): { slot: number; sign: number } {
@@ -35,8 +52,14 @@ function projection(term: string, dimensions: number): { slot: number; sign: num
   return { slot, sign };
 }
 
-/** Build frozen vectors for every record in the corpus. */
+/**
+ * Build frozen vectors for every record in the corpus. `dimensions` is checked
+ * first (`dimensionsProblem`, `OpenKaValidationError`): 0 used to build — and,
+ * saved, serve to `ka search --like` — a set of empty vectors scoring 0, and a
+ * negative or fractional size failed with a bare `RangeError`.
+ */
 export function buildEmbeddings(store: Store, dimensions = DEFAULT_DIMENSIONS): EmbeddingSet {
+  assertValid("dimensions", dimensions, dimensionsProblem);
   const ids = store.recordIds();
   const documents: { id: string; counts: Map<string, number> }[] = [];
   const documentFrequency = new Map<string, number>();

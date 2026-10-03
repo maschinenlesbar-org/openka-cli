@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
-import { HASHED_TFIDF, buildEmbeddings, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
+import { HASHED_TFIDF, MAX_DIMENSIONS, MIN_DIMENSIONS, buildEmbeddings, dimensionsProblem, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
 import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
@@ -261,6 +261,17 @@ describe("frozen embeddings", () => {
 
   it("is deterministic", () => {
     deepStrictEqual(buildEmbeddings(corpus(), 64), buildEmbeddings(corpus(), 64));
+  });
+
+  it("names a vector size it cannot build: not an integer, or outside 16..4096", () => {
+    deepStrictEqual([MIN_DIMENSIONS, MAX_DIMENSIONS], [16, 4096]);
+    strictEqual(dimensionsProblem(0), "Must be >= 16.");
+    strictEqual(dimensionsProblem(4097), "Must be <= 4096.");
+    strictEqual(dimensionsProblem(Number.NaN), "Expected an integer.");
+    strictEqual(dimensionsProblem(1.5), "Expected an integer.");
+    strictEqual(dimensionsProblem(16), undefined);
+    strictEqual(dimensionsProblem(4096), undefined);
+    throws(() => buildEmbeddings(corpus(), Number.NaN), /^OpenKaValidationError: Invalid dimensions: Expected an integer\.$/);
   });
 
   it("places a record nearer to itself than to an unrelated one", () => {

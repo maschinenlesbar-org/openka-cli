@@ -13,8 +13,12 @@ import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import {
   BASELINE_FILE,
+  DEFAULT_DIMENSIONS,
+  MAX_DIMENSIONS,
+  MIN_DIMENSIONS,
   addGolden,
   baselinePath,
+  buildEmbeddings,
   detectDrift,
   importEmbeddings,
   listAllGoldens,
@@ -657,5 +661,53 @@ describe("search paging bounds (finding 4)", () => {
     });
     strictEqual(result.cli.code, 0, result.cli.err);
     deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
+  });
+});
+
+describe("the embedding dimensions (finding 21)", () => {
+  for (const [value, reason] of [
+    ["0", "Must be >= 16."],
+    ["15", "Must be >= 16."],
+    ["-1", "Must be >= 16."],
+    ["4097", "Must be <= 4096."],
+    ["1.5", "Expected an integer."],
+  ] as const) {
+    it(`refuses ${value} dimensions on both sides, saving nothing`, async () => {
+      let cliCorpus = "";
+      const result = await parity({
+        runner: runFactory,
+        seed: seedOneRecord,
+        argv: (corpus) => {
+          cliCorpus = corpus;
+          return ["--corpus", corpus, "embed", `--dimensions=${value}`];
+        },
+        lib: ({ store }) => {
+          ok(new FileStore(cliCorpus).loadEmbeddings() === undefined, "the CLI saved no embeddings");
+          return buildEmbeddings(store, Number(value));
+        },
+      });
+      bothRefused(result, "dimensions", reason);
+    });
+  }
+
+  it("builds the same set at the default and at the bounds", async () => {
+    for (const argv of [[], ["--dimensions", String(MIN_DIMENSIONS)], ["--dimensions", String(MAX_DIMENSIONS)]]) {
+      let cliCorpus = "";
+      const result = await parity({
+        runner: runFactory,
+        seed: seedOneRecord,
+        argv: (corpus) => {
+          cliCorpus = corpus;
+          return ["--corpus", corpus, "embed", ...argv];
+        },
+        lib: ({ store }) => {
+          const set = buildEmbeddings(store, argv[1] === undefined ? undefined : Number(argv[1]));
+          deepStrictEqual(new FileStore(cliCorpus).loadEmbeddings(), set);
+          return set.dimensions;
+        },
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      deepStrictEqual(result.lib, { ok: true, value: argv[1] === undefined ? DEFAULT_DIMENSIONS : Number(argv[1]), requests: [] });
+    }
   });
 });
