@@ -14,7 +14,7 @@
 // question→answer map as an artifact, and the line consumes it (CONCEPT.md §0).
 
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
-import { OpenKaApiError, OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, OpenKaError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { extractPdfText } from "@maschinenlesbar.org/openka-lib-pdf";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import {
@@ -50,13 +50,48 @@ export interface SweepReport {
   total: number;
 }
 
+/** The legislative periods a sweep may name. */
+export const SWEEP_PERIOD_RANGE = [1, 99] as const;
+/** The Drucksachennummern a sweep may read; Niedersachsen's URLs hold up to six digits. */
+export const DRUCKSACHE_RANGE = [1, 999_999] as const;
+
+function intRangeProblem(min: number, max: number): Problem<number> {
+  return (value) => {
+    if (!Number.isSafeInteger(value)) return "Expected an integer.";
+    if (value < min) return `Must be >= ${min}.`;
+    if (value > max) return `Must be <= ${max}.`;
+    return undefined;
+  };
+}
+
+/** A period a sweep can read: an integer in `SWEEP_PERIOD_RANGE`. */
+export const sweepPeriodProblem: Problem<number> = intRangeProblem(...SWEEP_PERIOD_RANGE);
+/** A Drucksachennummer a sweep can read: an integer in `DRUCKSACHE_RANGE`. */
+export const drucksacheProblem: Problem<number> = intRangeProblem(...DRUCKSACHE_RANGE);
+
+/**
+ * Check a sweep's period and range before anything is fetched or written:
+ * `period` in `SWEEP_PERIOD_RANGE`, `from` and `to` in `DRUCKSACHE_RANGE`, and
+ * `to >= from`. Throws `OpenKaValidationError`. Without it a backwards range read
+ * nothing and still saved an empty map claiming that range as covered, period 0
+ * fetched `…/0-08100.pdf`, and a fractional number built a URL like `19-001.5.pdf`.
+ */
+export function assertSweepRange(range: { period: number; from: number; to: number }): void {
+  assertValid("period", range.period, sweepPeriodProblem);
+  assertValid("from", range.from, drucksacheProblem);
+  assertValid("to", range.to, drucksacheProblem);
+  assertValid("to", range.to, (to) => (to < range.from ? `Must be >= from (${range.from}).` : undefined));
+}
+
 /**
  * Walk a Drucksachen range, reading only what is needed from each paper: whether it
  * is an answer edition, and which question it names. A paper that is missing, that
  * will not parse, or that names no question contributes nothing — the map records
- * links that were read, never links that were inferred from adjacency.
+ * links that were read, never links that were inferred from adjacency. The range
+ * is checked first (`assertSweepRange`).
  */
 export async function sweepAnswers(options: SweepOptions): Promise<SweepReport> {
+  assertSweepRange(options);
   const existing = options.merge === true ? options.store.loadArtifact<AnswerIndex>(ANSWER_INDEX) : undefined;
   if (existing !== undefined && existing.period !== options.period) {
     // The ranges are Drucksachennummern *within* a period, so merging across one

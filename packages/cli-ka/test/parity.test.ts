@@ -27,6 +27,7 @@ import {
   measureHealth,
   saveBaseline,
   saveCorpusBaseline,
+  sweepAnswers,
 } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
@@ -710,4 +711,32 @@ describe("the embedding dimensions (finding 21)", () => {
       deepStrictEqual(result.lib, { ok: true, value: argv[1] === undefined ? DEFAULT_DIMENSIONS : Number(argv[1]), requests: [] });
     }
   });
+});
+
+describe("the answer sweep's range (finding 20)", () => {
+  const NOW = "2026-01-02T03:04:05Z";
+  const cases: { period: string; from: string; to: string; name: string; reason: string }[] = [
+    { period: "19", from: "5", to: "1", name: "to", reason: "Must be >= from (5)." },
+    { period: "0", from: "8100", to: "8100", name: "period", reason: "Must be >= 1." },
+    { period: "100", from: "8100", to: "8100", name: "period", reason: "Must be <= 99." },
+    { period: "19", from: "0", to: "8100", name: "from", reason: "Must be >= 1." },
+    { period: "19", from: "1.5", to: "8100", name: "from", reason: "Expected an integer." },
+    { period: "19", from: "1", to: "1000000", name: "to", reason: "Must be <= 999999." },
+  ];
+  for (const { period, from, to, name, reason } of cases) {
+    it(`refuses period ${period}, ${from}..${to} on both sides, before any request or write`, async () => {
+      const result = await parity({
+        runner: runFactory,
+        argv: (corpus) => ["--corpus", corpus, "answers", "niedersachsen", "--json", "--period", period, "--from", from, "--to", to],
+        lib: async ({ engine, store }) => {
+          try {
+            return await sweepAnswers({ engine, store, period: Number(period), from: Number(from), to: Number(to), now: NOW });
+          } finally {
+            strictEqual(store.loadArtifact("niedersachsen-answers"), undefined, "nothing was written");
+          }
+        },
+      });
+      bothRefused(result, name, reason);
+    });
+  }
 });

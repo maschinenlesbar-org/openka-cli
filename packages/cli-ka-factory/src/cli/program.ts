@@ -38,7 +38,7 @@ import {
   MAX_DIMENSIONS,
   MIN_DIMENSIONS,
 } from "../lib/embed.js";
-import { sweepAnswers } from "../lib/answer-index.js";
+import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
 
 /**
@@ -278,9 +278,9 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .command("answers")
     .description("sweep a Drucksachen range and freeze the question→answer map a source needs")
     .argument("<source>", "source key; only `niedersachsen` needs this today")
-    .requiredOption("--period <n>", "legislative period", parseBoundedInt(1, 99))
-    .requiredOption("--from <n>", "first Drucksachennummer to read", parseBoundedInt(1, 999_999))
-    .requiredOption("--to <n>", "last Drucksachennummer to read", parseBoundedInt(1, 999_999))
+    .requiredOption("--period <n>", "legislative period", parseBoundedInt(...SWEEP_PERIOD_RANGE))
+    .requiredOption("--from <n>", "first Drucksachennummer to read", parseBoundedInt(...DRUCKSACHE_RANGE))
+    .requiredOption("--to <n>", "last Drucksachennummer to read (>= --from)", parseBoundedInt(...DRUCKSACHE_RANGE))
     .option("--merge", "keep entries from a previous sweep instead of replacing the map")
     .option("--json", "print the report as JSON")
     .action(
@@ -292,16 +292,13 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
               "source reaches its answers through discovery.",
           );
         }
-        const from = ctx.opts["from"] as number;
-        const to = ctx.opts["to"] as number;
-        if (to < from) throw new OpenKaError(`--to (${to}) is before --from (${from}).`);
-
         const report = await sweepAnswers({
           engine: ctx.deps.createEngine(toEngineOptions(ctx.global)),
           store: ctx.store(),
+          // The range (to >= from included) is the library's to check.
           period: ctx.opts["period"] as number,
-          from,
-          to,
+          from: ctx.opts["from"] as number,
+          to: ctx.opts["to"] as number,
           now: isoInstant(ctx.deps.now()),
           ...(ctx.opts["merge"] === true ? { merge: true } : {}),
           ...(ctx.global.quiet === true || ctx.opts["json"] === true

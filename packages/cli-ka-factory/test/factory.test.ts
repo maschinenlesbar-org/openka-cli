@@ -10,6 +10,7 @@ import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineF
 import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, MAX_DIMENSIONS, MIN_DIMENSIONS, buildEmbeddings, dimensionsProblem, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
 import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
+import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, assertSweepRange, drucksacheProblem, sweepPeriodProblem } from "../src/lib/answer-index.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { MemoryStore, sampleRecord , PROJECT_ROOT } from "@maschinenlesbar.org/openka-lib-testing";
@@ -463,5 +464,22 @@ describe("where a source's goldens live", () => {
     } finally {
       rmSync(flat, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the answer sweep's range", () => {
+  it("names a period or Drucksachennummer that cannot be swept", () => {
+    deepStrictEqual([SWEEP_PERIOD_RANGE, DRUCKSACHE_RANGE], [[1, 99], [1, 999_999]]);
+    strictEqual(sweepPeriodProblem(0), "Must be >= 1.");
+    strictEqual(sweepPeriodProblem(19), undefined);
+    strictEqual(drucksacheProblem(1_000_000), "Must be <= 999999.");
+    strictEqual(drucksacheProblem(Number.NaN), "Expected an integer.");
+    strictEqual(drucksacheProblem(8100), undefined);
+  });
+
+  it("refuses a range that runs backwards, and passes a valid one", () => {
+    throws(() => assertSweepRange({ period: 19, from: 5, to: 1 }), /^OpenKaValidationError: Invalid to: Must be >= from \(5\)\.$/);
+    throws(() => assertSweepRange({ period: 19, from: Number.NaN, to: 1 }), /Invalid from: Expected an integer\./);
+    assertSweepRange({ period: 19, from: 3, to: 3 });
   });
 });

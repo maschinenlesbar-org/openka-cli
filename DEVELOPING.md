@@ -204,6 +204,12 @@ What the library rejects with `OpenKaValidationError`, so far:
   `dimensions` that is not an integer in 16–4096 (`dimensionsProblem`,
   `MIN_DIMENSIONS`, `MAX_DIMENSIONS`); 0 used to build a set of empty vectors that
   `ka search --like` then served. `ka-factory embed --dimensions` uses the constants.
+- **An answer sweep that cannot be read** — `sweepAnswers` runs `assertSweepRange`
+  before it fetches or writes: `period` in 1–99 (`SWEEP_PERIOD_RANGE`), `from`/`to`
+  in 1–999 999 (`DRUCKSACHE_RANGE`), both integers, and `to >= from`. A backwards
+  range used to save an empty map claiming that range as swept. `ka-factory answers`
+  builds its parsers from the constants; `--to` before `--from` is now a usage error
+  (exit 2, `Invalid to: Must be >= from (…).`) rather than exit 1.
 - **A search filter that cannot match** — `search()`, `searchLike()` and
   `reviewQueue()` run `normalizeSearchFilters` (`lib-search`): an unknown parliament
   (keys are trimmed and case-folded, so `Berlin` works), a blank party, an unknown
