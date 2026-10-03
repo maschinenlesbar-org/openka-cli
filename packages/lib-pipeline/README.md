@@ -26,6 +26,11 @@ dates for `since`/`until` (trimmed), `until` not before `since`, `period` in
 `PERIOD_RANGE`, `limit` >= `SYNC_LIMIT_MIN`. A bad one rejects with
 `OpenKaValidationError` before any request and is not recorded as a source error.
 
+A source's politeness floor (`Source.minHostIntervalMs`, 4000 ms for Brandenburg and
+Sachsen-Anhalt) is applied by `sync()` itself, before discovery:
+`engine.raiseMinHostInterval` raises the engine's interval to it and never lowers
+it, for every host the source reaches, and it stays raised on that engine.
+
 `sourceStatus(store, registry)` (`src/status.ts`) is the table `ka sources list`
 prints: each registry entry with its record count and last sync state.
 

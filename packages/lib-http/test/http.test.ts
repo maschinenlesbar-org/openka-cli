@@ -303,6 +303,46 @@ describe("fetch engine", () => {
     deepStrictEqual(slept, [500]);
   });
 
+  it("raises its engine-wide interval to a floor, and never lowers it", async () => {
+    const slept: number[] = [];
+    const { transport } = scriptedTransport([{ match: "example.invalid", body: "x" }]);
+    let clock = 0;
+    const engine = new FetchEngine({
+      transport,
+      minHostIntervalMs: 100,
+      now: () => clock,
+      sleep: async (ms) => {
+        slept.push(ms);
+        clock += ms;
+      },
+    });
+    engine.raiseMinHostInterval(4000);
+    engine.raiseMinHostInterval(50);
+    await engine.get("https://example.invalid/a");
+    await engine.get("https://example.invalid/b");
+    // Every host, not only one named in advance: a source's floor covers the
+    // aggregator and the document server alike.
+    await engine.get("https://other.example.invalid/a");
+    await engine.get("https://other.example.invalid/b");
+    deepStrictEqual(slept, [4000, 4000]);
+  });
+
+  it("refuses a floor out of range, the same way the option is refused", () => {
+    const engine = new FetchEngine({});
+    for (const [value, reason] of [
+      [-1, "Must be >= 0."],
+      [1.5, "Expected an integer."],
+      [Number.NaN, "Expected an integer."],
+      [MAX_HOST_INTERVAL_MS + 1, `Must be <= ${MAX_HOST_INTERVAL_MS}.`],
+    ] as const) {
+      throws(
+        () => engine.raiseMinHostInterval(value),
+        (error: unknown) => error instanceof OpenKaValidationError && error.message === `Invalid minHostIntervalMs: ${reason}`,
+        String(value),
+      );
+    }
+  });
+
   it("identifies itself with a contact URL by default", async () => {
     const { transport, requests } = scriptedTransport([{ match: "ua", body: "x" }]);
     await testEngine(transport).get("https://example.invalid/ua");

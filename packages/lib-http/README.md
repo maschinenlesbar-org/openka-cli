@@ -30,6 +30,12 @@ outside 0–`MAX_REDIRECTS`, `minHostIntervalMs` outside 0–`MAX_HOST_INTERVAL_
 is blank or not a header value (`userAgentProblem`). An omitted option keeps its
 `DEFAULT_*`. `ka`'s global options use the same constants and rule.
 
+**Raising the pace floor.** `engine.raiseMinHostInterval(ms)` raises the engine-wide
+interval between two requests to one host and never lowers it; `slowDown(host, ms)`
+does the same for one host. `sync()` calls the first with a source's politeness floor
+(`Source.minHostIntervalMs`). A value the `minHostIntervalMs` option would refuse
+throws `OpenKaValidationError`.
+
 ## What is in here
 
 - **`src/engine.ts`** — The fetch engine: URL building, retry/backoff, redirects, conditional requests and per-host rate limiting.

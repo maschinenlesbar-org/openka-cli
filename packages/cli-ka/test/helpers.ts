@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
-import type { FetchEngine, HttpRequest, Transport } from "@maschinenlesbar.org/openka-lib-http";
+import type { EngineOptions, FetchEngine, HttpRequest, Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { testEngine } from "@maschinenlesbar.org/openka-lib-testing";
 import { run } from "../src/run.js";
 import { cliHarness } from "./harness.js";
@@ -49,6 +49,11 @@ export interface ParityOptions {
   /** Fills each side's corpus before its call. */
   seed?: (corpus: string) => void | Promise<void>;
   env?: NodeJS.ProcessEnv;
+  /**
+   * The engine clock and sleep for each side, called once for the CLI and once
+   * for the library, so a test can compare how the two pace their requests.
+   */
+  pacing?: () => Pick<EngineOptions, "now" | "sleep">;
 }
 
 export interface ParityResult {
@@ -71,7 +76,11 @@ export async function parity(options: ParityOptions): Promise<ParityResult> {
     return respond(request);
   };
 
-  const harness = cliHarness({ transport, ...(options.env === undefined ? {} : { env: options.env }) });
+  const harness = cliHarness({
+    transport,
+    ...(options.env === undefined ? {} : { env: options.env }),
+    ...(options.pacing === undefined ? {} : { pacing: options.pacing() }),
+  });
   const libCorpus = mkdtempSync(join(tmpdir(), "openka-parity-"));
   try {
     await options.seed?.(harness.corpus);
@@ -84,7 +93,7 @@ export async function parity(options: ParityOptions): Promise<ParityResult> {
     const libRequests = (): string[] => calls.slice(before).map(describeRequest);
     let lib: LibOutcome;
     try {
-      const value = await options.lib({ transport, engine: testEngine(transport), corpus: libCorpus, store: new FileStore(libCorpus) });
+      const value = await options.lib({ transport, engine: testEngine(transport, options.pacing?.() ?? {}), corpus: libCorpus, store: new FileStore(libCorpus) });
       lib = { ok: true, value, requests: libRequests() };
     } catch (error) {
       const name = error instanceof Error ? error.constructor.name : typeof error;

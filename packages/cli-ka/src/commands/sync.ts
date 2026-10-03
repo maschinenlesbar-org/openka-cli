@@ -60,17 +60,9 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
         const source = createSource(key);
         const store = ctx.store();
-        // A source may set a politeness floor — the two Länder whose servers ask
-        // not to be crawled go far slower than the default — and it raises the
-        // global setting rather than replacing it.
-        const engineOptions = toEngineOptions(ctx.global);
-        if (source.minHostIntervalMs !== undefined) {
-          engineOptions.minHostIntervalMs = Math.max(
-            source.minHostIntervalMs,
-            engineOptions.minHostIntervalMs ?? 0,
-          );
-        }
-        const engine = ctx.deps.createEngine(engineOptions);
+        // A source's politeness floor is applied by sync() itself, raising the
+        // global --min-host-interval and never lowering it.
+        const engine = ctx.deps.createEngine(toEngineOptions(ctx.global));
 
         const apiKey =
           (ctx.opts["apiKey"] as string | undefined) ??

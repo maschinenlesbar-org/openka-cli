@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CliDeps, CliIO } from "../src/io.js";
-import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
+import type { EngineOptions, Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 
@@ -28,7 +28,18 @@ export interface CliHarness {
  * A CLI harness with a real temporary corpus on disk (so the FileStore is exercised
  * for real), captured output, a fixed clock, and a transport the caller scripts.
  */
-export function cliHarness(options: { transport?: Transport; env?: NodeJS.ProcessEnv; now?: Date } = {}): CliHarness {
+export function cliHarness(
+  options: {
+    transport?: Transport;
+    env?: NodeJS.ProcessEnv;
+    now?: Date;
+    /**
+     * The engine's clock and sleep, for a test that watches its pacing. Given, the
+     * engine keeps the CLI's own interval; unset, it has none and never sleeps.
+     */
+    pacing?: Pick<EngineOptions, "now" | "sleep">;
+  } = {},
+): CliHarness {
   const corpus = mkdtempSync(join(tmpdir(), "openka-test-"));
   const out: string[] = [];
   const err: string[] = [];
@@ -52,8 +63,9 @@ export function cliHarness(options: { transport?: Transport; env?: NodeJS.Proces
     createEngine: (engineOptions) =>
       new FetchEngine({
         ...engineOptions,
-        minHostIntervalMs: 0,
-        sleep: async () => undefined,
+        // No pacing and no real sleeping, unless the test watches the pacing:
+        // then the engine keeps the interval the CLI asked for.
+        ...(options.pacing ?? { minHostIntervalMs: 0, sleep: async () => undefined }),
         ...(options.transport === undefined ? {} : { transport: options.transport }),
       }),
     env: options.env ?? {},

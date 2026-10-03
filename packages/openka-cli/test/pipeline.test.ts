@@ -109,6 +109,33 @@ describe("sync pipeline", () => {
     ok(record?.extraction.abstained_fields.includes("full_text"));
   });
 
+  it("goes no faster than the source's politeness floor, whatever the engine was built with", async () => {
+    // Brandenburg and Sachsen-Anhalt declare 4000 ms. The floor is part of the
+    // Source contract, so sync() applies it, not only `ka sync`.
+    class PoliteSource extends StubSource {
+      readonly minHostIntervalMs = 4000;
+    }
+    const slept: number[] = [];
+    let clock = 0;
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", status: 404, body: "" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const engine = testEngine(transport, {
+      minHostIntervalMs: 100,
+      now: () => clock,
+      sleep: async (ms) => {
+        slept.push(ms);
+        clock += ms;
+      },
+    });
+    const report = await sync({ source: new PoliteSource(), store: new MemoryStore(), engine });
+    strictEqual(report.stored, 1);
+    // robots.txt and the PDF, on one host: one wait, at the source's floor.
+    strictEqual(requests.length, 2);
+    deepStrictEqual(slept, [4000]);
+  });
+
   describe("a document that can no longer be fetched", () => {
     // First run: robots.txt allows everything and the PDF is served. Later runs:
     // the PDF answers 404, or robots.txt disallows it.

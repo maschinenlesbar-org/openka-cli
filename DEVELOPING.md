@@ -345,6 +345,15 @@ What the library now computes that a `ka` action used to compute on its own:
   pass, and a blank `dir` is refused. `assertGoldensPass(report)` is the verdict:
   any golden that did not reproduce throws. `listGoldens` refuses a blank root. A
   hand-built loop over `listGoldens` + `verifyGolden` used to pass an empty set.
+- **A source's politeness floor** — `sync()` (`lib-pipeline`) applies
+  `Source.minHostIntervalMs` to the engine before discovery, through
+  `FetchEngine.raiseMinHostInterval(ms)` (`lib-http`): it raises the engine-wide
+  interval to the floor, never lowers it, covers every host the source reaches, and
+  refuses a value the `minHostIntervalMs` option refuses (`OpenKaValidationError`).
+  Brandenburg and Sachsen-Anhalt declare 4000 ms. Only `ka sync` used to apply it
+  (a `Math.max` into the engine options), so a library `sync()` went at the
+  engine's own pace, 500 ms by default, once robots.txt no longer slowed the host.
+  `ka sync` now builds its engine from the global options alone.
 
 ## Reproducibility, concretely
 

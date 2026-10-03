@@ -150,7 +150,8 @@ export class FetchEngine {
   private readonly maxRetries: number;
   private readonly maxResponseBytes: number;
   private readonly maxRedirects: number;
-  private readonly minHostIntervalMs: number;
+  /** Engine-wide interval: the option, raised by any floor a caller set since (`raiseMinHostInterval`). */
+  private minHostIntervalMs: number;
   private readonly transport: Transport;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -388,6 +389,19 @@ export class FetchEngine {
    */
   slowDown(host: string, ms: number): void {
     this.hostIntervals.set(host, Math.max(ms, this.hostIntervals.get(host) ?? 0));
+  }
+
+  /**
+   * Go no faster than `ms` between two requests to any one host, from now on. Only
+   * ever raises the engine-wide interval, never lowers it: a source's politeness
+   * floor (`Source.minHostIntervalMs`) covers every host it reaches, which is not
+   * known in advance (an aggregator for discovery, a Land's server for the
+   * documents). `sync()` calls it with the source's floor. Throws
+   * `OpenKaValidationError` for a value the `minHostIntervalMs` option refuses.
+   */
+  raiseMinHostInterval(ms: number): void {
+    assertValid("minHostIntervalMs", ms, intRangeProblem(0, MAX_HOST_INTERVAL_MS));
+    this.minHostIntervalMs = Math.max(this.minHostIntervalMs, ms);
   }
 
   /** Keep at least the host's interval between two requests to the same host. */

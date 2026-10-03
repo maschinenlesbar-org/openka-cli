@@ -71,10 +71,15 @@ export interface SyncReport {
  * Run one source end to end. The window and budget are checked first
  * (`normalizeSyncWindow`): a bad one rejects with `OpenKaValidationError` before
  * any request, and is not recorded as a source error.
+ *
+ * A source's politeness floor (`Source.minHostIntervalMs`) is applied to the
+ * engine before discovery, with `engine.raiseMinHostInterval`: it raises the
+ * engine's interval and never lowers it, and it stays raised on that engine.
  */
 export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
   const options = normalizeSyncWindow(rawOptions);
   const { source, store, engine } = options;
+  if (source.minHostIntervalMs !== undefined) engine.raiseMinHostInterval(source.minHostIntervalMs);
   const now = options.now ?? (() => new Date());
   const state = store.getSourceState(source.key);
   const report: SyncReport = {

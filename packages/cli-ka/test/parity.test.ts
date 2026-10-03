@@ -10,8 +10,8 @@ import { join, relative, resolve } from "node:path";
 import { CORPUS_ENV, FileStore, archivedDocument, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
-import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES } from "@maschinenlesbar.org/openka-lib-http";
-import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
+import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES, type Transport } from "@maschinenlesbar.org/openka-lib-http";
+import { fixturesOf, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import {
   BASELINE_FILE,
   DEFAULT_DIMENSIONS,
@@ -1364,5 +1364,47 @@ describe("semantic search's total (finding 16)", () => {
     strictEqual(result.cli.code, 0, result.cli.err);
     strictEqual(result.cli.err, "2 of 3 similar record(s).");
     deepStrictEqual(result.lib, { ok: true, value: 3, requests: [] });
+  });
+});
+
+describe("a source's politeness floor (#12)", () => {
+  // Brandenburg declares 4000 ms between requests to one host. The floor belongs to
+  // the Source contract, so sync() applies it; ka sync keeps no copy of the rule.
+  const { readFixtureText } = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url);
+  const RESULTS = readFixtureText("payloads", "parlamentsspiegel-results.html");
+  const responder: Transport = async (request) => {
+    const answer = (status: number, body: string) => ({ status, headers: {}, body: Buffer.from(body, "utf8") });
+    // robots.txt with the rule lifted: the floor still holds.
+    if (request.url.endsWith("/robots.txt")) return answer(200, "User-agent: *\nDisallow: /files/\n");
+    if (request.url.includes("/suche")) return answer(200, RESULTS);
+    return answer(404, "");
+  };
+  const pacing = (sides: number[][]) => () => {
+    const slept: number[] = [];
+    sides.push(slept);
+    let clock = 0;
+    return {
+      now: () => clock,
+      sleep: async (ms: number) => {
+        slept.push(ms);
+        clock += ms;
+      },
+    };
+  };
+
+  it("paces sync at the source's floor on both sides, above a lower global interval", async () => {
+    const sides: number[][] = [];
+    const result = await parity({
+      responder,
+      pacing: pacing(sides),
+      argv: (corpus) => ["--corpus", corpus, "--min-host-interval", "100", "sync", "--source", "brandenburg", "--limit", "3", "--json"],
+      lib: ({ engine, store }) => sync({ source: createSource("brandenburg"), store, engine, limit: 3, now: () => new Date("2026-01-02T03:04:05Z") }),
+    });
+    const [cliSlept, libSlept] = sides;
+    ok(result.lib.ok, JSON.stringify(result.lib));
+    deepStrictEqual(result.cli.requests, result.lib.requests);
+    ok((cliSlept ?? []).length > 0, "the run made more than one request to one host");
+    deepStrictEqual(libSlept, cliSlept);
+    ok((libSlept ?? []).every((ms) => ms === 4000), JSON.stringify(libSlept));
   });
 });
