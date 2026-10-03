@@ -5,7 +5,7 @@
 
 import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "@maschinenlesbar.org/openka-lib-store";
 import type { CatalogEntry, Store } from "@maschinenlesbar.org/openka-lib-store";
-import { normalizeSearchFilters } from "./filters.js";
+import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters } from "./filters.js";
 
 export interface SearchFilters {
   parliament?: string[];
@@ -67,14 +67,16 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
 /**
  * Run a search. An empty query means "every record that passes the filters",
  * ordered by id, which is what `ka search --parliament berlin --year 2024` needs.
- * The filters are checked and normalised first (`normalizeSearchFilters`): a
- * filter that cannot match throws `OpenKaValidationError` instead of answering
- * "no matches".
+ * The paging and the filters are checked first (`assertPaging`,
+ * `normalizeSearchFilters`): a page that cannot exist or a filter that cannot
+ * match throws `OpenKaValidationError` instead of answering the wrong page or
+ * "no matches". `limit` defaults to `DEFAULT_SEARCH_LIMIT`, `offset` to 0.
  */
 export function search(store: Store, query: string, searchOptions: SearchOptions = {}): SearchResult {
+  assertPaging(searchOptions);
   const options: SearchOptions = { ...searchOptions, ...normalizeSearchFilters(searchOptions) };
   const parsed = parseQuery(query);
-  const limit = options.limit ?? 20;
+  const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
   const offset = options.offset ?? 0;
 
   let ranked: SearchHit[];
@@ -253,6 +255,7 @@ export interface ReviewQueue {
  * holes, which is what the queue is for.
  */
 export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): ReviewQueue {
+  assertPaging({ limit: options.limit });
   const filters = normalizeSearchFilters({
     onlyAbstained: true,
     ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),

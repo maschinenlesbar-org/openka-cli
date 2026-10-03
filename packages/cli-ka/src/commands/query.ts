@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { parliamentByKey } from "@maschinenlesbar.org/openka-lib-models";
 import { ReviewStatuses, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import { search } from "@maschinenlesbar.org/openka-lib-search";
+import { DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, search } from "@maschinenlesbar.org/openka-lib-search";
 import { parseQuery } from "@maschinenlesbar.org/openka-lib-store";
 import { searchLike } from "@maschinenlesbar.org/openka-lib-search";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "@maschinenlesbar.org/openka-lib-render";
@@ -114,8 +114,8 @@ export function registerQuery(program: Command, deps: CliDeps): void {
       .command("search")
       .description("full-text search over the corpus")
       .argument("[query]", "search terms; quote a phrase, prefix a term with - to exclude it")
-      .option("--limit <n>", "maximum results", parseBoundedInt(1, 1000))
-      .option("--offset <n>", "skip this many results", parseBoundedInt(0))
+      .option("--limit <n>", `maximum results (default: ${DEFAULT_SEARCH_LIMIT})`, parseBoundedInt(LIMIT_MIN, 1000))
+      .option("--offset <n>", "skip this many results", parseBoundedInt(OFFSET_MIN))
       .option("--snippet", "show a text snippet around the first match")
       .option("--like <id>", "semantic search: records similar to this one (needs frozen embeddings)", parseNonEmpty)
       .option("--json", "print results as JSON"),
@@ -123,7 +123,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
     action(deps, async (ctx, positionals) => {
       const store = ctx.existingStore();
       const filters = corpusFiltersFrom(ctx.opts);
-      const limit = (ctx.opts["limit"] as number | undefined) ?? 20;
+      const limit = (ctx.opts["limit"] as number | undefined) ?? DEFAULT_SEARCH_LIMIT;
 
       if (ctx.opts["like"] !== undefined) {
         // The semantic path honours the filters and --limit, and nothing else.

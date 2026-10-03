@@ -28,6 +28,30 @@ export function intRangeProblem(min: number, max?: number): Problem<number> {
   };
 }
 
+/** How many hits `search()` and `searchLike()` return when no `limit` is given. */
+export const DEFAULT_SEARCH_LIMIT = 20;
+/** The smallest page: a `limit` is an integer of at least this. */
+export const LIMIT_MIN = 1;
+/** The smallest `offset`: the first hit. */
+export const OFFSET_MIN = 0;
+
+/** A page size: an integer >= `LIMIT_MIN`. */
+export const limitProblem: Problem<number> = intRangeProblem(LIMIT_MIN);
+/** A page start: an integer >= `OFFSET_MIN`. */
+export const offsetProblem: Problem<number> = intRangeProblem(OFFSET_MIN);
+
+/**
+ * Check the paging contract: `limit` an integer >= 1, `offset` an integer >= 0.
+ * Throws `OpenKaValidationError` otherwise. A negative value used to wrap around
+ * through `slice` — `offset: -1` answered the last hit, `limit: -1` dropped the
+ * last one — next to a `total` that looked right. Upper bounds are not the
+ * library's: `ka` caps each command's page for presentation.
+ */
+export function assertPaging(paging: { limit?: number | undefined; offset?: number | undefined }): void {
+  if (paging.limit !== undefined) assertValid("limit", paging.limit, limitProblem);
+  if (paging.offset !== undefined) assertValid("offset", paging.offset, offsetProblem);
+}
+
 /** A parliament filter: not blank, and a key that exists (any case). */
 export const searchParliamentProblem: Problem<string> = (value) => nonBlankProblem(value) ?? parliamentKeyProblem(value);
 

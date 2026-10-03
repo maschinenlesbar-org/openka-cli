@@ -10,7 +10,7 @@
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { matchesFilters, type SearchFilters, type SearchHit } from "./search.js";
-import { normalizeSearchFilters } from "./filters.js";
+import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters } from "./filters.js";
 
 /** Cosine similarity of two equal-length vectors. */
 export function cosine(a: readonly number[], b: readonly number[]): number {
@@ -45,7 +45,8 @@ export function searchLike(
   id: string,
   semanticOptions: SemanticOptions = {},
 ): SearchHit[] {
-  // The same filter rules as keyword search, checked before anything is read.
+  // The same paging and filter rules as keyword search, checked before anything is read.
+  assertPaging({ limit: semanticOptions.limit });
   const options: SemanticOptions = { ...semanticOptions, ...normalizeSearchFilters(semanticOptions) };
   const set = store.loadEmbeddings();
   if (set === undefined) {
@@ -58,7 +59,7 @@ export function searchLike(
   if (query === undefined) {
     throw new OpenKaError(`No frozen embedding for record ${id}.`);
   }
-  const limit = options.limit ?? 20;
+  const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
   const minScore = options.minScore ?? 0;
   const hits: SearchHit[] = [];
   for (const [candidate, vector] of Object.entries(set.vectors)) {

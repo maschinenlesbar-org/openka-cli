@@ -621,3 +621,41 @@ describe("the default drift-baseline location (finding 26)", () => {
     }
   });
 });
+
+describe("search paging bounds (finding 4)", () => {
+  const cases: { argv: string[]; name: string; reason: string; lib: (store: FileStore) => unknown }[] = [
+    { argv: ["search", "--json", "--limit", "0"], name: "limit", reason: "Must be >= 1.", lib: (store) => search(store, "", { limit: 0 }) },
+    { argv: ["search", "--json", "--limit", "-1"], name: "limit", reason: "Must be >= 1.", lib: (store) => search(store, "", { limit: -1 }) },
+    { argv: ["search", "--json", "--limit", "1.5"], name: "limit", reason: "Expected an integer.", lib: (store) => search(store, "", { limit: 1.5 }) },
+    { argv: ["search", "--json", "--offset", "-1"], name: "offset", reason: "Must be >= 0.", lib: (store) => search(store, "", { offset: -1 }) },
+    {
+      argv: ["search", "--json", "--like", "berlin-19-12345", "--limit", "-1"],
+      name: "limit",
+      reason: "Must be >= 1.",
+      lib: (store) => searchLike(store, "berlin-19-12345", { limit: -1 }),
+    },
+    { argv: ["export", "--format", "jsonl", "--limit", "-1"], name: "limit", reason: "Must be >= 1.", lib: (store) => selectRecords(store, "", { limit: -1 }) },
+    { argv: ["review", "--limit", "0"], name: "limit", reason: "Must be >= 1.", lib: (store) => reviewQueue(store, { limit: 0 }) },
+  ];
+
+  for (const { argv, name, reason, lib } of cases) {
+    it(`refuses ${argv.join(" ")} on both sides`, async () => {
+      const result = await parity({
+        seed: seedOneRecord,
+        argv: (corpus) => ["--corpus", corpus, ...argv],
+        lib: ({ store }) => lib(store),
+      });
+      bothRefused(result, name, reason);
+    });
+  }
+
+  it("pages the same way at the bounds", async () => {
+    const result = await parity({
+      seed: seedOneRecord,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", "--limit", "1", "--offset", "0"],
+      lib: ({ store }) => search(store, "", { limit: 1, offset: 0 }),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
+  });
+});

@@ -5,7 +5,7 @@ import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { corpusStats } from "@maschinenlesbar.org/openka-lib-store";
-import { selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
+import { LIMIT_MIN, selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
 import { DEFAULT_FEED_ID, DEFAULT_FEED_TITLE, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliDeps } from "../io.js";
@@ -62,7 +62,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       .command("export")
       .description("export the corpus (or a selection of it) in bulk")
       .addOption(choiceOption("--format <format>", "output format", EXPORT_FORMATS))
-      .option("--limit <n>", "maximum records to export (most relevant first with --query)", parseBoundedInt(1, 1_000_000)),
+      .option("--limit <n>", "maximum records to export (most relevant first with --query)", parseBoundedInt(LIMIT_MIN, 1_000_000)),
   );
   addOutOptions(exportCommand).action(
     action(deps, async (ctx) => {
@@ -85,7 +85,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
     program
       .command("feed")
       .description("an Atom feed of the newest matching Anfragen")
-      .option("--limit <n>", "entries in the feed", parseBoundedInt(1, 500))
+      .option("--limit <n>", "entries in the feed", parseBoundedInt(LIMIT_MIN, 500))
       .option("--title <text>", `feed title (default: ${DEFAULT_FEED_TITLE})`, parseNonEmpty)
       .option("--id <url>", `feed id / self link (default: ${DEFAULT_FEED_ID})`, parseNonEmpty),
   );

@@ -11,7 +11,20 @@ import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-l
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
-import { PERIOD_RANGE, YEAR_RANGE, intRangeProblem, normalizeSearchFilters, reviewStatusProblem, searchParliamentProblem } from "../src/filters.js";
+import {
+  DEFAULT_SEARCH_LIMIT,
+  LIMIT_MIN,
+  OFFSET_MIN,
+  PERIOD_RANGE,
+  YEAR_RANGE,
+  assertPaging,
+  intRangeProblem,
+  limitProblem,
+  normalizeSearchFilters,
+  offsetProblem,
+  reviewStatusProblem,
+  searchParliamentProblem,
+} from "../src/filters.js";
 import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
@@ -604,5 +617,33 @@ describe("search filter rules", () => {
 
   it("is enforced by search() before it reads anything", () => {
     throws(() => search(new MemoryStore(), "", { parliament: ["narnia"] }), OpenKaValidationError);
+  });
+});
+
+describe("search paging", () => {
+  it("names a limit or offset that cannot page", () => {
+    deepStrictEqual([DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN], [20, 1, 0]);
+    for (const [value, reason] of [[0, "Must be >= 1."], [-1, "Must be >= 1."], [1.5, "Expected an integer."], [Number.NaN, "Expected an integer."], [Infinity, "Expected an integer."]] as const) {
+      strictEqual(limitProblem(value), reason);
+    }
+    strictEqual(limitProblem(1), undefined);
+    strictEqual(limitProblem(Number.MAX_SAFE_INTEGER), undefined);
+    strictEqual(offsetProblem(-1), "Must be >= 0.");
+    strictEqual(offsetProblem(0.5), "Expected an integer.");
+    strictEqual(offsetProblem(0), undefined);
+  });
+
+  it("refuses them in search(), searchLike(), selectRecords() and reviewQueue() before reading anything", () => {
+    const store = new MemoryStore();
+    const refused = (name: string, reason: string) => (error: unknown) =>
+      error instanceof OpenKaValidationError && error.message === `Invalid ${name}: ${reason}`;
+    throws(() => assertPaging({ limit: 0 }), refused("limit", "Must be >= 1."));
+    throws(() => search(store, "", { limit: -1 }), refused("limit", "Must be >= 1."));
+    throws(() => search(store, "", { offset: -2, limit: 1 }), refused("offset", "Must be >= 0."));
+    throws(() => search(store, "", { limit: 1.5 }), refused("limit", "Expected an integer."));
+    // Before the embeddings are read: this store has none, which would be a different error.
+    throws(() => searchLike(store, "berlin-19-12345", { limit: -1 }), refused("limit", "Must be >= 1."));
+    throws(() => selectRecords(store, "", { limit: 0 }), refused("limit", "Must be >= 1."));
+    throws(() => reviewQueue(store, { limit: 0 }), refused("limit", "Must be >= 1."));
   });
 });

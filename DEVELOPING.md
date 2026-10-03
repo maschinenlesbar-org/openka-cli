@@ -207,6 +207,12 @@ What the library rejects with `OpenKaValidationError`, so far:
   `PERIOD_RANGE`), a date that is not a `YYYY-MM-DD` calendar date (padding is
   trimmed; `isoDateProblem` in `lib-models`). `ka`'s `--parliament`, `--from`/`--to`,
   `--year`/`--period` parsers call the same rules.
+- **A page that cannot exist** — `search()`, `searchLike()`, `selectRecords()` and
+  `reviewQueue()` run `assertPaging` (`lib-search`): `limit` must be an integer >= 1
+  and `offset` an integer >= 0 (`LIMIT_MIN`, `OFFSET_MIN`; `limit` defaults to
+  `DEFAULT_SEARCH_LIMIT`). A negative one used to wrap around through `slice`. The
+  per-command maxima (`search` 1000, `export` 1 000 000, `feed` 500, `review`
+  10 000) stay in `ka`: they are presentation caps.
 - **An unknown render format or a blank feed title or id** — `renderRecord` checks
   the format against `RENDER_FORMATS` (`renderFormatProblem`) instead of falling back
   to JSON; `renderAtom` refuses a blank `title`/`id` and applies
