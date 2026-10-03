@@ -135,6 +135,11 @@ ka-factory embed                                  # frozen vectors for `ka searc
 ka-factory embed --from vectors.jsonl --model bge-m3 --model-sha256 <hex>
 ```
 
+`goldens add` without `--dir` files the golden in its source's connector package
+(`packages/connector-<source>/fixtures/`), the layout `goldens list` and
+`goldens verify` read; the source is the record's parliament unless `--source` says
+otherwise.
+
 ## Exit codes
 
 | Code | Meaning |

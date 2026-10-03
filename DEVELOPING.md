@@ -226,6 +226,12 @@ What the library now computes that a `ka` action used to compute on its own:
 - **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
   prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.
+- **Where a golden is filed** — `addGolden(store, id, { root?, source?, note? })`
+  (factory) defaults `source` to the record's parliament and `root` to
+  `goldenRootFor(source)`: the source's connector package `fixtures/`, the directory
+  `listAllGoldens` reads. `goldens add` without `--dir` used to resolve the help-text
+  placeholder "every package's fixtures/" as a path and file the golden where the
+  gate never looked.
 
 ## Reproducibility, concretely
 

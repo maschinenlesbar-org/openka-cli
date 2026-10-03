@@ -4,13 +4,14 @@
 
 import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
-import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import { addGolden, importEmbeddings, listAllGoldens, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
@@ -124,7 +125,7 @@ describe("blank and unsafe factory parameters (finding 24)", () => {
         runner: runFactory,
         seed: seedOneRecord,
         argv: (corpus) => ["--corpus", corpus, "goldens", "add", "berlin-19-12345", "--dir", cliDir(corpus), "--source", source],
-        lib: ({ store, corpus }) => addGolden(store, cliDir(corpus), "berlin-19-12345", source),
+        lib: ({ store, corpus }) => addGolden(store, "berlin-19-12345", { root: cliDir(corpus), source }),
       });
       bothRefused(result, "source", reason);
     }
@@ -136,14 +137,14 @@ describe("blank and unsafe factory parameters (finding 24)", () => {
         runner: runFactory,
         seed: seedOneRecord,
         argv: (corpus) => ["--corpus", corpus, "goldens", "add", "berlin-19-12345", "--dir", blank],
-        lib: ({ store }) => addGolden(store, blank, "berlin-19-12345", "berlin"),
+        lib: ({ store }) => addGolden(store, "berlin-19-12345", { root: blank, source: "berlin" }),
       });
       bothRefused(dir, "root", BLANK);
       const note = await parity({
         runner: runFactory,
         seed: seedOneRecord,
         argv: (corpus) => ["--corpus", corpus, "goldens", "add", "berlin-19-12345", "--dir", join(corpus, "g"), "--note", blank],
-        lib: ({ store, corpus }) => addGolden(store, join(corpus, "g"), "berlin-19-12345", "berlin", { note: blank }),
+        lib: ({ store, corpus }) => addGolden(store, "berlin-19-12345", { root: join(corpus, "g"), source: "berlin", note: blank }),
       });
       bothRefused(note, "note", BLANK);
     }
@@ -517,5 +518,38 @@ describe("lib-render's formats and feed options (finding 18)", () => {
     strictEqual(result.cli.code, 0, result.cli.err);
     ok(result.lib.ok);
     strictEqual(result.cli.out + "\n", result.lib.value);
+  });
+});
+
+describe("where goldens add files a golden without --dir (finding 3)", () => {
+  it("files it where list and verify read, the same place addGolden does", async () => {
+    // A throwaway workspace as the cwd: without --dir the golden goes into the
+    // workspace around the cwd, and that must never be this repository.
+    const ws = realpathSync(mkdtempSync(join(tmpdir(), "openka-ws-")));
+    writeFileSync(join(ws, "package.json"), "{}\n");
+    mkdirSync(join(ws, "packages", "connector-berlin"), { recursive: true });
+    const cwd = process.cwd();
+    process.chdir(ws);
+    try {
+      let afterCli: string[] = [];
+      const expected = join(ws, "packages", "connector-berlin", "fixtures", "berlin", "berlin-19-12345");
+      const result = await parity({
+        runner: runFactory,
+        seed: seedOneRecord,
+        argv: (corpus) => ["--corpus", corpus, "goldens", "add", "berlin-19-12345"],
+        lib: ({ store }) => {
+          afterCli = listAllGoldens(ws).map((golden) => golden.dir);
+          return addGolden(store, "berlin-19-12345").dir;
+        },
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      strictEqual(result.cli.out, `Froze berlin-19-12345 as a golden in ${expected}`);
+      deepStrictEqual(afterCli, [expected]);
+      deepStrictEqual(result.lib, { ok: true, value: expected, requests: [] });
+      deepStrictEqual(readdirSync(ws).sort(), ["package.json", "packages"]);
+    } finally {
+      process.chdir(cwd);
+      rmSync(ws, { recursive: true, force: true });
+    }
   });
 });

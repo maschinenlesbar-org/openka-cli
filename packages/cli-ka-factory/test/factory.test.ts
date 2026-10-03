@@ -2,14 +2,14 @@
 // and the frozen embeddings.
 
 import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, buildEmbeddings, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
-import { goldenKeyProblem } from "../src/lib/goldens.js";
+import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { MemoryStore, sampleRecord , PROJECT_ROOT } from "@maschinenlesbar.org/openka-lib-testing";
@@ -408,6 +408,35 @@ describe("the factory's input rules", () => {
     strictEqual(modelSha256Problem(" "), "Expected a non-empty value.");
     for (const hash of ["abc", "z".repeat(64), "a".repeat(65), ` ${"a".repeat(64)}`]) {
       strictEqual(modelSha256Problem(hash), "Expected a sha256 as 64 hexadecimal digits.", hash);
+    }
+  });
+});
+
+describe("where a source's goldens live", () => {
+  const ws = mkdtempSync(join(tmpdir(), "openka-ws-"));
+  after(() => rmSync(ws, { recursive: true, force: true }));
+  writeFileSync(join(ws, "package.json"), "{}\n");
+
+  it("is the source's connector package, fixtures/ or not yet", () => {
+    mkdirSync(join(ws, "packages", "connector-berlin"), { recursive: true });
+    strictEqual(goldenRootFor("berlin", ws), join(ws, "packages", "connector-berlin", "fixtures"));
+  });
+
+  it("is a fixture root that already holds the source, when there is no such connector", () => {
+    mkdirSync(join(ws, "packages", "lib-pardok", "fixtures", "pardok"), { recursive: true });
+    strictEqual(goldenRootFor("pardok", ws), join(ws, "packages", "lib-pardok", "fixtures"));
+  });
+
+  it("refuses to guess for a source nothing in the workspace belongs to", () => {
+    throws(() => goldenRootFor("narnia", ws), /narnia/);
+  });
+
+  it("is the workspace's fixtures/ outside a packages layout", () => {
+    const flat = mkdtempSync(join(tmpdir(), "openka-flat-"));
+    try {
+      strictEqual(goldenRootFor("berlin", flat), join(flat, "fixtures"));
+    } finally {
+      rmSync(flat, { recursive: true, force: true });
     }
   });
 });

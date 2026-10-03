@@ -20,7 +20,7 @@ import type { KaRecord, Tier } from "@maschinenlesbar.org/openka-lib-models";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
-import { assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { isSafeKey } from "@maschinenlesbar.org/openka-lib-store";
 
 /**
@@ -85,6 +85,28 @@ export function goldenRoots(workspaceRoot: string): string[] {
     .filter((dir) => existsSync(dir));
 }
 
+/**
+ * Where a source's goldens belong when the caller names no fixture root: the
+ * `fixtures/` of its connector package (`packages/connector-<source>`), or else
+ * the existing root that already holds `<source>/`, or — outside a `packages/`
+ * layout — `<ws>/fixtures`, the same fallback `goldenRoots` reads. Every answer is
+ * a directory `listAllGoldens` reads, so a golden filed here is one the gate sees.
+ * A source nothing in the workspace belongs to is refused rather than guessed.
+ */
+export function goldenRootFor(source: string, ws: string = workspaceRoot()): string {
+  assertValid("source", source, goldenKeyProblem);
+  const packages = join(ws, "packages");
+  if (!existsSync(packages)) return join(ws, "fixtures");
+  const connector = join(packages, `connector-${source}`);
+  if (existsSync(connector)) return join(connector, "fixtures");
+  const holding = goldenRoots(ws).find((root) => existsSync(join(root, source)));
+  if (holding !== undefined) return holding;
+  throw new OpenKaError(
+    `No fixture root for source "${source}": there is no packages/connector-${source} in ${ws} ` +
+      "and no package's fixtures/ holds it yet. Name the fixture directory.",
+  );
+}
+
 /** Every golden in the workspace, ordered by package, then source, then id. */
 export function listAllGoldens(root: string = workspaceRoot()): Golden[] {
   return goldenRoots(root).flatMap((dir) => listGoldens(dir));
@@ -117,24 +139,30 @@ export function listGoldens(root: string): Golden[] {
   return goldens;
 }
 
+export interface AddGoldenOptions {
+  /** Fixture root to file it under; `goldenRootFor(source)` when omitted. */
+  root?: string;
+  /** Source folder; the record's parliament when omitted. */
+  source?: string;
+  /** What this fixture is here to pin down. */
+  note?: string;
+}
+
 /**
  * Freeze a record from a corpus as a golden. The input bytes are copied into the
  * fixture, so the fixture is self-contained and a test never touches a parliament.
- * A blank `root` or `note`, or a `source` that is not a safe key, is refused with
- * `OpenKaValidationError` before anything is written.
+ * Filed under `<root>/<source>/<id>`, both defaulted where the regression gate
+ * reads (`goldenRootFor`). A blank `root` or `note`, or a `source` that is not a
+ * safe key, is refused with `OpenKaValidationError` before anything is written.
  */
-export function addGolden(
-  store: Store,
-  root: string,
-  id: string,
-  source: string,
-  options: { note?: string } = {},
-): Golden {
-  assertValid("root", root, nonBlankProblem);
-  assertValid("source", source, goldenKeyProblem);
+export function addGolden(store: Store, id: string, options: AddGoldenOptions = {}): Golden {
+  assertValid("root", options.root, nonBlankProblem);
+  assertValid("source", options.source, (value) => (value === undefined ? undefined : goldenKeyProblem(value)));
   assertValid("note", options.note, nonBlankProblem);
   const record = store.getRecord(id);
   if (record === undefined) throw new Error(`No record ${id} in the corpus`);
+  const source = options.source ?? record.parliament;
+  const root = options.root ?? goldenRootFor(source);
   const dir = join(root, source, id);
   mkdirSync(dir, { recursive: true });
 

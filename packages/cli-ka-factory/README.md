@@ -13,7 +13,8 @@ What lives here is everything the concept puts on the factory plane:
   from `packages/`, so a new connector is covered the moment it exists.
 - **`goldens`** — frozen input→record pairs. Because the line is deterministic these
   are real asserts, not fuzzy eval scores. Each Land's goldens live in its own
-  connector package; `goldens verify` finds them all from the workspace root.
+  connector package; `goldens verify` finds them all from the workspace root, and
+  `goldens add` files a new one there unless `--dir` says otherwise (`goldenRootFor`).
 - **`stamp`** — computes the extraction digest that `extractor_version` carries. It
   hashes the *sources* of `lib-extract`, `lib-pdf`, `lib-perceive` and `lib-text`
   with comments and indentation stripped, because an earlier attempt that hashed
@@ -46,7 +47,7 @@ the line, never the other way round.
 Everything is re-exported from the package root:
 
 ```
-DEFAULT_FIXTURES, DEFAULT_BASELINE, buildFactoryProgram, runFactory, SweepOptions, SweepReport, sweepAnswers, HASHED_TFIDF, DEFAULT_DIMENSIONS, buildEmbeddings, modelSha256Problem, importEmbeddings, goldenKeyProblem, GoldenMeta, Golden, workspaceRoot, goldenRoots, listAllGoldens, listGoldens, addGolden, GoldenResult, verifyGolden, SourceHealth, HealthSnapshot, measureHealth, loadBaseline, saveBaseline, DriftKind, DriftFinding, ABSTENTION_SPIKE, QA_COLLAPSE, detectDrift, FACTORY_PACKAGE, LINE_FILES, lineRoots, FORBIDDEN_MODULES, FORBIDDEN_HOSTS, LintViolation, lineFiles, lintSource, stripComments, LintReport, lintLine, EXTRACTION_SOURCES, extractionSourceFiles, computeExtractionDigest
+DEFAULT_FIXTURES, DEFAULT_BASELINE, buildFactoryProgram, runFactory, SweepOptions, SweepReport, sweepAnswers, HASHED_TFIDF, DEFAULT_DIMENSIONS, buildEmbeddings, modelSha256Problem, importEmbeddings, goldenKeyProblem, GoldenMeta, Golden, workspaceRoot, goldenRootFor, goldenRoots, listAllGoldens, listGoldens, AddGoldenOptions, addGolden, GoldenResult, verifyGolden, SourceHealth, HealthSnapshot, measureHealth, loadBaseline, saveBaseline, DriftKind, DriftFinding, ABSTENTION_SPIKE, QA_COLLAPSE, detectDrift, FACTORY_PACKAGE, LINE_FILES, lineRoots, FORBIDDEN_MODULES, FORBIDDEN_HOSTS, LintViolation, lineFiles, lintSource, stripComments, LintReport, lintLine, EXTRACTION_SOURCES, extractionSourceFiles, computeExtractionDigest
 ```
 
 ## Depends on

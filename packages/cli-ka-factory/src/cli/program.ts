@@ -34,9 +34,11 @@ import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
 
 /**
- * What `--dir` defaults to, for the help text. Each Land's goldens live in its own
- * connector package, so the default is not a directory at all: it is every
- * package's `fixtures/`, found from the workspace root.
+ * What `--dir` of `goldens list` and `goldens verify` defaults to, for the help
+ * text. Each Land's goldens live in its own connector package, so the default is
+ * not a directory at all: it is every package's `fixtures/`, found from the
+ * workspace root. It is never resolved as a path — `goldens add` used to, and filed
+ * goldens under a literal "every package's fixtures" directory nothing reads.
  */
 export const DEFAULT_FIXTURES = "every package's fixtures/";
 /**
@@ -108,7 +110,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .command("add")
     .description("freeze a record and its input bytes as a golden fixture")
     .argument("<id>", "record id in the corpus", parseRecordId)
-    .option("--dir <dir>", `fixture directory (default: ${DEFAULT_FIXTURES})`, parseNonEmpty)
+    .option("--dir <dir>", "fixture directory (default: the source's connector package fixtures/)", parseNonEmpty)
     .option("--source <key>", "source folder to file it under (default: the record's parliament)", problemParser(goldenKeyProblem))
     .option("--note <text>", "what this fixture is here to pin down", parseNonEmpty)
     .action(
@@ -117,9 +119,11 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         const store = ctx.existingStore();
         const record = store.getRecord(id);
         if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
-        const dir = resolve((ctx.opts["dir"] as string | undefined) ?? DEFAULT_FIXTURES);
-        const source = (ctx.opts["source"] as string | undefined) ?? record.parliament;
-        const golden = addGolden(store, dir, id, source, {
+        // Only what was given: where a golden belongs by default is the
+        // library's call (goldenRootFor), the same layout list and verify read.
+        const golden = addGolden(store, id, {
+          ...(ctx.opts["dir"] === undefined ? {} : { root: resolve(ctx.opts["dir"] as string) }),
+          ...(ctx.opts["source"] === undefined ? {} : { source: ctx.opts["source"] as string }),
           ...(ctx.opts["note"] === undefined ? {} : { note: ctx.opts["note"] as string }),
         });
         ctx.deps.io.out(`Froze ${id} as a golden in ${golden.dir}`);
