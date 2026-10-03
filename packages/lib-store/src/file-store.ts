@@ -96,6 +96,11 @@ export class FileStore implements Store {
     return join(this.root, ...parts);
   }
 
+  /**
+   * Where the blob for `digest` lives — built, not checked: the file may be
+   * missing or corrupt. `getBlob` checks the bytes, and `archivedDocument` hands
+   * out a path only after checking them.
+   */
   blobPath(digest: string): string {
     if (!isSha256(digest)) throw new StoreError(`Not a sha256 digest: ${digest}`);
     return this.path("blobs", digest.slice(0, 2), `${digest}.bin`);

@@ -2,12 +2,12 @@
 // function the CLI wraps must give the same outcome. Each `describe` below pins one
 // rule that used to live only in a commander parser or a command action.
 
-import { deepStrictEqual, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { CORPUS_ENV, FileStore, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
+import { join, relative, resolve } from "node:path";
+import { CORPUS_ENV, FileStore, archivedDocument, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
 import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES } from "@maschinenlesbar.org/openka-lib-http";
@@ -1249,5 +1249,83 @@ describe("verifying a corpus (finding 13)", () => {
     strictEqual(result.cli.code, 1, result.cli.err);
     strictEqual(result.cli.err, `Error: No records in ${resolve(cliRoot)}`);
     deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: `No records in ${libRoot}` }, requests: [] });
+  });
+});
+
+describe("a record's archived document (finding 15)", () => {
+  /** The blob of the one seeded record's combined PDF. */
+  const blobOf = (corpus: string): string => {
+    const store = new FileStore(corpus);
+    const sha256 = store.getRecord("berlin-19-12345")?.source_documents[0]?.sha256;
+    ok(sha256 !== undefined);
+    return store.blobPath(sha256);
+  };
+  const open = (argv: string[] = []) => (corpus: string): string[] => ["--corpus", corpus, "open", "berlin-19-12345", ...argv];
+
+  it("prints the path archivedDocument returns", async () => {
+    let cliCorpus = "";
+    let libCorpus = "";
+    const result = await parity({
+      seed: seedOneRecord,
+      argv: (corpus) => open()((cliCorpus = corpus)),
+      lib: ({ store, corpus }) => {
+        libCorpus = corpus;
+        return archivedDocument(store, "berlin-19-12345").path;
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    strictEqual(relative(cliCorpus, result.cli.out), relative(libCorpus, result.lib.value as string));
+    strictEqual(result.cli.err, "combined_pdf · https://example.invalid/19-12345.pdf");
+  });
+
+  const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const [label, damage, expected] of [
+    ["missing", (blob: string) => rmSync(blob), (_blob: string) => /^The archived bytes for https:\/\/example\.invalid\/19-12345\.pdf \([0-9a-f]{64}\) are missing\.$/],
+    ["corrupt", (blob: string) => writeFileSync(blob, "not the archived bytes"), (blob: string) => new RegExp(`^The archived bytes ${escape(blob)} are corrupt: they hash to [0-9a-f]{64}, not to their name$`)],
+  ] as const) {
+    it(`refuses ${label} archived bytes as a corpus problem on both sides`, async () => {
+      const blobs: string[] = [];
+      const result = await parity({
+        seed: (corpus) => {
+          seedOneRecord(corpus);
+          blobs.push(blobOf(corpus));
+          damage(blobs[blobs.length - 1] as string);
+        },
+        argv: open(),
+        lib: ({ store }) => archivedDocument(store, "berlin-19-12345"),
+      });
+      const [cliBlob, libBlob] = blobs as [string, string];
+      strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+      ok(result.cli.err.startsWith("Error: "));
+      match(result.cli.err.slice("Error: ".length), expected(cliBlob));
+      ok(!result.lib.ok);
+      strictEqual(result.lib.error.name, "StoreError");
+      match(result.lib.error.message, expected(libBlob));
+    });
+  }
+
+  it("refuses a role that does not exist on both sides", async () => {
+    for (const role of ["bogus", " combined_pdf"]) {
+      const result = await parity({
+        seed: seedOneRecord,
+        argv: open(["--role", role]),
+        lib: ({ store }) => archivedDocument(store, "berlin-19-12345", { role }),
+      });
+      bothRefused(result, "role", "Allowed choices are question_pdf, answer_pdf, combined_pdf, metadata.");
+    }
+  });
+
+  it("says the same when the record has no archived document with that role", async () => {
+    const result = await parity({
+      seed: seedOneRecord,
+      argv: open(["--role", "answer_pdf"]),
+      lib: ({ store }) => archivedDocument(store, "berlin-19-12345", { role: "answer_pdf" }),
+    });
+    strictEqual(result.cli.code, 1, result.cli.err);
+    ok(!result.lib.ok);
+    strictEqual(result.lib.error.name, "OpenKaError");
+    strictEqual(result.cli.err, `Error: ${result.lib.error.message}`);
+    match(result.lib.error.message, /^Record berlin-19-12345 has no archived document with role answer_pdf\./);
   });
 });

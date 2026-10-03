@@ -3,11 +3,11 @@
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { parliamentByKey } from "@maschinenlesbar.org/openka-lib-models";
-import { ReviewStatuses, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { ReviewStatuses, SourceDocumentRoles, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, search } from "@maschinenlesbar.org/openka-lib-search";
 import { searchLike } from "@maschinenlesbar.org/openka-lib-search";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "@maschinenlesbar.org/openka-lib-render";
-import type { CatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
+import { archivedDocument, documentRoleProblem, type CatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
 import type { CliDeps } from "../io.js";
 import {
   action,
@@ -21,6 +21,7 @@ import {
   parseNonEmpty,
   parseRecordId,
   printJson,
+  problemParser,
 } from "../shared.js";
 import { pad, sanitizeForTerminal, truncate } from "../text.js";
 
@@ -210,32 +211,17 @@ export function registerQuery(program: Command, deps: CliDeps): void {
     .command("open")
     .description("print the path of a record's archived source document")
     .argument("<id>", "record id", parseRecordId)
-    .option("--role <role>", "which document to open when there are several", parseNonEmpty)
+    .option("--role <role>", `which document to open when there are several (${SourceDocumentRoles.join(", ")})`, problemParser(documentRoleProblem))
     .action(
       action(deps, async (ctx, positionals) => {
         const id = positionals[0] as string;
-        const store = ctx.existingStore();
-        const record = store.getRecord(id);
-        if (record === undefined) throw new OpenKaError(`No record ${id} in ${ctx.corpusRoot()}`);
+        // Which document, and whether its bytes are really there, is the
+        // library's (archivedDocument): one checked path or a StoreError.
         const role = ctx.opts["role"] as string | undefined;
-        const candidates = record.source_documents.filter(
-          (document) => document.sha256 !== undefined && (role === undefined || document.role === role),
-        );
-        const document = candidates[0];
-        if (document?.sha256 === undefined) {
-          throw new OpenKaError(
-            `Record ${id} has no archived document${role === undefined ? "" : ` with role ${role}`}. ` +
-              `It was synced with --metadata-only, or the upstream served nothing.`,
-          );
-        }
-        if (!store.hasBlob(document.sha256)) {
-          throw new OpenKaError(`The archived bytes for ${document.url} (${document.sha256}) are missing.`);
-        }
-        // Checked, not just present: a path to altered bytes is not the archive.
-        store.getBlob(document.sha256);
+        const { document, path } = archivedDocument(ctx.existingStore(), id, role === undefined ? {} : { role });
         // The path is printed rather than handed to an opener: the CLI does not
         // launch other programs, and `open "$(ka open <id>)"` is one keystroke more.
-        ctx.deps.io.out(store.blobPath(document.sha256));
+        ctx.deps.io.out(path);
         ctx.deps.io.err(`${document.role} · ${sanitizeForTerminal(document.url)}`);
       }),
     );

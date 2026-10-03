@@ -315,6 +315,14 @@ What the library now computes that a `ka` action used to compute on its own:
   `artifact()`, so `verifyRecord` with a plain `new TesseractJsPerceiver()` no
   longer reports a false non-reproduction. Both are extraction code: the digest
   moved and the goldens were re-frozen.
+- **A record's archived document** — `archivedDocument(store, id, { role? })`
+  (`lib-store`) picks the first document with archived bytes (with that role, if
+  given; `documentRoleProblem` refuses a role no record can have), checks the bytes
+  and returns `{ document, path }`; missing and corrupt bytes are both a
+  `StoreError`. `blobPath` stays an unchecked path builder, and says so. `ka open`
+  prints that path: missing bytes now exit 3 like corrupt ones (they used to exit
+  1), and `--role bogus` is a usage error instead of "It was synced with
+  --metadata-only".
 - **Verifying a corpus** — `verifyCorpus({ store, ids?, all?, limit? })`
   (`lib-verify`) picks the records (given ids, all, or `evenSample` of
   `DEFAULT_VERIFY_SAMPLE`), verifies each and tallies `{ checked, reproduced,

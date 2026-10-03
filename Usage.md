@@ -64,7 +64,10 @@ ka show berlin-19-10006                  # rendered for reading
 open "$(ka open berlin-19-10006)"        # the archived PDF
 ```
 
-`ka open` prints a path rather than launching a program.
+`ka open` prints a path rather than launching a program, and only after checking the
+bytes there. `--role` is one of `question_pdf`, `answer_pdf`, `combined_pdf`,
+`metadata`; another value is a usage error (exit 2). Archived bytes that are missing
+or no longer hash to their name are a corpus problem (exit 3).
 
 ## `ka verify`
 

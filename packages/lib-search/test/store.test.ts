@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
-import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, archivedDocument, documentRoleProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
@@ -685,5 +685,35 @@ describe("opening an existing corpus", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a record's archived document", () => {
+  it("names the roles a record can hold", () => {
+    strictEqual(documentRoleProblem("combined_pdf"), undefined);
+    for (const role of ["bogus", " combined_pdf", "COMBINED_PDF", ""]) {
+      strictEqual(documentRoleProblem(role), "Allowed choices are question_pdf, answer_pdf, combined_pdf, metadata.");
+    }
+  });
+
+  it("hands out a checked path, picked by role", () => {
+    const store = new MemoryStore();
+    const question = store.putBlob(Buffer.from("question"));
+    const answer = store.putBlob(Buffer.from("answer"));
+    store.putRecord(
+      sampleRecord({
+        source_documents: [
+          { role: "metadata", url: "https://example.invalid/meta.xml", url_stable: true },
+          { role: "question_pdf", url: "https://example.invalid/q.pdf", sha256: question, url_stable: true },
+          { role: "answer_pdf", url: "https://example.invalid/a.pdf", sha256: answer, url_stable: true },
+        ],
+      }),
+    );
+    strictEqual(archivedDocument(store, "berlin-19-12345").document.role, "question_pdf");
+    const picked = archivedDocument(store, "berlin-19-12345", { role: "answer_pdf" });
+    deepStrictEqual([picked.document.sha256, picked.path], [answer, store.blobPath(answer)]);
+    throws(() => archivedDocument(store, "berlin-19-12345", { role: "combined_pdf" }), /has no archived document with role combined_pdf/);
+    throws(() => archivedDocument(store, "berlin-19-99999"), /^OpenKaError: No record berlin-19-99999 in \/memory$/);
+    throws(() => archivedDocument(store, "berlin-19-12345", { role: "pdf" }), OpenKaValidationError);
   });
 });
