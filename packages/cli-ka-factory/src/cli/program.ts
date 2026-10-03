@@ -22,13 +22,14 @@ import {
   parseNonEmpty,
   parseRecordId,
   printJson,
+  problemParser,
   toEngineOptions,
 } from "@maschinenlesbar.org/openka-cli-ka";
 import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
-import { addGolden, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
+import { addGolden, goldenKeyProblem, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
 import { detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
-import { buildEmbeddings, importEmbeddings, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
+import { buildEmbeddings, importEmbeddings, modelSha256Problem, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
 import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
 
@@ -108,7 +109,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .description("freeze a record and its input bytes as a golden fixture")
     .argument("<id>", "record id in the corpus", parseRecordId)
     .option("--dir <dir>", `fixture directory (default: ${DEFAULT_FIXTURES})`, parseNonEmpty)
-    .option("--source <key>", "source folder to file it under (default: the record's parliament)", parseNonEmpty)
+    .option("--source <key>", "source folder to file it under (default: the record's parliament)", problemParser(goldenKeyProblem))
     .option("--note <text>", "what this fixture is here to pin down", parseNonEmpty)
     .action(
       action(deps, async (ctx, positionals) => {
@@ -330,7 +331,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .option("--dimensions <n>", `vector size (default: ${DEFAULT_DIMENSIONS})`, parseBoundedInt(16, 4096))
     .option("--from <file>", "import vectors from JSON Lines instead of computing them", parseNonEmpty)
     .option("--model <name>", "model name to record when importing", parseNonEmpty)
-    .option("--model-sha256 <hex>", "model weights hash to record when importing", parseNonEmpty)
+    .option("--model-sha256 <hex>", "model weights hash to record when importing", problemParser(modelSha256Problem))
     .action(
       action(deps, async (ctx) => {
         const store = ctx.store();

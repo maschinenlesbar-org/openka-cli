@@ -12,7 +12,7 @@ import type { SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { OpenKaError, StoreError, UsageError, nonBlankProblem } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
@@ -49,14 +49,22 @@ export function parseBoundedInt(min: number, max?: number): (value: string) => n
 }
 
 /**
+ * commander value-parser built from a library rule: the library's own reason,
+ * verbatim, as a usage error. The rule is written once, in the library.
+ */
+export function problemParser(problem: Problem<string>): (value: string) => string {
+  return (value: string) => {
+    const reason = problem(value);
+    if (reason !== undefined) throw new InvalidArgumentError(reason);
+    return value;
+  };
+}
+
+/**
  * commander value-parser: a non-empty (after trimming) string. The rule is the
  * library's `nonBlankProblem`, so "blank" means the same on both sides.
  */
-export function parseNonEmpty(value: string): string {
-  const reason = nonBlankProblem(value);
-  if (reason !== undefined) throw new InvalidArgumentError(reason);
-  return value;
-}
+export const parseNonEmpty: (value: string) => string = problemParser(nonBlankProblem);
 
 /**
  * commander value-parser: a record id. A malformed one ("BERLIN-19-10006",

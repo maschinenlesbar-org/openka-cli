@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
-import { HASHED_TFIDF, buildEmbeddings, importEmbeddings } from "../src/lib/embed.js";
+import { HASHED_TFIDF, buildEmbeddings, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
+import { goldenKeyProblem } from "../src/lib/goldens.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { MemoryStore, sampleRecord , PROJECT_ROOT } from "@maschinenlesbar.org/openka-lib-testing";
@@ -387,5 +388,26 @@ describe("the supported Node versions", () => {
       readFileSync(join(PROJECT_ROOT, "packages", "openka-cli", "package.json"), "utf8"),
     ) as { engines?: { node?: string } };
     strictEqual(published.engines?.node, `>=${enginesFloor(PROJECT_ROOT)}`);
+  });
+});
+
+describe("the factory's input rules", () => {
+  it("takes a golden source only when it is a safe, non-blank key", () => {
+    for (const key of ["berlin", "nordrhein-westfalen", "x.1_y"]) strictEqual(goldenKeyProblem(key), undefined, key);
+    strictEqual(goldenKeyProblem(""), "Expected a non-empty value.");
+    strictEqual(goldenKeyProblem("  "), "Expected a non-empty value.");
+    for (const key of ["..", "Berlin", "a/b", " berlin", "-x"]) {
+      match(goldenKeyProblem(key) ?? "", /^Not a source key/, key);
+    }
+  });
+
+  it("takes a model hash only as 64 hexadecimal digits, or not at all", () => {
+    strictEqual(modelSha256Problem(undefined), undefined);
+    strictEqual(modelSha256Problem("ab".repeat(32)), undefined);
+    strictEqual(modelSha256Problem("AB".repeat(32)), undefined);
+    strictEqual(modelSha256Problem(" "), "Expected a non-empty value.");
+    for (const hash of ["abc", "z".repeat(64), "a".repeat(65), ` ${"a".repeat(64)}`]) {
+      strictEqual(modelSha256Problem(hash), "Expected a sha256 as 64 hexadecimal digits.", hash);
+    }
   });
 });

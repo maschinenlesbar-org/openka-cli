@@ -193,6 +193,12 @@ What the library rejects with `OpenKaValidationError`, so far:
 - **A blank OCR option** — `language`, `requireVersion` or `traineddataPath` given as
   `""` or whitespace to `TesseractCliPerceiver` / `TesseractJsPerceiver`
   (`assertPerceiverOptions`, `lib-perceive`). An omitted one still means the default.
+- **Blank or unsafe factory parameters** — `addGolden` refuses a blank `root` or
+  `note` and a `source` that is not a safe key (`goldenKeyProblem`: blank, `..`,
+  upper case); `importEmbeddings` a blank `model` and a `modelSha256` that is not 64
+  hex digits (`modelSha256Problem`); `loadBaseline`/`saveBaseline` a blank path. The
+  `ka-factory` options `--source` and `--model-sha256` use the same rules, so
+  `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
 
 ## Reproducibility, concretely
 

@@ -16,7 +16,7 @@
 // those record their own model name and hash.
 
 import { createHash } from "node:crypto";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { readFileSync } from "node:fs";
 import { tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { indexableFields } from "@maschinenlesbar.org/openka-lib-store";
@@ -78,6 +78,15 @@ function round(value: number): number {
 }
 
 /**
+ * Why `value` is not a model weights hash, or `undefined` when it is one (or is
+ * omitted). It is recorded as the `model_sha256` of the set, so it must be one.
+ */
+export const modelSha256Problem: Problem<string | undefined> = (value) =>
+  value === undefined
+    ? undefined
+    : (nonBlankProblem(value) ?? (/^[0-9a-f]{64}$/i.test(value) ? undefined : "Expected a sha256 as 64 hexadecimal digits."));
+
+/**
  * Import vectors produced outside this project, as JSON Lines of
  * `{"id": "...", "vector": [...]}`. The model name and hash are recorded verbatim:
  * whatever produced them, the line still only ever compares numbers.
@@ -86,6 +95,10 @@ export function importEmbeddings(
   path: string,
   options: { model: string; modelSha256?: string },
 ): EmbeddingSet {
+  // A blank model name or a hash that is not one would be recorded verbatim as
+  // the set's provenance.
+  assertValid("model", options.model, nonBlankProblem);
+  assertValid("modelSha256", options.modelSha256, modelSha256Problem);
   const vectors: Record<string, number[]> = {};
   let dimensions = 0;
   let source: string;

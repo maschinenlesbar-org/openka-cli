@@ -8,7 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, assertValid, nonBlankProblem } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import type { CatalogStore, RecordStore, SourceStateStore } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
@@ -99,7 +99,13 @@ function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
 
+/**
+ * Read a baseline, or `undefined` when there is no file at `path`. A blank path is
+ * refused with `OpenKaValidationError`: it used to read as "no baseline" (and on
+ * save, to write a file named by the whitespace).
+ */
 export function loadBaseline(path: string): HealthSnapshot | undefined {
+  assertValid("baseline path", path, nonBlankProblem);
   if (!existsSync(path)) return undefined;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as HealthSnapshot;
@@ -112,6 +118,7 @@ export function loadBaseline(path: string): HealthSnapshot | undefined {
 
 /** Write a baseline, creating its directory; a failure is an OpenKaError, not a raw fs error. */
 export function saveBaseline(path: string, snapshot: HealthSnapshot): void {
+  assertValid("baseline path", path, nonBlankProblem);
   try {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, canonicalJsonLine(snapshot));

@@ -20,6 +20,17 @@ import type { KaRecord, Tier } from "@maschinenlesbar.org/openka-lib-models";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
+import { assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { isSafeKey } from "@maschinenlesbar.org/openka-lib-store";
+
+/**
+ * Why `value` cannot name a golden's source folder, or `undefined` when it can. It
+ * becomes a path segment, so it obeys the store's key rule: a blank source filed
+ * the golden where `listGoldens` never looks, and `..` filed it outside the layout.
+ */
+export const goldenKeyProblem: Problem<string> = (value) =>
+  nonBlankProblem(value) ??
+  (isSafeKey(value) ? undefined : "Not a source key: expected lower-case letters, digits, '.', '_' and '-', like berlin.");
 
 export interface GoldenMeta {
   id: string;
@@ -109,6 +120,8 @@ export function listGoldens(root: string): Golden[] {
 /**
  * Freeze a record from a corpus as a golden. The input bytes are copied into the
  * fixture, so the fixture is self-contained and a test never touches a parliament.
+ * A blank `root` or `note`, or a `source` that is not a safe key, is refused with
+ * `OpenKaValidationError` before anything is written.
  */
 export function addGolden(
   store: Store,
@@ -117,6 +130,9 @@ export function addGolden(
   source: string,
   options: { note?: string } = {},
 ): Golden {
+  assertValid("root", root, nonBlankProblem);
+  assertValid("source", source, goldenKeyProblem);
+  assertValid("note", options.note, nonBlankProblem);
   const record = store.getRecord(id);
   if (record === undefined) throw new Error(`No record ${id} in the corpus`);
   const dir = join(root, source, id);
