@@ -822,3 +822,39 @@ describe("a corpus that is not there (finding 7)", () => {
     deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
   });
 });
+
+describe("a named drift baseline that is not there (finding 22)", () => {
+  it("is an error on both sides, not a first run", async () => {
+    let cliPath = "";
+    const result = await parity({
+      runner: runFactory,
+      seed: seedOneRecord,
+      argv: (corpus) => {
+        cliPath = join(corpus, "helth-baseline.json");
+        return ["--corpus", corpus, "drift", "--baseline", cliPath, "--json"];
+      },
+      lib: ({ corpus }) => loadBaseline(join(corpus, "helth-baseline.json")),
+    });
+    const message = (path: string): string => `No baseline at ${path}. Write one with \`ka-factory health --save-baseline\`.`;
+    strictEqual(result.cli.code, 1, result.cli.err);
+    strictEqual(result.cli.err, `Error: ${message(cliPath)}`);
+    ok(!result.lib.ok);
+    strictEqual(result.lib.error.name, "OpenKaError");
+    ok(result.lib.error.message.endsWith("/helth-baseline.json. Write one with `ka-factory health --save-baseline`."), result.lib.error.message);
+  });
+
+  it("leaves a missing default baseline a first run, on both sides", async () => {
+    const result = await parity({
+      runner: runFactory,
+      seed: seedOneRecord,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "drift", "--json"],
+      lib: ({ store, corpus }) => {
+        const baseline = loadCorpusBaseline(corpus);
+        return { baseline: baseline?.taken_at ?? null, findings: detectDrift(measureHealth(store, "2026-01-02T03:04:05Z"), baseline) };
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
+    strictEqual((result.lib as { value: { baseline: unknown } }).value.baseline, null);
+  });
+});

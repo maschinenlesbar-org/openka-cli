@@ -124,9 +124,14 @@ export function baselinePath(corpusRoot: string): string {
   return join(corpusRoot, BASELINE_FILE);
 }
 
-/** Read the default baseline of a corpus, or `undefined` when it has none yet (a first run). */
+/**
+ * Read the default baseline of a corpus, or `undefined` when it has none yet: a
+ * missing *default* baseline is the first run, which `drift` reports rather than
+ * treating as an error.
+ */
 export function loadCorpusBaseline(corpusRoot: string): HealthSnapshot | undefined {
-  return loadBaseline(baselinePath(corpusRoot));
+  const path = baselinePath(corpusRoot);
+  return existsSync(path) ? loadBaseline(path) : undefined;
 }
 
 /** Write `snapshot` as the default baseline of a corpus; returns the path written. */
@@ -137,13 +142,18 @@ export function saveCorpusBaseline(corpusRoot: string, snapshot: HealthSnapshot)
 }
 
 /**
- * Read a baseline, or `undefined` when there is no file at `path`. A path that is
- * blank or not a string is refused with `OpenKaValidationError`
- * (`baselinePathProblem`).
+ * Read the baseline at `path`. A path that is blank or not a string is refused
+ * with `OpenKaValidationError` (`baselinePathProblem`); no file there is an
+ * `OpenKaError`. A path the caller named that holds nothing is a typo, and
+ * answering it as a first run — "every source is new, nothing is wrong" — is the
+ * worst reading available. `loadCorpusBaseline` is the one place a missing
+ * baseline is fine.
  */
-export function loadBaseline(path: string): HealthSnapshot | undefined {
+export function loadBaseline(path: string): HealthSnapshot {
   assertValid("baseline path", path, baselinePathProblem);
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) {
+    throw new OpenKaError(`No baseline at ${path}. Write one with \`ka-factory health --save-baseline\`.`);
+  }
   try {
     return JSON.parse(readFileSync(path, "utf8")) as HealthSnapshot;
   } catch (err) {

@@ -28,7 +28,16 @@ import {
 import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
 import { addGolden, goldenKeyProblem, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
-import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
+import {
+  BASELINE_FILE,
+  baselinePath,
+  baselinePathProblem,
+  detectDrift,
+  loadBaseline,
+  loadCorpusBaseline,
+  measureHealth,
+  saveBaseline,
+} from "../lib/health.js";
 import {
   buildEmbeddings,
   importEmbeddings,
@@ -240,13 +249,9 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
       action(deps, async (ctx) => {
         const named = ctx.opts["baseline"] as string | undefined;
         const path = named === undefined ? baselinePath(ctx.corpusRoot()) : resolve(named);
-        const baseline = loadBaseline(path);
-        // A missing *default* baseline means "first run". A missing path the caller
-        // named is a typo, and answering a typo with "every source is new, nothing
-        // is wrong" is the worst reading available.
-        if (baseline === undefined && named !== undefined) {
-          throw new OpenKaError(`No baseline at ${path}. Write one with \`ka-factory health --save-baseline\`.`);
-        }
+        // A missing default baseline is a first run; a missing named one is an
+        // error. Which is which is the library's call.
+        const baseline = named === undefined ? loadCorpusBaseline(ctx.corpusRoot()) : loadBaseline(path);
         const snapshot = measureHealth(ctx.store(), isoInstant(ctx.deps.now()));
         const findings = detectDrift(snapshot, baseline);
         if (ctx.opts["json"] === true) {

@@ -268,7 +268,10 @@ What the library now computes that a `ka` action used to compute on its own:
   `baselinePath(corpusRoot)` (factory, `health.ts`): `<corpus>/health-baseline.json`.
   `saveCorpusBaseline`/`loadCorpusBaseline` write and read it there; `health
   --save-baseline` and `drift` without a path use exactly that location. The file
-  name used to be a constant of the `ka-factory` program only.
+  name used to be a constant of the `ka-factory` program only. `loadBaseline(path)`
+  is strict: no file at a path the caller named is an `OpenKaError` ("No baseline at
+  …"), where it used to read as a first run; only `loadCorpusBaseline` returns
+  `undefined`, for a corpus whose default baseline was never written.
 
 ## Reproducibility, concretely
 

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
-import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
+import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, loadCorpusBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, MAX_DIMENSIONS, MIN_DIMENSIONS, buildEmbeddings, dimensionsProblem, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
 import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
 import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, assertSweepRange, drucksacheProblem, sweepPeriodProblem } from "../src/lib/answer-index.js";
@@ -192,7 +192,10 @@ describe("health metrics", () => {
     const snapshot = measureHealth(corpus(), "2026-01-02T03:04:05Z");
     saveBaseline(path, snapshot);
     deepStrictEqual(loadBaseline(path), snapshot);
-    strictEqual(loadBaseline(join(dir, "missing.json")), undefined);
+    // A path the caller named that holds nothing is a typo, not a first run.
+    throws(() => loadBaseline(join(dir, "missing.json")), /^OpenKaError: No baseline at .*missing\.json\. Write one with/);
+    // Only a corpus's *default* baseline may be missing: that is the first run.
+    strictEqual(loadCorpusBaseline(dir), undefined);
     rmSync(dir, { recursive: true, force: true });
   });
 
