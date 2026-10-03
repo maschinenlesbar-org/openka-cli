@@ -12,9 +12,9 @@
 // be inspected with `cat`, and — crucially for the reproducibility claim — is
 // byte-identical for the same inputs regardless of the machine that wrote it.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
@@ -59,8 +59,35 @@ function catalogProblem(rows: unknown): string | undefined {
 export class FileStore implements Store {
   readonly root: string;
 
+  /**
+   * Open the corpus at `root`, or create it on the first write. For a writer
+   * (`sync`, a test fixture): a directory that is not there yet is where the corpus
+   * will be. A reader wants `FileStore.open` instead.
+   */
   constructor(root: string) {
     this.root = resolve(root);
+  }
+
+  /**
+   * Open the corpus at `root` for reading: it must already exist. A missing
+   * directory throws `MissingCorpusError`, a path that is not a directory
+   * `StoreError` (both exit 3 in `ka`). `new FileStore` on the same path answers
+   * an empty corpus — no records, no matches — which for a mistyped path is the
+   * wrong answer, indistinguishable from a corpus with nothing in it. Nothing is
+   * created.
+   */
+  static open(root: string): FileStore {
+    const resolved = resolve(root);
+    let isDirectory: boolean;
+    try {
+      isDirectory = statSync(resolved).isDirectory();
+    } catch (err) {
+      if ((err as { code?: unknown }).code === "ENOENT") throw new MissingCorpusError(resolved);
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new StoreError(`Could not open the corpus at ${resolved}: ${reason}`, { cause: err });
+    }
+    if (!isDirectory) throw new StoreError(`${resolved} is not a directory, so it cannot be a corpus.`);
+    return new FileStore(resolved);
   }
 
   // ---------------------------------------------------------------- paths

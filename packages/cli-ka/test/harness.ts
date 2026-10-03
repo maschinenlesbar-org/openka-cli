@@ -48,6 +48,7 @@ export function cliHarness(options: { transport?: Transport; env?: NodeJS.Proces
   const deps: CliDeps = {
     io,
     createStore: (root) => new FileStore(root),
+    openStore: (root) => FileStore.open(root),
     createEngine: (engineOptions) =>
       new FetchEngine({
         ...engineOptions,

@@ -1,12 +1,12 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
 import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
-import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
@@ -662,5 +662,28 @@ describe("a searchable query", () => {
   it("is enforced by search() and selectRecords() before they read anything", () => {
     throws(() => search(new MemoryStore(), "???"), (error: unknown) => error instanceof OpenKaValidationError && error.message.startsWith("Invalid query: Nothing searchable"));
     throws(() => selectRecords(new MemoryStore(), "-"), OpenKaValidationError);
+  });
+});
+
+describe("opening an existing corpus", () => {
+  it("opens a directory, and refuses a missing path or a file without creating anything", () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-open-"));
+    try {
+      strictEqual(FileStore.open(root).root, root);
+      const missing = join(root, "typo");
+      throws(
+        () => FileStore.open(missing),
+        (error: unknown) =>
+          error instanceof MissingCorpusError &&
+          error instanceof StoreError &&
+          error.root === missing &&
+          error.message === `No corpus at ${missing}: nothing has been synced there.`,
+      );
+      ok(!existsSync(missing));
+      writeFileSync(join(root, "afile"), "x");
+      throws(() => FileStore.open(join(root, "afile")), (error: unknown) => error instanceof StoreError && /is not a directory/.test(error.message));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -55,6 +55,20 @@ export class ParseError extends OpenKaError {}
 export class StoreError extends OpenKaError {}
 
 /**
+ * There is no corpus at `root`: nothing has been synced there. A `StoreError`, so
+ * it exits 3 like one; its own class so a CLI can add a hint about where the path
+ * came from (`--corpus`, `OPENKA_CORPUS`) without matching on the message.
+ */
+export class MissingCorpusError extends StoreError {
+  readonly root: string;
+
+  constructor(root: string) {
+    super(`No corpus at ${root}: nothing has been synced there.`);
+    this.root = root;
+  }
+}
+
+/**
  * A combination of options that cannot be honoured. Exits 2, like a parse error,
  * because the alternative — running anyway and ignoring what was asked — is the
  * silently-dropped constraint this CLI refuses to produce.

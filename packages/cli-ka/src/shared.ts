@@ -17,8 +17,8 @@ import {
 } from "@maschinenlesbar.org/openka-lib-search";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { existsSync, statSync } from "node:fs";
-import { OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { statSync } from "node:fs";
+import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
@@ -185,12 +185,17 @@ export function action(
         corpusRoot: () => root,
         store: () => (store ??= deps.createStore(root)),
         existingStore: () => {
-          if (!existsSync(root)) {
-            throw new StoreError(
-              `No corpus at ${root}: nothing has been synced there. Check --corpus / OPENKA_CORPUS, or run \`ka sync\` first.`,
-            );
+          if (store !== undefined) return store;
+          try {
+            return (store = deps.openStore(root));
+          } catch (err) {
+            // Whether a corpus is there is the library's call; where the path
+            // came from — and so what to check — is the CLI's to say.
+            if (err instanceof MissingCorpusError) {
+              throw new StoreError(`${err.message} Check --corpus / OPENKA_CORPUS, or run \`ka sync\` first.`, { cause: err });
+            }
+            throw err;
           }
-          return (store ??= deps.createStore(root));
         },
       },
       positionals,

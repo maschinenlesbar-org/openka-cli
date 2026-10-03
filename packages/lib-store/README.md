@@ -10,6 +10,11 @@
   index/tokens/<shard>.json    inverted index shards
 ```
 
+`new FileStore(root)` opens a corpus or creates it on the first write — what a
+writer wants. A reader wants `FileStore.open(root)`, which requires the corpus to be
+there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
+than an empty corpus that answers "no matches" for a mistyped path.
+
 Everything the line persists goes through the `Store` interface, so the pipeline,
 search and the CLI can be driven against an in-memory store in tests without
 touching a filesystem — the same trick `Transport` plays for HTTP. The interface is

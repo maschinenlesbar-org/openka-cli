@@ -35,7 +35,7 @@ import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
-import { EXIT_USAGE, run } from "../src/run.js";
+import { EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { TesseractCliPerceiver, TesseractJsPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { cliHarness } from "./harness.js";
 import { parity } from "./helpers.js";
@@ -47,7 +47,7 @@ describe("a validation error raised inside an action", () => {
 
   it("exits 2 from ka, printed as Error: <message>", async () => {
     const harness = cliHarness();
-    harness.deps.createStore = refusing;
+    harness.deps.openStore = refusing;
     strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_USAGE);
     strictEqual(harness.stderr(), "Error: Invalid corpus: Expected a non-empty value.");
     harness.cleanup();
@@ -769,5 +769,56 @@ describe("a query with nothing searchable (finding 1)", () => {
       strictEqual(result.cli.code, 0, result.cli.err);
       deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
     }
+  });
+});
+
+describe("a corpus that is not there (finding 7)", () => {
+  const HINT = " Check --corpus / OPENKA_CORPUS, or run `ka sync` first.";
+
+  for (const argv of [["search", "--json"], ["stats", "--json"], ["get", "berlin-19-12345"], ["export", "--format", "jsonl"]]) {
+    it(`refuses ${argv[0]} on a missing directory, as FileStore.open does`, async () => {
+      let cliRoot = "";
+      const result = await parity({
+        argv: (corpus) => {
+          cliRoot = join(corpus, "typo");
+          return ["--corpus", cliRoot, ...argv];
+        },
+        lib: ({ corpus }) => search(FileStore.open(join(corpus, "typo")), ""),
+      });
+      strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+      strictEqual(result.cli.err, `Error: No corpus at ${cliRoot}: nothing has been synced there.${HINT}`);
+      deepStrictEqual(result.cli.requests, []);
+      ok(!result.lib.ok);
+      strictEqual(result.lib.error.name, "MissingCorpusError");
+      ok(result.lib.error.message.endsWith("typo: nothing has been synced there."), result.lib.error.message);
+      ok(!existsSync(cliRoot), "a read command must not create the corpus");
+    });
+  }
+
+  it("refuses a path that is a file, not a directory, on both sides", async () => {
+    let cliRoot = "";
+    const result = await parity({
+      seed: (corpus) => writeFileSync(join(corpus, "afile"), "x"),
+      argv: (corpus) => {
+        cliRoot = join(corpus, "afile");
+        return ["--corpus", cliRoot, "stats", "--json"];
+      },
+      lib: ({ corpus }) => corpusStats(FileStore.open(join(corpus, "afile"))),
+    });
+    strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+    strictEqual(result.cli.err, `Error: ${cliRoot} is not a directory, so it cannot be a corpus.`);
+    ok(!result.lib.ok);
+    strictEqual(result.lib.error.name, "StoreError");
+    ok(result.lib.error.message.endsWith("afile is not a directory, so it cannot be a corpus."), result.lib.error.message);
+  });
+
+  it("opens an existing corpus the same way new FileStore does", async () => {
+    const result = await parity({
+      seed: seedOneRecord,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json"],
+      lib: ({ corpus }) => search(FileStore.open(corpus), ""),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
   });
 });

@@ -163,8 +163,9 @@ a subprocess, touches the network, or reads the clock.
   `(HttpRequest) => Promise<HttpResponse>` function. Tests inject a scripted one.
 - **`Store`** (`lib-store`) — the corpus. `FileStore` is the real
   implementation; `MemoryStore` in `test/helpers.ts` is the test double.
-- **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factory, the engine factory, the
-  environment and **the clock**. `run()` returns an exit code rather than calling
+- **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factories (`createStore` for a
+  command that writes, `openStore` for one that only reads an existing corpus), the
+  engine factory, the environment and **the clock**. `run()` returns an exit code rather than calling
   `process.exit`.
 
 A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
@@ -247,6 +248,13 @@ What the library now computes that a `ka` action used to compute on its own:
   and `markHumanVerified(store, id)` (`lib-store`: record *and* catalog row, so
   search and the queue see it). The `onlyAbstained` search filter stays "abstained,
   verified or not". `ka review` calls these.
+- **Whether a corpus is there** — `FileStore.open(root)` (`lib-store`) opens an
+  existing corpus for reading: a missing directory throws `MissingCorpusError`, a
+  path that is not a directory `StoreError` (both exit 3), and nothing is created.
+  `new FileStore(root)` stays open-or-create for writers, so on a mistyped path it
+  answers an empty corpus. `ka`'s read commands open the corpus through
+  `CliDeps.openStore` and only add where the path came from (`Check --corpus /
+  OPENKA_CORPUS …`); a path that is a file used to read as an empty corpus there too.
 - **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
   prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.

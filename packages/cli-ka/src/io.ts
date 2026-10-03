@@ -22,6 +22,8 @@ export interface CliDeps {
   io: CliIO;
   /** Open (or create) the corpus at `root`. */
   createStore(root: string): Store;
+  /** Open the existing corpus at `root` for reading; a missing one is an error. */
+  openStore(root: string): Store;
   createEngine(options: EngineOptions): FetchEngine;
   env: NodeJS.ProcessEnv;
   /** The clock. Injected so `retrieved_at` and feed timestamps are testable. */
@@ -37,6 +39,7 @@ export const defaultIO: CliIO = {
 export const defaultDeps: CliDeps = {
   io: defaultIO,
   createStore: (root) => new FileStore(root),
+  openStore: (root) => FileStore.open(root),
   createEngine: (options) => new FetchEngine(options),
   env: process.env,
   now: () => new Date(),

@@ -23,7 +23,7 @@ written once.
 Everything is re-exported from the package root:
 
 ```
-OpenKaError, OpenKaApiError, NetworkFailure, NetworkError, ParseError, StoreError, UsageError,
+OpenKaError, OpenKaApiError, NetworkFailure, NetworkError, ParseError, StoreError, MissingCorpusError, UsageError,
 OpenKaValidationError, AbstainError,
 Problem, assertValid, isBlank, nonBlankProblem, BLANK_REASON
 ```
