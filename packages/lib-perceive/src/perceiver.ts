@@ -39,6 +39,12 @@ export interface Perceiver {
   artifact(): ModelArtifact;
   /** True when the perceiver can run at all here (binary present, module installed). */
   available(): boolean;
+  /**
+   * Load what the perceiver needs before its first `artifact()` — an optional
+   * module, say — resolving `false` when it cannot. The OCR tier awaits it before
+   * asking for the artifact, so a perceiver built and handed over as it is works.
+   */
+  load?(): Promise<boolean>;
   recognize(input: PerceiveInput): Promise<PerceiveOutput>;
 }
 

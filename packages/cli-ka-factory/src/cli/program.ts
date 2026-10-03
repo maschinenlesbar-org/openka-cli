@@ -57,7 +57,7 @@ import {
   MIN_DIMENSIONS,
 } from "../lib/embed.js";
 import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, sweepAnswers } from "../lib/answer-index.js";
-import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
+import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 
 export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   const program = new Command();
@@ -175,7 +175,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .action(
       action(deps, async (ctx) => {
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
-        const perceiver = mode === "off" ? undefined : await buildPerceiver(mode);
+        const perceiver = mode === "off" ? undefined : await createPerceiver(mode);
         // The set, the "nothing to verify" error and the verdict are the
         // library's (verifyGoldens, assertGoldensPass); this only renders.
         const dir = ctx.opts["dir"] as string | undefined;

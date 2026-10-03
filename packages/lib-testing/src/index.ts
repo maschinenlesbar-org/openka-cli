@@ -291,3 +291,36 @@ export function questionPaper(lines: string[]): Buffer {
     "latin1",
   );
 }
+
+/**
+ * A one-page "scan": a PDF whose only content is one embedded JPEG image and no
+ * text layer, which is what sends a document down the OCR tier. The image bytes
+ * are a bare JPEG start/end marker — a test perceiver is what reads them.
+ */
+export function scannedPaper(): Buffer {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const content = "q 100 0 0 100 0 0 cm /Im1 Do Q";
+  const offsets: number[] = [];
+  let pdf = Buffer.from("%PDF-1.4\n", "latin1");
+  const add = (body: string | Buffer): void => {
+    offsets.push(pdf.length);
+    pdf = Buffer.concat([pdf, typeof body === "string" ? Buffer.from(body, "latin1") : body]);
+  };
+  add("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  add("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  add("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n");
+  add(
+    Buffer.concat([
+      Buffer.from(
+        `4 0 obj\n<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,
+        "latin1",
+      ),
+      jpeg,
+      Buffer.from("\nendstream\nendobj\n", "latin1"),
+    ]),
+  );
+  add(`5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`);
+  const xref = pdf.length;
+  const table = "xref\n0 6\n0000000000 65535 f \n" + offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  return Buffer.concat([pdf, Buffer.from(`${table}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`, "latin1")]);
+}

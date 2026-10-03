@@ -6,13 +6,21 @@
 // seam exists to enforce — a pinned version, hashed weights, no silent guessing,
 // and an abstention whenever any of that cannot be honoured.
 
-import { deepStrictEqual, doesNotThrow, match, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, doesNotThrow, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
-import { TesseractCliPerceiver, TesseractJsPerceiver, abstainingPerceiver, assertPerceiverOptions } from "../src/index.js";
+import { OpenKaError, OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
+import {
+  OCR_MODES,
+  TesseractCliPerceiver,
+  TesseractJsPerceiver,
+  abstainingPerceiver,
+  assertPerceiverOptions,
+  createPerceiver,
+  ocrModeProblem,
+} from "../src/index.js";
 
 const page = { data: Buffer.from("not really an image"), format: "jpeg", page: 3 };
 
@@ -245,5 +253,39 @@ describe("the options both perceivers share", () => {
   it("lets an omitted option fall back to its default", () => {
     doesNotThrow(() => assertPerceiverOptions({}));
     doesNotThrow(() => assertPerceiverOptions({ language: "deu", requireVersion: "5.3.4", traineddataPath: "/x/deu.traineddata" }));
+  });
+});
+
+describe("createPerceiver, an OCR mode turned into a working engine", () => {
+  it("names the modes, and refuses one it does not know", async () => {
+    deepStrictEqual(OCR_MODES, ["off", "tesseract", "tesseract-js"]);
+    strictEqual(ocrModeProblem("tesseract"), undefined);
+    strictEqual(ocrModeProblem("easyocr"), "Allowed choices are off, tesseract, tesseract-js.");
+    await rejects(createPerceiver("easyocr" as never), (error: unknown) =>
+      error instanceof OpenKaValidationError && error.message === "Invalid mode: Allowed choices are off, tesseract, tesseract-js.");
+  });
+
+  it("is strict mode for off, and refuses an option that would be ignored there", async () => {
+    strictEqual(await createPerceiver("off"), abstainingPerceiver);
+    await rejects(createPerceiver("off", { language: "deu" }), (error: unknown) =>
+      error instanceof OpenKaValidationError && /^Invalid language: Only applies with an OCR engine/.test(error.message));
+  });
+
+  it("refuses an engine that is not there, up front, instead of abstaining later", async () => {
+    // Nothing installs tesseract.js in this repository.
+    await rejects(createPerceiver("tesseract-js"), (error: unknown) =>
+      error instanceof OpenKaError && /needs the optional `tesseract\.js` package/.test((error as Error).message));
+    const path = process.env["PATH"];
+    process.env["PATH"] = mkdtempSync(join(tmpdir(), "openka-empty-path-"));
+    try {
+      await rejects(createPerceiver("tesseract"), (error: unknown) =>
+        error instanceof OpenKaError && /needs the `tesseract` binary on PATH/.test((error as Error).message));
+    } finally {
+      process.env["PATH"] = path;
+    }
+  });
+
+  it("refuses a blank option before looking for an engine", async () => {
+    await rejects(createPerceiver("tesseract", { language: " " }), OpenKaValidationError);
   });
 });

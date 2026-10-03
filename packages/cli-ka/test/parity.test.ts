@@ -41,7 +41,7 @@ import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
-import { TesseractCliPerceiver, TesseractJsPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
+import { TesseractCliPerceiver, TesseractJsPerceiver, createPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { cliHarness } from "./harness.js";
 import { parity } from "./helpers.js";
 
@@ -1148,5 +1148,46 @@ describe("where the corpus is (finding 19)", () => {
     strictEqual(resolveCorpusRoot({ env: { XDG_DATA_HOME: "/tmp/share" } }), resolve("/tmp/share", "openka"));
     strictEqual(resolveCorpusRoot({ env: {} }), resolve(homedir(), ".local", "share", "openka"));
     strictEqual(CORPUS_ENV, "OPENKA_CORPUS");
+  });
+});
+
+describe("OCR engine setup (finding 10)", () => {
+  /** What every door says when the engine for `mode` cannot run here. */
+  const commands = (mode: string): { name: string; runner?: typeof runFactory; argv: (corpus: string) => string[] }[] => [
+    { name: "ka sync", argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--ocr", mode] },
+    { name: "ka verify", argv: (corpus) => ["--corpus", corpus, "verify", "berlin-19-12345", "--ocr", mode] },
+    { name: "ka-factory goldens verify", runner: runFactory, argv: (corpus) => ["goldens", "verify", "--dir", corpus, "--ocr", mode] },
+  ];
+
+  const sameRefusal = async (mode: "tesseract" | "tesseract-js"): Promise<void> => {
+    for (const command of commands(mode)) {
+      const result = await parity({
+        ...(command.runner === undefined ? {} : { runner: command.runner }),
+        seed: seedOneRecord,
+        argv: command.argv,
+        lib: () => createPerceiver(mode),
+      });
+      ok(!result.lib.ok, `${command.name}: the library built a perceiver`);
+      strictEqual(result.lib.error.name, "OpenKaError");
+      strictEqual(result.cli.code, 1, `${command.name}: ${result.cli.err}`);
+      strictEqual(result.cli.err, `Error: ${result.lib.error.message}`, command.name);
+      deepStrictEqual([result.cli.requests, result.lib.requests], [[], []], command.name);
+    }
+  };
+
+  it("refuses tesseract-js without the optional package, the same way through every door", async () => {
+    await sameRefusal("tesseract-js");
+  });
+
+  it("refuses tesseract without the binary, the same way through every door", async () => {
+    const path = process.env["PATH"];
+    const empty = mkdtempSync(join(tmpdir(), "openka-empty-path-"));
+    process.env["PATH"] = empty;
+    try {
+      await sameRefusal("tesseract");
+    } finally {
+      process.env["PATH"] = path;
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });

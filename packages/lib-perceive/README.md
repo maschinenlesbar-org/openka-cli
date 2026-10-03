@@ -18,6 +18,14 @@ Both constructors refuse a present-but-blank `language`, `requireVersion` or
 option means the default, a blank one is a mistake that used to stamp a provenance
 naming no language.
 
+`createPerceiver(mode, options)` turns an OCR mode (`OCR_MODES`: `off`, `tesseract`,
+`tesseract-js`) into a perceiver that is ready to run: strict mode for `off` (which
+refuses options it would ignore), and for the engines a fail-fast `OpenKaError` when
+the binary is not on `PATH` or `tesseract.js` will not load. Both CLIs build their
+perceiver through it. A perceiver may also declare `load()`; the OCR tier awaits it
+before `artifact()`, so a `TesseractJsPerceiver` handed over unloaded no longer
+abstains as "not installed".
+
 This package is part of the **extraction digest**: changing it changes what a
 document turns into, so `npm run stamp` and a golden re-freeze are required.
 
@@ -31,6 +39,7 @@ dead coverage wearing a green tick.
 
 ## What is in here
 
+- **`src/create.ts`** — An OCR mode turned into a perceiver that is ready to run.
 - **`src/perceiver.ts`** — The only place a trained model may run on the line (CONCEPT.md §6).
 - **`src/tesseract-cli.ts`** — OCR through a pinned Tesseract binary on PATH.
 - **`src/tesseract-js.ts`** — OCR through `tesseract.js`, the WASM build of the same engine.
@@ -40,7 +49,7 @@ dead coverage wearing a green tick.
 Everything is re-exported from the package root:
 
 ```
-PerceiveInput, PerceiveOutput, Perceiver, abstainingPerceiver, PerceiverOptions, assertPerceiverOptions, TesseractOptions, TesseractCliPerceiver, TesseractJsOptions, TesseractJsPerceiver
+OCR_MODES, OcrMode, ocrModeProblem, createPerceiver, PerceiveInput, PerceiveOutput, Perceiver, abstainingPerceiver, PerceiverOptions, assertPerceiverOptions, TesseractOptions, TesseractCliPerceiver, TesseractJsOptions, TesseractJsPerceiver
 ```
 
 ## Depends on

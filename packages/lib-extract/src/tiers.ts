@@ -339,6 +339,9 @@ async function runOcr(
   }
 
   try {
+    // A perceiver that loads lazily (tesseract.js) cannot describe itself until
+    // it has loaded; one that cannot load says why in artifact().
+    await perceiver.load?.();
     artifacts.push(perceiver.artifact());
   } catch (err) {
     abstentions.add("full_text", err instanceof Error ? err.message : String(err));

@@ -13,7 +13,7 @@ import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-re
 import type { CliDeps } from "../io.js";
 import { action, parseBoundedInt, parseParliament, parseRecordId, printJson } from "../shared.js";
 import { pad, truncate } from "../text.js";
-import { buildPerceiver, OCR_MODES, type OcrMode } from "./sync.js";
+import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
 
 /**
@@ -55,7 +55,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         if (ids.length === 0) throw new OpenKaError(`No records in ${ctx.corpusRoot()}`);
 
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
-        const perceiver = mode === "off" ? undefined : await buildPerceiver(mode);
+        const perceiver = mode === "off" ? undefined : await createPerceiver(mode);
 
         const results = [];
         let unreadable = 0;

@@ -30,9 +30,9 @@ import {
 } from "../src/metadata.js";
 import { validateExtractedRecord } from "../src/validators.js";
 import { extract } from "../src/tiers.js";
-import { abstainingPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
+import { abstainingPerceiver, type Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { normalizeSpaces } from "@maschinenlesbar.org/openka-lib-pdf";
-import { sampleRecord, questionPaper, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
+import { sampleRecord, questionPaper, scannedPaper, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 // Real documents come from the connector that recorded them: one copy of the
 // bytes, and the borrowing is visible as a devDependency.
@@ -1334,6 +1334,35 @@ describe("the tier stack", () => {
     ok(record.extraction.abstained_fields.includes("full_text"));
     strictEqual(record.extraction.model_artifacts.length, 0);
     ok(notes.length > 0);
+  });
+
+  it("loads a perceiver that loads lazily before asking it what it is", async () => {
+    // TesseractJsPerceiver loads its module on first recognize(), but the tier
+    // asks for artifact() first — so one built the obvious way, never load()ed,
+    // abstained as "not installed" and verify reported a false non-reproduction.
+    let loaded = false;
+    const lazy: Perceiver = {
+      name: "ocr",
+      load: async () => (loaded = true),
+      available: () => loaded,
+      artifact: () => {
+        if (!loaded) throw new Error("not loaded");
+        return { name: "ocr", version: "fake-ocr-1+deu" };
+      },
+      recognize: async () => ({ abstained: false, text: "Aus dem Scan gelesen." }),
+    };
+    const { record, notes } = await extract({
+      parliament: "berlin",
+      documentType: "schriftliche_anfrage",
+      tier: "ocr",
+      metadata,
+      documents: [{ role: "combined_pdf", url: "https://example.invalid/scan.pdf", bytes: scannedPaper(), urlStable: true }],
+      perceiver: lazy,
+      env: {},
+    });
+    deepStrictEqual(record.extraction.model_artifacts, [{ name: "ocr", version: "fake-ocr-1+deu" }]);
+    ok(!notes.some((note) => note.includes("not loaded")), notes.join("\n"));
+    ok(!record.extraction.abstained_fields.includes("full_text"), notes.join("\n"));
   });
 
   it("drops a value a validator rejected instead of publishing it", async () => {

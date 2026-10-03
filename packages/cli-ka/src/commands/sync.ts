@@ -5,56 +5,11 @@ import { InvalidArgumentError, type Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
-import {
-  TesseractCliPerceiver,
-  TesseractJsPerceiver,
-  abstainingPerceiver,
-  type Perceiver,
-} from "@maschinenlesbar.org/openka-lib-perceive";
+import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceEntry, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, toEngineOptions } from "../shared.js";
 import { truncate } from "../text.js";
-
-export const OCR_MODES = ["off", "tesseract", "tesseract-js"] as const;
-export type OcrMode = (typeof OCR_MODES)[number];
-
-/**
- * Build the perceiver for an `--ocr` mode.
- *
- * `off` is the default and means strict mode: no model on the line, and scanned
- * documents abstain. The other two are the sanctioned narrow perceptual case —
- * both pin a version and hash their traineddata into the record's provenance.
- */
-export async function buildPerceiver(
-  mode: OcrMode,
-  options: { language?: string; requireVersion?: string; traineddata?: string } = {},
-): Promise<Perceiver> {
-  if (mode === "off") return abstainingPerceiver;
-  const shared = {
-    ...(options.language === undefined ? {} : { language: options.language }),
-    ...(options.requireVersion === undefined ? {} : { requireVersion: options.requireVersion }),
-    ...(options.traineddata === undefined ? {} : { traineddataPath: options.traineddata }),
-  };
-  if (mode === "tesseract") {
-    const perceiver = new TesseractCliPerceiver(shared);
-    if (!perceiver.available()) {
-      throw new OpenKaError(
-        "--ocr tesseract needs the `tesseract` binary on PATH. Install it, pick --ocr tesseract-js " +
-          "(after `npm install tesseract.js`), or leave OCR off and accept the abstentions.",
-      );
-    }
-    return perceiver;
-  }
-  const perceiver = new TesseractJsPerceiver(shared);
-  if (!(await perceiver.load())) {
-    throw new OpenKaError(
-      "--ocr tesseract-js needs the optional `tesseract.js` package. Install it with " +
-        "`npm install tesseract.js`, or use --ocr tesseract with the native binary.",
-    );
-  }
-  return perceiver;
-}
 
 /** commander value-parser: a source key the registry knows — a typo is a usage error. */
 function parseSourceKey(value: string): string {
@@ -136,10 +91,12 @@ export function registerSync(program: Command, deps: CliDeps): void {
           );
         }
 
-        const perceiver = await buildPerceiver(ocrMode, {
+        // The engine and whether it can run here are the library's
+        // (createPerceiver); the check above only names the flags together.
+        const perceiver = await createPerceiver(ocrMode, {
           ...(ctx.opts["ocrLanguage"] === undefined ? {} : { language: ctx.opts["ocrLanguage"] as string }),
           ...(ctx.opts["ocrVersion"] === undefined ? {} : { requireVersion: ctx.opts["ocrVersion"] as string }),
-          ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddata: ctx.opts["ocrTraineddata"] as string }),
+          ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
         const report = await sync({

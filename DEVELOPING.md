@@ -305,6 +305,16 @@ What the library now computes that a `ka` action used to compute on its own:
   is strict: no file at a path the caller named is an `OpenKaError` ("No baseline at
   …"), where it used to read as a first run; only `loadCorpusBaseline` returns
   `undefined`, for a corpus whose default baseline was never written.
+- **A ready OCR engine** — `createPerceiver(mode, { language?, requireVersion?,
+  traineddataPath? })` (`lib-perceive`, with `OCR_MODES`) is the setup `ka sync`,
+  `ka verify` and `ka-factory goldens verify` used to import from the `ka` package
+  (`buildPerceiver`): `off` is strict mode, the engines fail fast with an
+  `OpenKaError` when the binary is not on `PATH` or `tesseract.js` will not load,
+  and options under `off` are refused (`ka sync` names the flags itself first). The
+  OCR tier (`lib-extract`) now awaits a perceiver's optional `load()` before
+  `artifact()`, so `verifyRecord` with a plain `new TesseractJsPerceiver()` no
+  longer reports a false non-reproduction. Both are extraction code: the digest
+  moved and the goldens were re-frozen.
 - **The goldens gate** — `verifyGoldens({ dir?, workspace?, perceiver? })` (factory)
   re-extracts a fixture directory, or every package's `fixtures/`, and returns the
   `{ checked, passed, results }` tally `goldens verify --json` prints; an empty set

@@ -40,7 +40,7 @@ use them.
 Everything is re-exported from the package root:
 
 ```
-evenSample, registerMaintain, registerOutput, renderShowLines, registerQuery, OCR_MODES, OcrMode, buildPerceiver, registerSync, CliIO, CliDeps, defaultIO, defaultDeps, buildProgram, EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_STORE, EXIT_NOT_FOUND, run, CORPUS_ENV, defaultCorpusRoot, parseBoundedInt, problemParser, parseNonEmpty, parseIsoDate, collect, collectInt, GlobalOptions, toEngineOptions, ActionContext, action, printJson, emit, addCorpusFilters, corpusFiltersFrom, choiceOption, addGlobalOptions, escapeControlChars, sanitizeForTerminal, truncate, pad
+evenSample, registerMaintain, registerOutput, renderShowLines, registerQuery, registerSync, CliIO, CliDeps, defaultIO, defaultDeps, buildProgram, EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_STORE, EXIT_NOT_FOUND, run, CORPUS_ENV, parseBoundedInt, problemParser, parseNonEmpty, parseIsoDate, collect, collectInt, GlobalOptions, toEngineOptions, ActionContext, action, printJson, emit, addCorpusFilters, corpusFiltersFrom, choiceOption, addGlobalOptions, escapeControlChars, sanitizeForTerminal, truncate, pad
 ```
 
 ## Depends on

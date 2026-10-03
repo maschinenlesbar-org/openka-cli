@@ -25,7 +25,7 @@ in `packages/cli-ka/test/harness.ts` instead.
 Everything is re-exported from the package root:
 
 ```
-PROJECT_ROOT, fixturesOf, fixtures, MemoryStore, ScriptedRoute, ScriptedTransport, scriptedTransport, testEngine, sampleRecord, questionPaper
+PROJECT_ROOT, fixturesOf, fixtures, MemoryStore, ScriptedRoute, ScriptedTransport, scriptedTransport, testEngine, sampleRecord, questionPaper, scannedPaper
 ```
 
 ## Depends on
