@@ -15,8 +15,6 @@ import {
   searchParliamentProblem,
   type SearchFilters,
 } from "@maschinenlesbar.org/openka-lib-search";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { statSync } from "node:fs";
 import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import {
@@ -30,19 +28,10 @@ import {
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { isSafeKey, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { CORPUS_ENV, isSafeKey, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
-/** Environment variable naming the corpus directory. */
-export const CORPUS_ENV = "OPENKA_CORPUS";
-
-/** Where a corpus lives when neither the flag nor the environment says. */
-export function defaultCorpusRoot(env: NodeJS.ProcessEnv): string {
-  const fromEnv = env[CORPUS_ENV]?.trim();
-  if (fromEnv !== undefined && fromEnv !== "") return resolve(fromEnv);
-  const xdg = env["XDG_DATA_HOME"]?.trim();
-  if (xdg !== undefined && xdg !== "") return resolve(xdg, "openka");
-  return resolve(homedir(), ".local", "share", "openka");
-}
+/** Environment variable naming the corpus directory (lib-store's). */
+export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
 
 function parseDecimalInt(value: string): number | undefined {
   if (!/^-?\d+$/.test(value)) return undefined;
@@ -182,7 +171,9 @@ export function action(
     const command = args[args.length - 1] as Command;
     const positionals = args.slice(0, Math.max(0, args.length - 2)) as string[];
     const global = command.optsWithGlobals() as GlobalOptions;
-    const root = global.corpus !== undefined ? resolve(global.corpus) : defaultCorpusRoot(deps.env);
+    // flag > OPENKA_CORPUS > XDG_DATA_HOME > home, each path as given: the
+    // library's resolution, so the flag and the env var name the same directory.
+    const root = resolveCorpusRoot({ ...(global.corpus === undefined ? {} : { root: global.corpus }), env: deps.env });
     let store: Store | undefined;
     await fn(
       {

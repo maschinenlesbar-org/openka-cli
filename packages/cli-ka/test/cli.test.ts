@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
-import { defaultCorpusRoot, parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
+import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
+import { resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { evenSample } from "../src/commands/maintain.js";
 import { renderShowLines } from "../src/commands/query.js";
@@ -80,10 +81,10 @@ describe("option parsers", () => {
     ok(threw);
   });
 
-  it("resolves the corpus root from the environment", () => {
-    match(defaultCorpusRoot({ OPENKA_CORPUS: "/tmp/x" }), /\/tmp\/x$/);
-    match(defaultCorpusRoot({ XDG_DATA_HOME: "/tmp/share" }), /\/tmp\/share\/openka$/);
-    match(defaultCorpusRoot({}), /\.local\/share\/openka$/);
+  it("resolves the corpus root from the environment, through the library", () => {
+    match(resolveCorpusRoot({ env: { OPENKA_CORPUS: "/tmp/x" } }), /\/tmp\/x$/);
+    match(resolveCorpusRoot({ env: { XDG_DATA_HOME: "/tmp/share" } }), /\/tmp\/share\/openka$/);
+    match(resolveCorpusRoot({ env: {} }), /\.local\/share\/openka$/);
   });
 });
 

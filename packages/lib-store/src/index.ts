@@ -3,3 +3,4 @@ export * from "./fts.js";
 export * from "./indexer.js";
 export * from "./stats.js";
 export * from "./store.js";
+export * from "./corpus-root.js";

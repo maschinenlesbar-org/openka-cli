@@ -5,9 +5,9 @@
 import { deepStrictEqual, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { CORPUS_ENV, FileStore, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
 import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES } from "@maschinenlesbar.org/openka-lib-http";
@@ -1071,5 +1071,82 @@ describe("the fetch engine's options (finding 6)", () => {
     });
     strictEqual(result.cli.code, 0, result.cli.err);
     deepStrictEqual(result.lib, { ok: true, value: "ka-test/1.0 (é)", requests: [] });
+  });
+});
+
+describe("where the corpus is (finding 19)", () => {
+  /** A directory outside both sides' corpora, holding a seeded corpus at `name`. */
+  const shared = (name: string): { base: string; dir: string; done: () => void } => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "openka-root-")));
+    const dir = join(base, name);
+    seedOneRecord(dir);
+    return { base, dir, done: () => rmSync(base, { recursive: true, force: true }) };
+  };
+
+  it("takes OPENKA_CORPUS as given, like --corpus: a trailing space is part of the name", async () => {
+    const { dir, done } = shared("spaced ");
+    try {
+      for (const argv of [["--compact", "stats", "--json"], ["--compact", "--corpus", dir, "stats", "--json"]]) {
+        const result = await parity({
+          env: { OPENKA_CORPUS: dir },
+          argv,
+          lib: () => {
+            const root = resolveCorpusRoot({ env: { OPENKA_CORPUS: dir } });
+            return { corpus: root, ...corpusStats(FileStore.open(root)) };
+          },
+        });
+        strictEqual(result.cli.code, 0, result.cli.err);
+        deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
+        strictEqual((result.lib as { value: { corpus: string; records: number } }).value.corpus, dir);
+        strictEqual((result.lib as { value: { records: number } }).value.records, 1);
+      }
+    } finally {
+      done();
+    }
+  });
+
+  it("takes a leading space as given too, so the env var and the flag name one directory", async () => {
+    const { dir, done } = shared("corpus");
+    try {
+      const padded = ` ${dir}`;
+      const expected = resolve(padded);
+      for (const [argv, env] of [
+        [["stats", "--json"], { OPENKA_CORPUS: padded }],
+        [["--corpus", padded, "stats", "--json"], {}],
+      ] as const) {
+        const result = await parity({ env, argv: [...argv], lib: () => resolveCorpusRoot({ root: padded, env: {} }) });
+        strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+        ok(result.cli.err.startsWith(`Error: No corpus at ${expected}`), result.cli.err);
+        deepStrictEqual(result.lib, { ok: true, value: expected, requests: [] });
+      }
+    } finally {
+      done();
+    }
+  });
+
+  it("reads a blank OPENKA_CORPUS as unset on both sides, and refuses a blank root", async () => {
+    const { base, done } = shared("openka");
+    try {
+      const env = { OPENKA_CORPUS: "  ", XDG_DATA_HOME: base };
+      const result = await parity({
+        env,
+        argv: ["--compact", "stats", "--json"],
+        lib: () => resolveCorpusRoot({ env }),
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      strictEqual(JSON.parse(result.cli.out).corpus, join(base, "openka"));
+      deepStrictEqual(result.lib, { ok: true, value: join(base, "openka"), requests: [] });
+      for (const blank of ["", "  "]) {
+        bothRefused(await parity({ argv: ["--corpus", blank, "stats"], lib: () => resolveCorpusRoot({ root: blank, env: {} }) }), "root", BLANK);
+      }
+    } finally {
+      done();
+    }
+  });
+
+  it("falls back to XDG_DATA_HOME, then the home directory", () => {
+    strictEqual(resolveCorpusRoot({ env: { XDG_DATA_HOME: "/tmp/share" } }), resolve("/tmp/share", "openka"));
+    strictEqual(resolveCorpusRoot({ env: {} }), resolve(homedir(), ".local", "share", "openka"));
+    strictEqual(CORPUS_ENV, "OPENKA_CORPUS");
   });
 });

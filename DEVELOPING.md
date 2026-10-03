@@ -282,6 +282,12 @@ What the library now computes that a `ka` action used to compute on its own:
   answers an empty corpus. `ka`'s read commands open the corpus through
   `CliDeps.openStore` and only add where the path came from (`Check --corpus /
   OPENKA_CORPUS …`); a path that is a file used to read as an empty corpus there too.
+- **Where the corpus is** — `resolveCorpusRoot({ root?, env })` (`lib-store`):
+  `root` (the `--corpus` flag), else `$OPENKA_CORPUS`, else `$XDG_DATA_HOME/openka`,
+  else `~/.local/share/openka`, each path resolved exactly as given. A blank `root`
+  is refused; a blank environment variable counts as unset. The CLI used to trim the
+  environment variables but not the flag, so `"corpus "` named two directories
+  depending on how it was passed.
 - **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
   prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.
