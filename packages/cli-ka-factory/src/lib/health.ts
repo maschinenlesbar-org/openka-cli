@@ -7,8 +7,8 @@
 // turns a number into a job.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { OpenKaError, assertValid, nonBlankProblem } from "@maschinenlesbar.org/openka-lib-errors";
+import { dirname, join } from "node:path";
+import { OpenKaError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import type { CatalogStore, RecordStore, SourceStateStore } from "@maschinenlesbar.org/openka-lib-store";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
@@ -100,12 +100,49 @@ function round(value: number): number {
 }
 
 /**
- * Read a baseline, or `undefined` when there is no file at `path`. A blank path is
- * refused with `OpenKaValidationError`: it used to read as "no baseline" (and on
- * save, to write a file named by the whitespace).
+ * The file a corpus's drift baseline lives in, inside the corpus it measures:
+ * `ka-factory health --save-baseline` writes it and `drift` reads it by default.
+ *
+ * It used to be `fixtures/health-baseline.json` under the cwd. Nothing created
+ * `fixtures/`, so the documented command failed with a raw ENOENT everywhere, and a
+ * baseline — which describes one corpus — was looked up relative to wherever the
+ * command ran: `drift` from another directory silently became a "first run".
+ */
+export const BASELINE_FILE = "health-baseline.json";
+
+/**
+ * A baseline path or corpus root must be a non-blank string. A blank one used to
+ * read as "no baseline" (and on save, to write a file named by the whitespace); a
+ * missing one (`undefined` from JavaScript) read as "first run".
+ */
+export const baselinePathProblem: Problem<unknown> = (value) =>
+  typeof value !== "string" ? "Expected a path." : nonBlankProblem(value);
+
+/** Where the default baseline of the corpus at `corpusRoot` lives: `<corpusRoot>/health-baseline.json`. */
+export function baselinePath(corpusRoot: string): string {
+  assertValid("corpus root", corpusRoot, baselinePathProblem);
+  return join(corpusRoot, BASELINE_FILE);
+}
+
+/** Read the default baseline of a corpus, or `undefined` when it has none yet (a first run). */
+export function loadCorpusBaseline(corpusRoot: string): HealthSnapshot | undefined {
+  return loadBaseline(baselinePath(corpusRoot));
+}
+
+/** Write `snapshot` as the default baseline of a corpus; returns the path written. */
+export function saveCorpusBaseline(corpusRoot: string, snapshot: HealthSnapshot): string {
+  const path = baselinePath(corpusRoot);
+  saveBaseline(path, snapshot);
+  return path;
+}
+
+/**
+ * Read a baseline, or `undefined` when there is no file at `path`. A path that is
+ * blank or not a string is refused with `OpenKaValidationError`
+ * (`baselinePathProblem`).
  */
 export function loadBaseline(path: string): HealthSnapshot | undefined {
-  assertValid("baseline path", path, nonBlankProblem);
+  assertValid("baseline path", path, baselinePathProblem);
   if (!existsSync(path)) return undefined;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as HealthSnapshot;
@@ -118,7 +155,7 @@ export function loadBaseline(path: string): HealthSnapshot | undefined {
 
 /** Write a baseline, creating its directory; a failure is an OpenKaError, not a raw fs error. */
 export function saveBaseline(path: string, snapshot: HealthSnapshot): void {
-  assertValid("baseline path", path, nonBlankProblem);
+  assertValid("baseline path", path, baselinePathProblem);
   try {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, canonicalJsonLine(snapshot));

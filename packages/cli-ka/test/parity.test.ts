@@ -2,16 +2,28 @@
 // function the CLI wraps must give the same outcome. Each `describe` below pins one
 // rule that used to live only in a commander parser or a command action.
 
-import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
-import { addGolden, importEmbeddings, listAllGoldens, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import {
+  BASELINE_FILE,
+  addGolden,
+  baselinePath,
+  detectDrift,
+  importEmbeddings,
+  listAllGoldens,
+  loadBaseline,
+  loadCorpusBaseline,
+  measureHealth,
+  saveBaseline,
+  saveCorpusBaseline,
+} from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
@@ -550,6 +562,62 @@ describe("where goldens add files a golden without --dir (finding 3)", () => {
     } finally {
       process.chdir(cwd);
       rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the default drift-baseline location (finding 26)", () => {
+  const NOW = "2026-01-02T03:04:05Z";
+
+  it("health --save-baseline writes where saveCorpusBaseline writes, and the library reads it back", async () => {
+    let cliCorpus = "";
+    let cliBytes = "";
+    let cliReadBack: unknown;
+    const result = await parity({
+      runner: runFactory,
+      seed: seedOneRecord,
+      argv: (corpus) => {
+        cliCorpus = corpus;
+        return ["--corpus", corpus, "health", "--save-baseline"];
+      },
+      lib: ({ store, corpus }) => {
+        cliBytes = readFileSync(baselinePath(cliCorpus), "utf8");
+        cliReadBack = loadCorpusBaseline(cliCorpus);
+        const path = saveCorpusBaseline(corpus, measureHealth(store, NOW));
+        return { relative: path.slice(corpus.length), bytes: readFileSync(path, "utf8") };
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    strictEqual(result.cli.err, `Baseline written to ${join(cliCorpus, BASELINE_FILE)}.`);
+    deepStrictEqual(result.lib, { ok: true, value: { relative: `/${BASELINE_FILE}`, bytes: cliBytes }, requests: [] });
+    strictEqual((cliReadBack as { taken_at: string }).taken_at, NOW);
+  });
+
+  it("drift without --baseline reads the corpus's default baseline, like loadCorpusBaseline", async () => {
+    const result = await parity({
+      runner: runFactory,
+      seed: (corpus) => {
+        seedOneRecord(corpus);
+        saveBaseline(join(corpus, BASELINE_FILE), measureHealth(new FileStore(corpus), "2025-12-01T00:00:00Z"));
+      },
+      argv: (corpus) => ["--compact", "--corpus", corpus, "drift", "--json"],
+      lib: ({ store, corpus }) => {
+        const baseline = loadCorpusBaseline(corpus);
+        return { baseline: baseline?.taken_at ?? null, findings: detectDrift(measureHealth(store, NOW), baseline) };
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
+    strictEqual((result.lib as { value: { baseline: string } }).value.baseline, "2025-12-01T00:00:00Z");
+  });
+
+  it("refuses a corpus root or baseline path that is not a string", () => {
+    for (const call of [
+      () => baselinePath(undefined as unknown as string),
+      () => loadBaseline(undefined as unknown as string),
+      () => saveBaseline(42 as unknown as string, { taken_at: NOW, records: 0, sources: [] }),
+    ]) {
+      throws(call, (error: unknown) => error instanceof OpenKaValidationError && /: Expected a path\.$/.test(error.message));
     }
   });
 });

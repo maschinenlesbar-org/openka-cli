@@ -196,7 +196,8 @@ What the library rejects with `OpenKaValidationError`, so far:
 - **Blank or unsafe factory parameters** — `addGolden` refuses a blank `root` or
   `note` and a `source` that is not a safe key (`goldenKeyProblem`: blank, `..`,
   upper case); `importEmbeddings` a blank `model` and a `modelSha256` that is not 64
-  hex digits (`modelSha256Problem`); `loadBaseline`/`saveBaseline` a blank path. The
+  hex digits (`modelSha256Problem`); `loadBaseline`/`saveBaseline` a blank path or
+  one that is not a string (`baselinePathProblem`). The
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so
   `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
 - **A search filter that cannot match** — `search()`, `searchLike()` and
@@ -232,6 +233,11 @@ What the library now computes that a `ka` action used to compute on its own:
   `listAllGoldens` reads. `goldens add` without `--dir` used to resolve the help-text
   placeholder "every package's fixtures/" as a path and file the golden where the
   gate never looked.
+- **Where a corpus's drift baseline lives** — `BASELINE_FILE` and
+  `baselinePath(corpusRoot)` (factory, `health.ts`): `<corpus>/health-baseline.json`.
+  `saveCorpusBaseline`/`loadCorpusBaseline` write and read it there; `health
+  --save-baseline` and `drift` without a path use exactly that location. The file
+  name used to be a constant of the `ka-factory` program only.
 
 ## Reproducibility, concretely
 

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
-import { detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
+import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, buildEmbeddings, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
 import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
@@ -193,6 +193,20 @@ describe("health metrics", () => {
     deepStrictEqual(loadBaseline(path), snapshot);
     strictEqual(loadBaseline(join(dir, "missing.json")), undefined);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("names a path problem: not a string, or blank", () => {
+    strictEqual(baselinePathProblem(undefined), "Expected a path.");
+    strictEqual(baselinePathProblem(42), "Expected a path.");
+    strictEqual(baselinePathProblem(""), "Expected a non-empty value.");
+    strictEqual(baselinePathProblem("  "), "Expected a non-empty value.");
+    strictEqual(baselinePathProblem("/c/health-baseline.json"), undefined);
+  });
+
+  it("puts a corpus's default baseline inside the corpus", () => {
+    strictEqual(BASELINE_FILE, "health-baseline.json");
+    strictEqual(baselinePath("/data/corpus"), join("/data/corpus", "health-baseline.json"));
+    throws(() => baselinePath("  "), /Invalid corpus root: Expected a non-empty value\./);
   });
 });
 

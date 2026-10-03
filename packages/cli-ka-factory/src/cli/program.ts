@@ -9,7 +9,7 @@
 // output can be trusted as evidence.
 
 import { Command } from "commander";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { PACKAGE_VERSION } from "@maschinenlesbar.org/openka-lib-repro";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
@@ -28,7 +28,7 @@ import {
 import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
 import { addGolden, goldenKeyProblem, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
-import { detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
+import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, loadBaseline, measureHealth, saveBaseline } from "../lib/health.js";
 import { buildEmbeddings, importEmbeddings, modelSha256Problem, DEFAULT_DIMENSIONS, HASHED_TFIDF } from "../lib/embed.js";
 import { sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
@@ -41,18 +41,6 @@ import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/op
  * goldens under a literal "every package's fixtures" directory nothing reads.
  */
 export const DEFAULT_FIXTURES = "every package's fixtures/";
-/**
- * Where `health --save-baseline` writes and `drift` reads by default: this file in
- * the corpus it measures.
- *
- * It used to be `fixtures/health-baseline.json` under the cwd. Nothing created
- * `fixtures/`, so the documented command failed with a raw ENOENT everywhere, and a
- * baseline — which describes one corpus — was looked up relative to wherever the
- * command ran: `drift` from another directory silently became a "first run". Its
- * absence is still the "first run" case `drift` reports and does not treat as an
- * error.
- */
-export const DEFAULT_BASELINE = "health-baseline.json";
 
 export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   const program = new Command();
@@ -207,8 +195,8 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .option("--json", "print as JSON")
     .option(
       "--save-baseline [path]",
-      `write the snapshot as the drift baseline (default: ${DEFAULT_BASELINE} in the corpus)`,
-      parseNonEmpty,
+      `write the snapshot as the drift baseline (default: ${BASELINE_FILE} in the corpus)`,
+      problemParser(baselinePathProblem),
     )
     .action(
       action(deps, async (ctx) => {
@@ -227,7 +215,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         }
         const save = ctx.opts["saveBaseline"];
         if (save !== undefined && save !== false) {
-          const path = typeof save === "string" ? resolve(save) : join(ctx.corpusRoot(), DEFAULT_BASELINE);
+          const path = typeof save === "string" ? resolve(save) : baselinePath(ctx.corpusRoot());
           saveBaseline(path, snapshot);
           ctx.deps.io.err(`Baseline written to ${path}.`);
         }
@@ -237,13 +225,13 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   program
     .command("drift")
     .description("compare the corpus against the baseline and classify what changed")
-    .option("--baseline <path>", `baseline snapshot (default: ${DEFAULT_BASELINE} in the corpus)`, parseNonEmpty)
+    .option("--baseline <path>", `baseline snapshot (default: ${BASELINE_FILE} in the corpus)`, problemParser(baselinePathProblem))
     .option("--fail-on-drift", "exit non-zero when anything drifted, for CI")
     .option("--json", "print findings as JSON")
     .action(
       action(deps, async (ctx) => {
         const named = ctx.opts["baseline"] as string | undefined;
-        const path = named === undefined ? join(ctx.corpusRoot(), DEFAULT_BASELINE) : resolve(named);
+        const path = named === undefined ? baselinePath(ctx.corpusRoot()) : resolve(named);
         const baseline = loadBaseline(path);
         // A missing *default* baseline means "first run". A missing path the caller
         // named is a typo, and answering a typo with "every source is new, nothing

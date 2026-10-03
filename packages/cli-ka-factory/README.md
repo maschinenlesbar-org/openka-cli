@@ -47,7 +47,7 @@ the line, never the other way round.
 Everything is re-exported from the package root:
 
 ```
-DEFAULT_FIXTURES, DEFAULT_BASELINE, buildFactoryProgram, runFactory, SweepOptions, SweepReport, sweepAnswers, HASHED_TFIDF, DEFAULT_DIMENSIONS, buildEmbeddings, modelSha256Problem, importEmbeddings, goldenKeyProblem, GoldenMeta, Golden, workspaceRoot, goldenRootFor, goldenRoots, listAllGoldens, listGoldens, AddGoldenOptions, addGolden, GoldenResult, verifyGolden, SourceHealth, HealthSnapshot, measureHealth, loadBaseline, saveBaseline, DriftKind, DriftFinding, ABSTENTION_SPIKE, QA_COLLAPSE, detectDrift, FACTORY_PACKAGE, LINE_FILES, lineRoots, FORBIDDEN_MODULES, FORBIDDEN_HOSTS, LintViolation, lineFiles, lintSource, stripComments, LintReport, lintLine, EXTRACTION_SOURCES, extractionSourceFiles, computeExtractionDigest
+DEFAULT_FIXTURES, buildFactoryProgram, runFactory, SweepOptions, SweepReport, sweepAnswers, HASHED_TFIDF, DEFAULT_DIMENSIONS, buildEmbeddings, modelSha256Problem, importEmbeddings, goldenKeyProblem, GoldenMeta, Golden, workspaceRoot, goldenRootFor, goldenRoots, listAllGoldens, listGoldens, AddGoldenOptions, addGolden, GoldenResult, verifyGolden, SourceHealth, HealthSnapshot, measureHealth, BASELINE_FILE, baselinePathProblem, baselinePath, loadCorpusBaseline, saveCorpusBaseline, loadBaseline, saveBaseline, DriftKind, DriftFinding, ABSTENTION_SPIKE, QA_COLLAPSE, detectDrift, FACTORY_PACKAGE, LINE_FILES, lineRoots, FORBIDDEN_MODULES, FORBIDDEN_HOSTS, LintViolation, lineFiles, lintSource, stripComments, LintReport, lintLine, EXTRACTION_SOURCES, extractionSourceFiles, computeExtractionDigest
 ```
 
 ## Depends on
