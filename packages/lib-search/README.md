@@ -5,6 +5,8 @@
 Keyword search parses the query, gathers postings from the shards its terms live in,
 applies the structured filters, ranks, and returns catalog rows. No record is loaded
 from disk unless a phrase has to be confirmed or a snippet is requested.
+`selectRecords` is the bulk counterpart: every match, loaded, plus the ids of catalog
+rows whose record file is gone — what `ka export` and `ka feed` work on.
 
 **The line never embeds anything.** There is no model to call here, only vectors to
 compare. A semantic query therefore has to be a document that already has a vector
@@ -25,7 +27,7 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, SelectOptions, Selection, selectRecords, makeSnippet, cosine, SemanticOptions, searchLike
 ```
 
 ## Depends on

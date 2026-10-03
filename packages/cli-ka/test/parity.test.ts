@@ -9,6 +9,10 @@ import { join } from "node:path";
 import { FileStore, indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import { selectRecords } from "@maschinenlesbar.org/openka-lib-search";
+import { renderAtom } from "@maschinenlesbar.org/openka-lib-render";
+import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { EXIT_USAGE, run } from "../src/run.js";
@@ -186,5 +190,70 @@ describe("blank and unsafe factory parameters (finding 24)", () => {
       bothRefused(save, "baseline path", BLANK);
       ok(blank === "" || !existsSync(blank), "no blank-named file was written");
     }
+  });
+});
+
+describe("the feed's newest-first selection and the export set (finding 8)", () => {
+  /** 26 records — more than search()'s default page — with answers on different days. */
+  function seedDated(corpus: string): void {
+    const store = new FileStore(corpus);
+    for (let n = 1; n <= 26; n++) {
+      const day = String(((n * 7) % 28) + 1).padStart(2, "0");
+      const record = sampleRecord({
+        id: `berlin-19-${String(n).padStart(5, "0")}`,
+        reference: `19/${String(n).padStart(5, "0")}`,
+        dates: { submitted: "2024-01-01", answered: `2024-${n % 2 === 0 ? "05" : "02"}-${day}` },
+      });
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    store.flushCatalog();
+  }
+  const updated = "2026-01-02T03:04:05Z";
+  const exportedIds = (jsonl: string): string[] => [...jsonl.matchAll(/^ {2}"id": "([^"]+)"/gm)].map((m) => m[1] as string);
+
+  it("builds the same feed as renderAtom over selectRecords", async () => {
+    for (const extra of [[], ["--parliament", "berlin"], ["--query", "Brücken"]]) {
+      const result = await parity({
+        seed: seedDated,
+        argv: (corpus) => ["--corpus", corpus, "feed", "--limit", "3", ...extra],
+        lib: ({ store }) =>
+          renderAtom(
+            selectRecords(store, extra[0] === "--query" ? "Brücken" : "", extra[0] === "--parliament" ? { parliament: ["berlin"] } : {}).records,
+            { title: "OpenKA — Kleine Anfragen", id: "urn:openka:feed", updated, limit: 3 },
+          ),
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      ok(result.lib.ok);
+      strictEqual(result.cli.out + "\n", result.lib.value);
+    }
+  });
+
+  it("exports every match, the same set selectRecords returns", async () => {
+    const result = await parity({
+      seed: seedDated,
+      argv: (corpus) => ["--corpus", corpus, "export", "--format", "jsonl"],
+      lib: ({ store }) => selectRecords(store, "").records.map((record) => canonicalJsonLine(record).replace(/\n+$/, "")).join("\n"),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    strictEqual(result.cli.out, result.lib.value);
+    strictEqual(exportedIds(result.cli.out).length, 26);
+  });
+
+  it("says which catalog rows had no record file, where the library names them", async () => {
+    const seedWithHole = (corpus: string): void => {
+      seedDated(corpus);
+      rmSync(join(corpus, "records", "berlin-19-00002.json"));
+    };
+    const result = await parity({
+      seed: seedWithHole,
+      argv: (corpus) => ["--corpus", corpus, "export", "--format", "jsonl"],
+      lib: ({ store }) => selectRecords(store, "").missing,
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: ["berlin-19-00002"], requests: [] });
+    ok(result.cli.err.includes("berlin-19-00002"), result.cli.err);
+    strictEqual(exportedIds(result.cli.out).length, 25);
   });
 });

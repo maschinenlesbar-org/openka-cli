@@ -200,6 +200,14 @@ What the library rejects with `OpenKaValidationError`, so far:
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so
   `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
 
+What the library now computes that a `ka` action used to compute on its own:
+
+- **The export set and the feed's newest entries** — `selectRecords(store, query,
+  filters)` (`lib-search`) returns every match (not `search()`'s page of 20) plus the
+  ids of catalog rows whose record file is gone; `renderAtom` orders its entries
+  newest first itself (`newestFirst`, `lib-render`) and keeps the newest `limit` of
+  the whole set. `ka export` and `ka feed` call exactly these.
+
 ## Reproducibility, concretely
 
 The claim is "same input → byte-identical output". Three things make it true rather

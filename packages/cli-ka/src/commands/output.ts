@@ -4,10 +4,9 @@ import type { Command } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { search } from "@maschinenlesbar.org/openka-lib-search";
-import { atomEntryUpdated, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
+import { selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
+import { csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
-import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
 import {
   action,
@@ -20,6 +19,7 @@ import {
   parseBoundedInt,
   parseNonEmpty,
   printJson,
+  type ActionContext,
 } from "../shared.js";
 
 const EXPORT_FORMATS = ["csv", "jsonl", "jsonld"] as const;
@@ -34,25 +34,25 @@ function addSelectionOptions(command: Command): Command {
 }
 
 /**
- * Pull the selected records out of the corpus.
- *
- * Ordered by id when there is no `--query`, and by relevance when there is —
- * `search` ranks, and `--limit` therefore means "the most relevant N", not "the
- * first N by id". Saying so matters for a paged export: the order is stable for a
- * given corpus and query, but it is not the id order the rest of the CLI uses.
+ * The selection `export` and `feed` work on: the library's `selectRecords`, with
+ * the shared filters and `--query`. Ordered by id without `--query` and by
+ * relevance with it, so `export --limit` means "the most relevant N". A catalog row
+ * whose record file is gone is reported on stderr rather than dropped silently.
  */
-function selectRecords(
-  store: ReturnType<CliDeps["createStore"]>,
-  opts: Record<string, unknown>,
-  limit: number,
-): KaRecord[] {
-  const result = search(store, (opts["query"] as string | undefined) ?? "", { ...corpusFiltersFrom(opts), limit });
-  const records: KaRecord[] = [];
-  for (const hit of result.hits) {
-    const record = store.getRecord(hit.entry.id);
-    if (record !== undefined) records.push(record);
+function selection(ctx: ActionContext, limit?: number): Selection {
+  const selected = selectRecords(ctx.existingStore(), (ctx.opts["query"] as string | undefined) ?? "", {
+    ...corpusFiltersFrom(ctx.opts),
+    ...(limit === undefined ? {} : { limit }),
+  });
+  if (selected.missing.length > 0) {
+    const shown = selected.missing.slice(0, 5).join(", ");
+    const more = selected.missing.length > 5 ? `, and ${selected.missing.length - 5} more` : "";
+    ctx.deps.io.err(
+      `Note: ${selected.missing.length} catalog row(s) have no record file and were left out: ${shown}${more}. ` +
+        "`ka reindex` rebuilds the catalog from the records.",
+    );
   }
-  return records;
+  return selected;
 }
 
 export function registerOutput(program: Command, deps: CliDeps): void {
@@ -67,7 +67,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
     action(deps, async (ctx) => {
       const out = outTarget(ctx);
       const format = (ctx.opts["format"] as (typeof EXPORT_FORMATS)[number] | undefined) ?? "csv";
-      const records = selectRecords(ctx.existingStore(), ctx.opts, (ctx.opts["limit"] as number | undefined) ?? 1_000_000);
+      const { records } = selection(ctx, ctx.opts["limit"] as number | undefined);
       if (records.length === 0) throw new OpenKaError("Nothing selected — the corpus is empty or the filters match nothing.");
 
       let text: string;
@@ -93,24 +93,16 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       const out = outTarget(ctx);
       const limit = (ctx.opts["limit"] as number | undefined) ?? 50;
       const updated = isoInstant(ctx.deps.now());
-      // Order on exactly the instant each entry will print, so "newest first" is
-      // true of the feed a reader sees rather than only of the dates. Plain string
-      // comparison, not localeCompare: these are ISO instants, and the ordering of
-      // a published feed must not depend on the locale of the machine that built it.
-      const records = selectRecords(ctx.existingStore(), ctx.opts, 100_000)
-        .sort((a, b) => {
-          const left = atomEntryUpdated(a, updated);
-          const right = atomEntryUpdated(b, updated);
-          if (left !== right) return left < right ? 1 : -1;
-          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-        })
-        .slice(0, limit);
+      // The whole match set goes in and renderAtom keeps the newest `limit`: a
+      // pre-cap in id order would drop the newest record of a large corpus.
+      const { records } = selection(ctx);
       if (records.length === 0) throw new OpenKaError("Nothing selected — no feed to build.");
 
       const text = renderAtom(records, {
         title: (ctx.opts["title"] as string | undefined) ?? "OpenKA — Kleine Anfragen",
         id: (ctx.opts["id"] as string | undefined) ?? "urn:openka:feed",
         updated,
+        limit,
       });
       emit(ctx, text, out);
     }),

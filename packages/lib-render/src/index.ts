@@ -253,6 +253,8 @@ export interface FeedOptions {
   updated: string;
   /** Base for entry links when a record has no source document. */
   siteUrl?: string;
+  /** At most this many entries: the newest, chosen from the whole set given. */
+  limit?: number;
 }
 
 /**
@@ -293,9 +295,31 @@ function atomAuthors(record: KaRecord): string[] {
   return [`    <author><name>${escapeXml(publisher)}</name></author>`];
 }
 
-/** An Atom 1.0 feed of records, newest first. */
+/**
+ * A copy of `records`, newest first by the instant each entry will print
+ * (`atomEntryUpdated`), ties broken on the id — so "newest first" is true of the
+ * feed a reader sees rather than only of the dates. Plain string comparison, not
+ * localeCompare: these are ISO instants, and the order of a published feed must
+ * not depend on the locale of the machine that built it.
+ */
+export function newestFirst(records: readonly KaRecord[], fallback: string): KaRecord[] {
+  return records
+    .map((record) => ({ record, updated: atomEntryUpdated(record, fallback) }))
+    .sort((a, b) => {
+      if (a.updated !== b.updated) return a.updated < b.updated ? 1 : -1;
+      return a.record.id < b.record.id ? -1 : a.record.id > b.record.id ? 1 : 0;
+    })
+    .map(({ record }) => record);
+}
+
+/**
+ * An Atom 1.0 feed of records, newest first — whatever order they are given in,
+ * and with `limit`, the newest N of the whole set.
+ */
 export function renderAtom(records: KaRecord[], options: FeedOptions): string {
-  const entries = records.map((record) => {
+  const newest = newestFirst(records, options.updated);
+  const selected = options.limit === undefined ? newest : newest.slice(0, options.limit);
+  const entries = selected.map((record) => {
     const link = record.source_documents[0]?.url ?? options.siteUrl ?? options.id;
     const updated = atomEntryUpdated(record, options.updated);
     const summary = [

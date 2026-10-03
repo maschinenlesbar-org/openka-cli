@@ -1,7 +1,7 @@
 // The output renderings. The rule every one of them has to follow: an abstained
 // field is visibly absent, never an empty value that reads like "nothing there".
 
-import { doesNotMatch, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CSV_COLUMNS,
@@ -9,6 +9,7 @@ import {
   csvHeader,
   escapeXml,
   atomEntryUpdated,
+  newestFirst,
   renderAtom,
   renderCsvRow,
   renderJson,
@@ -204,5 +205,33 @@ describe("format dispatch", () => {
     for (const format of ["json", "jsonld", "csv", "md", "text"] as const) {
       ok(renderRecord(sampleRecord(), format).length > 0);
     }
+  });
+});
+
+describe("the feed's order", () => {
+  const dated = (id: string, answered: string) =>
+    sampleRecord({ id, dates: { submitted: "2020-01-01", answered } });
+  const records = [
+    dated("bayern-18-1", "2024-08-01"),
+    dated("berlin-19-12345", "2024-03-28"),
+    dated("berlin-19-12346", "2023-05-01"),
+    dated("berlin-19-12347", "2025-02-01"),
+  ];
+  const entryIds = (feed: string): string[] => [...feed.matchAll(/<id>urn:openka:([^<]+)<\/id>/g)].map((m) => m[1] as string);
+  const options = { title: "T", id: "urn:x", updated: "2026-01-02T03:04:05Z" };
+
+  it("is newest first whatever order the records came in, as documented", () => {
+    deepStrictEqual(entryIds(renderAtom(records, options)), ["berlin-19-12347", "bayern-18-1", "berlin-19-12345", "berlin-19-12346"]);
+    deepStrictEqual(entryIds(renderAtom([...records].reverse(), options)), ["berlin-19-12347", "bayern-18-1", "berlin-19-12345", "berlin-19-12346"]);
+  });
+
+  it("keeps the newest N when given a limit, ranking the whole set first", () => {
+    deepStrictEqual(entryIds(renderAtom(records, { ...options, limit: 2 })), ["berlin-19-12347", "bayern-18-1"]);
+  });
+
+  it("breaks a tie on the id and leaves its input alone", () => {
+    const tied = [dated("b-1-2", "2024-01-01"), dated("b-1-1", "2024-01-01")];
+    deepStrictEqual(newestFirst(tied, options.updated).map((record) => record.id), ["b-1-1", "b-1-2"]);
+    deepStrictEqual(tied.map((record) => record.id), ["b-1-2", "b-1-1"]);
   });
 });

@@ -179,3 +179,40 @@ export function makeSnippet(store: Store, id: string, terms: string[]): string |
   const suffix = end < text.length ? "…" : "";
   return prefix + text.slice(start, end).replace(/\s+/g, " ").trim() + suffix;
 }
+
+type StoredRecord = NonNullable<ReturnType<Store["getRecord"]>>;
+
+export interface SelectOptions extends SearchFilters {
+  /** At most this many records; every match when omitted. */
+  limit?: number;
+}
+
+export interface Selection {
+  /** The selected records, in `search()` order. */
+  records: StoredRecord[];
+  /** Catalog rows that matched but whose record file is gone, by id. */
+  missing: string[];
+}
+
+/**
+ * The records a query and filters select, loaded from the store — what `ka export`
+ * writes and `ka feed` picks its newest entries from.
+ *
+ * Every match unless `limit` says otherwise: `search()` pages (20 by default), and
+ * a bulk selection that quietly stopped at a page was the wrong answer. Ordered as
+ * `search()` orders — by id for an empty query, by relevance otherwise. A catalog
+ * row whose record file is gone is named in `missing` rather than dropped without
+ * a word; a reindex rebuilds the catalog from the records.
+ */
+export function selectRecords(store: Store, query = "", options: SelectOptions = {}): Selection {
+  const { limit, ...filters } = options;
+  const result = search(store, query, { ...filters, limit: limit ?? Number.MAX_SAFE_INTEGER });
+  const records: StoredRecord[] = [];
+  const missing: string[] = [];
+  for (const hit of result.hits) {
+    const record = store.getRecord(hit.entry.id);
+    if (record === undefined) missing.push(hit.entry.id);
+    else records.push(record);
+  }
+  return { records, missing };
+}

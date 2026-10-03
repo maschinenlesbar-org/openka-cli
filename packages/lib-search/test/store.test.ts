@@ -10,7 +10,7 @@ import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { indexableFields, indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
-import { makeSnippet, matchesFilters, search } from "../src/search.js";
+import { makeSnippet, matchesFilters, search, selectRecords } from "../src/search.js";
 import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -446,5 +446,40 @@ describe("semantic search", () => {
     const hits = searchLike(store, "berlin-19-12345");
     strictEqual(hits.length, 1);
     strictEqual(hits[0]?.entry.id, "berlin-19-22222");
+  });
+});
+
+describe("selectRecords", () => {
+  function corpus(count: number): MemoryStore {
+    const store = new MemoryStore();
+    for (let n = 1; n <= count; n++) {
+      const record = sampleRecord({ id: `berlin-19-${String(n).padStart(5, "0")}`, reference: `19/${String(n).padStart(5, "0")}` });
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    return store;
+  }
+
+  it("selects every match by default, not search()'s first page of 20", () => {
+    const { records, missing } = selectRecords(corpus(25), "");
+    strictEqual(records.length, 25);
+    deepStrictEqual(missing, []);
+  });
+
+  it("applies the filters and a limit, in search order", () => {
+    const store = corpus(25);
+    deepStrictEqual(
+      selectRecords(store, "", { limit: 3 }).records.map((record) => record.id),
+      ["berlin-19-00001", "berlin-19-00002", "berlin-19-00003"],
+    );
+    strictEqual(selectRecords(store, "", { parliament: ["bayern"] }).records.length, 0);
+  });
+
+  it("names a catalog row whose record file is gone instead of dropping it silently", () => {
+    const store = corpus(3);
+    store.deleteRecord("berlin-19-00002");
+    const { records, missing } = selectRecords(store, "");
+    deepStrictEqual(records.map((record) => record.id), ["berlin-19-00001", "berlin-19-00003"]);
+    deepStrictEqual(missing, ["berlin-19-00002"]);
   });
 });

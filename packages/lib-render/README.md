@@ -12,12 +12,16 @@ compares. Nothing that goes through the store can carry one anyway — extractio
 strips them and `putRecord` refuses them — so the strip is for the other caller,
 a library consumer handing a renderer a record it built itself.
 
+`renderAtom` orders its entries newest first (`newestFirst`: the instant each entry
+prints, ties on the id) whatever order it is given, and with `limit` keeps the newest
+N of the whole set — the selection `ka feed` used to make in its own action.
+
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-RENDER_FORMATS, RenderFormat, renderJson, renderJsonLd, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, FeedOptions, atomEntryUpdated, renderAtom
+RENDER_FORMATS, RenderFormat, renderJson, renderJsonLd, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
 ```
 
 ## Depends on
