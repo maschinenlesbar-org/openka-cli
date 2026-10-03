@@ -7,6 +7,7 @@ import { verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
+import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { DEFAULT_REVIEW_LIMIT, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
 import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
@@ -180,27 +181,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {
-        const store = ctx.store();
-        const counts = new Map<string, number>();
-        for (const entry of store.catalog()) {
-          counts.set(entry.parliament, (counts.get(entry.parliament) ?? 0) + 1);
-        }
-        const rows = SOURCE_REGISTRY.map((entry) => {
-          const state = store.getSourceState(entry.key);
-          return {
-            key: entry.key,
-            parliament: entry.parliament,
-            label: entry.label,
-            status: entry.status,
-            // An adapter with no parliament of its own has no record count of its
-            // own either: its records are filed under the Länder they came from.
-            records: entry.parliament === undefined ? undefined : (counts.get(entry.parliament) ?? 0),
-            last_sync: state.last_sync,
-            last_success: state.last_success,
-            last_error: state.last_error,
-            note: entry.note,
-          };
-        });
+        const rows = sourceStatus(ctx.store(), SOURCE_REGISTRY);
         if (ctx.opts["json"] === true) {
           printJson(ctx, rows);
           return;

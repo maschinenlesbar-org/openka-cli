@@ -9,7 +9,7 @@ import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
-import { indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
 import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
@@ -534,5 +534,30 @@ describe("the review queue", () => {
     deepStrictEqual(ids(reviewQueue(store)), ["berlin-19-12347", "bayern-18-00001"]);
     strictEqual(search(store, "", { reviewStatus: ["human_verified"] }).total, 1);
     strictEqual(markHumanVerified(store, "berlin-19-99999"), undefined);
+  });
+});
+
+describe("corpus statistics", () => {
+  it("counts records, completeness, parliaments and tiers from the catalog", () => {
+    const store = new MemoryStore();
+    const incomplete = sampleRecord({
+      id: "berlin-19-22222",
+      reference: "19/22222",
+      qa: [],
+      extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: ["qa"], review_status: "needs_review" },
+    });
+    const bayern = sampleRecord({ id: "bayern-18-00001", parliament: "bayern", reference: "18/00001", legislative_period: 18 });
+    for (const record of [sampleRecord(), incomplete, bayern]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    deepStrictEqual(corpusStats(store), {
+      records: 3,
+      parse_complete: 2,
+      needs_review: 1,
+      by_parliament: { bayern: { records: 1, abstained: 0 }, berlin: { records: 2, abstained: 1 } },
+      by_tier: { text_layer: 3 },
+    });
+    deepStrictEqual(corpusStats(new MemoryStore()), { records: 0, parse_complete: 0, needs_review: 0, by_parliament: {}, by_tier: {} });
   });
 });

@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { corpusStats } from "@maschinenlesbar.org/openka-lib-store";
 import { selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
 import { csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
@@ -123,26 +124,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {
-        const store = ctx.existingStore();
-        const catalog = store.catalog();
-        const byParliament = new Map<string, { records: number; abstained: number }>();
-        const byTier = new Map<string, number>();
-        for (const entry of catalog) {
-          const bucket = byParliament.get(entry.parliament) ?? { records: 0, abstained: 0 };
-          bucket.records++;
-          if (entry.abstained > 0) bucket.abstained++;
-          byParliament.set(entry.parliament, bucket);
-          byTier.set(entry.tier, (byTier.get(entry.tier) ?? 0) + 1);
-        }
-        const complete = catalog.filter((entry) => entry.abstained === 0).length;
-        const summary = {
-          corpus: ctx.corpusRoot(),
-          records: catalog.length,
-          parse_complete: complete,
-          needs_review: catalog.length - complete,
-          by_parliament: Object.fromEntries([...byParliament].sort(([a], [b]) => (a < b ? -1 : 1))),
-          by_tier: Object.fromEntries([...byTier].sort(([a], [b]) => (a < b ? -1 : 1))),
-        };
+        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(ctx.existingStore()) };
         if (ctx.opts["json"] === true) {
           printJson(ctx, summary);
           return;
@@ -153,9 +135,9 @@ export function registerOutput(program: Command, deps: CliDeps): void {
           io.out("Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
           return;
         }
-        const rate = ((complete / summary.records) * 100).toFixed(1);
-        io.out(`${complete} parse-complete (${rate}%), ${summary.needs_review} with abstained fields`);
-        for (const [parliament, bucket] of [...byParliament].sort(([a], [b]) => (a < b ? -1 : 1))) {
+        const rate = ((summary.parse_complete / summary.records) * 100).toFixed(1);
+        io.out(`${summary.parse_complete} parse-complete (${rate}%), ${summary.needs_review} with abstained fields`);
+        for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
           io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
         }
       }),

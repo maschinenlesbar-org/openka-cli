@@ -17,8 +17,11 @@ producing the same abstentions it produced the first time.
 Everything is re-exported from the package root:
 
 ```
-SyncOptions, ProgressEvent, SyncReport, sync, isoInstant
+SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus
 ```
+
+`sourceStatus(store, registry)` (`src/status.ts`) is the table `ka sources list`
+prints: each registry entry with its record count and last sync state.
 
 ## robots.txt
 

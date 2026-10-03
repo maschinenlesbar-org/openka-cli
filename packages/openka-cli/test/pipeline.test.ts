@@ -5,7 +5,7 @@ import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/st
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isoInstant, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { isoInstant, sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
@@ -13,7 +13,8 @@ import { listAllGoldens, verifyGolden } from "@maschinenlesbar.org/openka-cli-ka
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
-import { MemoryStore, PROJECT_ROOT, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
+import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
+import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 
 // Real documents come from the connector that recorded them, and the PARDOK export
 // from the package that parses it: one copy of each, borrowed explicitly.
@@ -556,5 +557,24 @@ describe("golden fixtures", () => {
 describe("Berlin feed URL", () => {
   it("names a file per Wahlperiode", () => {
     match(berlinFeedUrl(18), /pardok-wp18\.xml$/);
+  });
+});
+
+describe("source status", () => {
+  it("joins the registry with each source's record count and sync state", () => {
+    const store = new MemoryStore();
+    store.putSourceState({ source: "berlin", last_sync: "2026-01-01T00:00:00Z", last_error: "HTTP 503 from upstream", http_cache: {} });
+    const registry = [
+      { key: "berlin", parliament: "berlin" as const, label: "Berlin", status: "implemented" as const, note: "n" },
+      { key: "parlamentsspiegel", label: "PS", status: "implemented" as const, note: "all" },
+    ];
+    const record = sampleRecord();
+    store.putRecord(record);
+    indexRecord(store, record);
+    deepStrictEqual(sourceStatus(store, registry), [
+      { key: "berlin", parliament: "berlin", label: "Berlin", status: "implemented", records: 1, last_sync: "2026-01-01T00:00:00Z", last_success: undefined, last_error: "HTTP 503 from upstream", note: "n" },
+      // A source with no parliament of its own has no record count of its own.
+      { key: "parlamentsspiegel", parliament: undefined, label: "PS", status: "implemented", records: undefined, last_sync: undefined, last_success: undefined, last_error: undefined, note: "all" },
+    ]);
   });
 });

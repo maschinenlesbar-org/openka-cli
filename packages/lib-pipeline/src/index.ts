@@ -448,3 +448,4 @@ async function fetchDocument(
 export function isoInstant(date: Date): string {
   return `${date.toISOString().slice(0, 19)}Z`;
 }
+export { sourceStatus, type SourceStatusRow } from "./status.js";

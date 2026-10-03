@@ -212,6 +212,9 @@ What the library now computes that a `ka` action used to compute on its own:
   and `markHumanVerified(store, id)` (`lib-store`: record *and* catalog row, so
   search and the queue see it). The `onlyAbstained` search filter stays "abstained,
   verified or not". `ka review` calls these.
+- **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
+  prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
+  `ka sources list`; the "degraded" label of its text view stays rendering.
 
 ## Reproducibility, concretely
 

@@ -6,7 +6,9 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FileStore, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
+import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, selectRecords } from "@maschinenlesbar.org/openka-lib-search";
@@ -326,5 +328,50 @@ describe("the review queue and the human_verified mark (finding 9)", () => {
     ok(result.lib.ok);
     const expected = { record: "human_verified", catalog: "human_verified", verified: 1, queue: ["berlin-19-12347", "bayern-18-00001"] };
     deepStrictEqual(result.lib.value, { cli: expected, lib: expected });
+  });
+});
+
+describe("corpus summaries (finding 14)", () => {
+  function seedSummary(corpus: string): void {
+    const store = new FileStore(corpus);
+    const incomplete = sampleRecord({
+      id: "berlin-19-22222",
+      reference: "19/22222",
+      qa: [],
+      extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: ["qa"], review_status: "needs_review" },
+    });
+    const bayern = sampleRecord({ id: "bayern-18-00001", parliament: "bayern", reference: "18/00001", legislative_period: 18 });
+    for (const record of [sampleRecord(), incomplete, bayern]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    store.flushCatalog();
+    store.putSourceState({ source: "berlin", last_sync: "2026-01-01T00:00:00Z", last_error: "HTTP 503 from upstream", http_cache: {} });
+  }
+
+  it("ka stats prints corpusStats, with the corpus path", async () => {
+    let cliCorpus = "";
+    const result = await parity({
+      seed: seedSummary,
+      argv: (corpus) => {
+        cliCorpus = corpus;
+        return ["--compact", "--corpus", corpus, "stats", "--json"];
+      },
+      lib: ({ store }) => corpusStats(store),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    deepStrictEqual(JSON.parse(result.cli.out), { corpus: cliCorpus, ...(result.lib.value as object) });
+  });
+
+  it("ka sources list prints sourceStatus over the registry", async () => {
+    const result = await parity({
+      seed: seedSummary,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "sources", "list", "--json"],
+      lib: ({ store }) => sourceStatus(store, SOURCE_REGISTRY),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify(result.lib.value)));
   });
 });
