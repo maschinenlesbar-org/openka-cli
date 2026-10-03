@@ -24,6 +24,7 @@ import {
   offsetProblem,
   reviewStatusProblem,
   searchParliamentProblem,
+  searchableQueryProblem,
 } from "../src/filters.js";
 import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { cosine, searchLike } from "../src/semantic.js";
@@ -645,5 +646,21 @@ describe("search paging", () => {
     throws(() => searchLike(store, "berlin-19-12345", { limit: -1 }), refused("limit", "Must be >= 1."));
     throws(() => selectRecords(store, "", { limit: 0 }), refused("limit", "Must be >= 1."));
     throws(() => reviewQueue(store, { limit: 0 }), refused("limit", "Must be >= 1."));
+  });
+});
+
+describe("a searchable query", () => {
+  it("names a non-blank query with no terms, and lets the rest through", () => {
+    strictEqual(
+      searchableQueryProblem("???"),
+      'Nothing searchable in "???" — terms are runs of letters and digits of at least two characters, so this would have matched every record.',
+    );
+    for (const query of ["a", "-", "?x", "\"\""]) ok(searchableQueryProblem(query) !== undefined, query);
+    for (const query of ["", "   ", "-radwege", "Brücken", '"Sanierung der Radwege"']) strictEqual(searchableQueryProblem(query), undefined, query);
+  });
+
+  it("is enforced by search() and selectRecords() before they read anything", () => {
+    throws(() => search(new MemoryStore(), "???"), (error: unknown) => error instanceof OpenKaValidationError && error.message.startsWith("Invalid query: Nothing searchable"));
+    throws(() => selectRecords(new MemoryStore(), "-"), OpenKaValidationError);
   });
 });

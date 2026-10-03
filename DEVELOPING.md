@@ -217,6 +217,13 @@ What the library rejects with `OpenKaValidationError`, so far:
   `PERIOD_RANGE`), a date that is not a `YYYY-MM-DD` calendar date (padding is
   trimmed; `isoDateProblem` in `lib-models`). `ka`'s `--parliament`, `--from`/`--to`,
   `--year`/`--period` parsers call the same rules.
+- **A query with nothing searchable** — `search()` (and so `selectRecords()`) runs
+  `searchableQueryProblem` (`lib-search`) first: a non-blank query with no term left
+  after tokenising (`???`, `a`, `-`) is refused instead of answering every record. A
+  blank query still means every record, and an exclusion-only one (`-radwege`)
+  still works. The check used to sit in the `ka search` action only, so `ka export
+  --query` and `ka feed --query` returned every record too; all three now exit 2
+  with `Invalid query: Nothing searchable in …`.
 - **A page that cannot exist** — `search()`, `searchLike()`, `selectRecords()` and
   `reviewQueue()` run `assertPaging` (`lib-search`): `limit` must be an integer >= 1
   and `offset` an integer >= 0 (`LIMIT_MIN`, `OFFSET_MIN`; `limit` defaults to

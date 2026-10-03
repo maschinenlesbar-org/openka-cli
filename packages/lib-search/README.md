@@ -14,7 +14,9 @@ trimmed and lower-cased, dates trimmed; an unknown parliament, a blank party, an
 unknown review status, a year outside `YEAR_RANGE` or a period outside `PERIOD_RANGE`,
 or a date that is not `YYYY-MM-DD` on the calendar throws `OpenKaValidationError`. A
 filter that cannot match used to answer "no matches" — or, for a padded date, switch
-the window off. `ka`'s parsers call the same rules. **So is paging**: `limit` must be an
+the window off. `ka`'s parsers call the same rules. **So is the query**: a non-blank query with no searchable term (`???`, `a`, `-`) is
+refused by `search()` (`searchableQueryProblem`) rather than answered with every
+record; a blank one still means every record. **So is paging**: `limit` must be an
 integer >= 1 and `offset` an integer >= 0 (`assertPaging`, `LIMIT_MIN`, `OFFSET_MIN`;
 `limit` defaults to `DEFAULT_SEARCH_LIMIT`, 20), checked by `search()`, `searchLike()`,
 `selectRecords()` and `reviewQueue()`; a negative value used to wrap around through
@@ -39,7 +41,7 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, searchableQueryProblem, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
 ```
 
 ## Depends on

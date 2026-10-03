@@ -3,7 +3,8 @@
 // filter that cannot match anything — an unknown parliament, a blank party, a
 // date that is no date — is a usage error on every path, never "No matches.".
 
-import { assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { assertValid, isBlank, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { parseQuery } from "@maschinenlesbar.org/openka-lib-store";
 import {
   ReviewStatuses,
   isoDateProblem,
@@ -51,6 +52,23 @@ export function assertPaging(paging: { limit?: number | undefined; offset?: numb
   if (paging.limit !== undefined) assertValid("limit", paging.limit, limitProblem);
   if (paging.offset !== undefined) assertValid("offset", paging.offset, offsetProblem);
 }
+
+/**
+ * A query the tokenizer can use. A blank query means "every record"; a non-blank
+ * one with no term left after tokenising (`"???"`, `"a"`, `"-"`) is not the same
+ * thing, and answering it with every record is the silently-dropped constraint a
+ * blank filter is refused to prevent. A query of only exclusions (`-radwege`)
+ * keeps its terms and passes.
+ */
+export const searchableQueryProblem: Problem<string> = (query) => {
+  if (isBlank(query)) return undefined;
+  const parsed = parseQuery(query);
+  if (parsed.required.length > 0 || parsed.excluded.length > 0) return undefined;
+  return (
+    `Nothing searchable in ${JSON.stringify(query)} — terms are runs of letters and digits ` +
+    "of at least two characters, so this would have matched every record."
+  );
+};
 
 /** A parliament filter: not blank, and a key that exists (any case). */
 export const searchParliamentProblem: Problem<string> = (value) => nonBlankProblem(value) ?? parliamentKeyProblem(value);

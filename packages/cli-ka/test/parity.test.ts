@@ -740,3 +740,34 @@ describe("the answer sweep's range (finding 20)", () => {
     });
   }
 });
+
+describe("a query with nothing searchable (finding 1)", () => {
+  const reason = (query: string): string =>
+    `Nothing searchable in ${JSON.stringify(query)} — terms are runs of letters and digits ` +
+    "of at least two characters, so this would have matched every record.";
+
+  for (const query of ["???", "---", "?x", "a", "-"]) {
+    it(`refuses ${JSON.stringify(query)} in search, export and feed, as search() does`, async () => {
+      for (const [argv, lib] of [
+        [["search", "--json", "--", query], (store: FileStore) => search(store, query)],
+        [["export", "--format", "jsonl", "--query", query], (store: FileStore) => selectRecords(store, query)],
+        [["feed", "--query", query], (store: FileStore) => selectRecords(store, query)],
+      ] as const) {
+        const result = await parity({ seed: seedOneRecord, argv: (corpus) => ["--corpus", corpus, ...argv], lib: ({ store }) => lib(store) });
+        bothRefused(result, "query", reason(query));
+      }
+    });
+  }
+
+  it("still answers an empty query and an exclusion-only query", async () => {
+    for (const query of ["", "-radwege", "Brücken"]) {
+      const result = await parity({
+        seed: seedOneRecord,
+        argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", "--", query],
+        lib: ({ store }) => search(store, query),
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify((result.lib as { value: unknown }).value)));
+    }
+  });
+});

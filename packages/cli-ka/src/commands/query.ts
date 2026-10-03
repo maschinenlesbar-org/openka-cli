@@ -5,7 +5,6 @@ import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors"
 import { parliamentByKey } from "@maschinenlesbar.org/openka-lib-models";
 import { ReviewStatuses, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, search } from "@maschinenlesbar.org/openka-lib-search";
-import { parseQuery } from "@maschinenlesbar.org/openka-lib-store";
 import { searchLike } from "@maschinenlesbar.org/openka-lib-search";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "@maschinenlesbar.org/openka-lib-render";
 import type { CatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
@@ -151,20 +150,8 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         return;
       }
 
-      // A query the tokenizer cannot use is not an empty query. "--- ... ???" has
-      // no terms left after tokenising, and answering it with every record is the
-      // silently-dropped constraint `--party ""` is a usage error to prevent.
+      // A query with nothing searchable ("???") is refused by search() itself.
       const query = positionals[0] ?? "";
-      if (query.trim() !== "") {
-        const parsed = parseQuery(query);
-        if (parsed.required.length === 0 && parsed.excluded.length === 0) {
-          throw new UsageError(
-            `Nothing searchable in ${JSON.stringify(query)} — terms are runs of letters and digits ` +
-              "of at least two characters, so this would have matched every record.",
-          );
-        }
-      }
-
       const result = search(store, query, {
         ...filters,
         limit,

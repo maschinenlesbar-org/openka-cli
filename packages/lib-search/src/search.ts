@@ -3,9 +3,10 @@
 // catalog rows. No record is loaded from disk unless a phrase has to be confirmed
 // or a snippet is requested.
 
+import { assertValid } from "@maschinenlesbar.org/openka-lib-errors";
 import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "@maschinenlesbar.org/openka-lib-store";
 import type { CatalogEntry, Store } from "@maschinenlesbar.org/openka-lib-store";
-import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters } from "./filters.js";
+import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters, searchableQueryProblem } from "./filters.js";
 
 export interface SearchFilters {
   parliament?: string[];
@@ -67,12 +68,15 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
 /**
  * Run a search. An empty query means "every record that passes the filters",
  * ordered by id, which is what `ka search --parliament berlin --year 2024` needs.
- * The paging and the filters are checked first (`assertPaging`,
- * `normalizeSearchFilters`): a page that cannot exist or a filter that cannot
- * match throws `OpenKaValidationError` instead of answering the wrong page or
- * "no matches". `limit` defaults to `DEFAULT_SEARCH_LIMIT`, `offset` to 0.
+ * The query, the paging and the filters are checked first
+ * (`searchableQueryProblem`, `assertPaging`, `normalizeSearchFilters`): a
+ * non-blank query with nothing searchable, a page that cannot exist or a filter
+ * that cannot match throws `OpenKaValidationError` instead of answering every
+ * record, the wrong page or "no matches". `limit` defaults to
+ * `DEFAULT_SEARCH_LIMIT`, `offset` to 0.
  */
 export function search(store: Store, query: string, searchOptions: SearchOptions = {}): SearchResult {
+  assertValid("query", query, searchableQueryProblem);
   assertPaging(searchOptions);
   const options: SearchOptions = { ...searchOptions, ...normalizeSearchFilters(searchOptions) };
   const parsed = parseQuery(query);

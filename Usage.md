@@ -103,6 +103,8 @@ ka feed --query "brücken" --title "Brücken-Anfragen"
 `export` writes every match — by id, or the most relevant first with `--query` — and
 `feed` picks its `--limit` newest entries from the whole selection. A catalog row whose
 record file is gone is named on stderr and left out; `ka reindex` rebuilds the catalog.
+A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here as in
+`ka search`, rather than a selection of every record.
 
 `-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
 An existing file is not replaced unless `--force` is given.
