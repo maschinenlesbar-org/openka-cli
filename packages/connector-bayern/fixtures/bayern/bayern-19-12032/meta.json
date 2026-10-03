@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.0.3+extract:a3caf8e957c5",
+  "extractor_version": "pkg:0.1.0+extract:a3caf8e957c5",
   "human_verified": false,
   "id": "bayern-19-12032",
   "note": "Bayern: questions answered in groups — 'Die Fragen 1.1 bis 2.2 … gemeinsam be-antwortet' with the verb broken across lines, ranges of sub-numbers expanded over the numbers the document asked",
