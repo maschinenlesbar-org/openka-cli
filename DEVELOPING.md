@@ -247,6 +247,17 @@ What the library rejects with `OpenKaValidationError`, so far:
   Must be >= since (…).`) where it used to sync nothing. The integer rule itself is
   `intRangeProblem` in `lib-errors`, shared with the search filters and the
   factory's sweep.
+- **Engine options out of bounds** — `new FetchEngine(options)` runs
+  `assertEngineOptions` (`lib-http`): `timeoutMs` 0–`MAX_TIMEOUT_MS`, `maxRetries`
+  0–`MAX_RETRIES` (10), `maxRedirects` 0–`MAX_REDIRECTS` (10), `minHostIntervalMs`
+  0–`MAX_HOST_INTERVAL_MS` (60 000), `maxResponseBytes` >= `MIN_RESPONSE_BYTES`
+  (1024), all integers, and a `userAgent` that is neither blank nor a broken header
+  value (`userAgentProblem`: control characters incl. CR/LF, anything above
+  U+00FF). `maxRetries: -1` used to send nothing and fail with "NetworkError:
+  undefined"; an over-long timeout used to be clamped silently. `ka`'s global
+  options build their parsers from these constants, so `--user-agent` with a
+  control character or `€` is now a usage error up front instead of a failed
+  request.
 - **An unknown render format or a blank feed title or id** — `renderRecord` checks
   the format against `RENDER_FORMATS` (`renderFormatProblem`) instead of falling back
   to JSON; `renderAtom` refuses a blank `title`/`id` and applies

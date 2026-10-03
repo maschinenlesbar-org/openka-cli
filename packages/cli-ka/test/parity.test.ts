@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
-import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
+import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES } from "@maschinenlesbar.org/openka-lib-http";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import {
   BASELINE_FILE,
@@ -1032,5 +1032,44 @@ describe("the sync window and budget (finding 5)", () => {
     deepStrictEqual(result.lib.requests, result.cli.requests);
     ok(result.cli.requests.length > 0);
     ok(result.cli.requests.every((request) => /f\.datum\.start=2026-08-01&/.test(request) && !/=%20|%20&/.test(request)), result.cli.requests.join("\n"));
+  });
+});
+
+describe("the fetch engine's options (finding 6)", () => {
+  for (const [flag, value, option, libValue, reason] of [
+    ["--max-retries", "25", "maxRetries", 25, "Must be <= 10."],
+    ["--max-retries", "-1", "maxRetries", -1, "Must be >= 0."],
+    ["--max-retries", "1.5", "maxRetries", 1.5, "Expected an integer."],
+    ["--max-redirects", "11", "maxRedirects", 11, "Must be <= 10."],
+    ["--max-redirects", "-1", "maxRedirects", -1, "Must be >= 0."],
+    ["--max-response-bytes", "10", "maxResponseBytes", 10, "Must be >= 1024."],
+    ["--min-host-interval", "60001", "minHostIntervalMs", 60_001, "Must be <= 60000."],
+    ["--min-host-interval", "-5", "minHostIntervalMs", -5, "Must be >= 0."],
+    ["--timeout", "-1", "timeoutMs", -1, "Must be >= 0."],
+    ["--user-agent", "", "userAgent", "", "Expected a non-empty value."],
+    ["--user-agent", "  ", "userAgent", "  ", "Expected a non-empty value."],
+    ["--user-agent", "ka\r\nX-Injected: 1", "userAgent", "ka\r\nX-Injected: 1", "Expected a header value: no control characters, nothing above U+00FF."],
+    ["--user-agent", "ka €", "userAgent", "ka €", "Expected a header value: no control characters, nothing above U+00FF."],
+  ] as const) {
+    it(`refuses ${flag} ${JSON.stringify(value)} on both sides, before any request`, async () => {
+      const result = await parity({
+        argv: (corpus) => ["--corpus", corpus, flag, value, "sync", "--source", "berlin", "--metadata-only"],
+        lib: ({ transport }) => new FetchEngine({ transport, [option]: libValue }),
+      });
+      bothRefused(result, option, reason);
+    });
+  }
+
+  it("takes the bounds themselves on both sides", async () => {
+    const responder = async (): Promise<never> => {
+      throw new Error("offline");
+    };
+    const result = await parity({
+      responder,
+      argv: (corpus) => ["--corpus", corpus, "--max-retries", "10", "--max-redirects", "10", "--max-response-bytes", "1024", "--user-agent", "ka-test/1.0 (é)", "sources", "list", "--json"],
+      lib: ({ transport }) => new FetchEngine({ transport, maxRetries: MAX_RETRIES, maxRedirects: MAX_REDIRECTS, maxResponseBytes: MIN_RESPONSE_BYTES, minHostIntervalMs: MAX_HOST_INTERVAL_MS, userAgent: "ka-test/1.0 (é)" }).userAgent,
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: "ka-test/1.0 (é)", requests: [] });
   });
 });

@@ -6,9 +6,20 @@ import http from "node:http";
 import { once } from "node:events";
 import { describe, it } from "node:test";
 import { MAX_TIMEOUT_MS, nodeHttpTransport } from "../src/http.js";
-import { FetchEngine, assertHttpScheme, retryDelayMs, sanitizeServerText } from "../src/engine.js";
+import {
+  DEFAULT_USER_AGENT,
+  FetchEngine,
+  MAX_HOST_INTERVAL_MS,
+  MAX_REDIRECTS,
+  MAX_RETRIES,
+  MIN_RESPONSE_BYTES,
+  assertHttpScheme,
+  retryDelayMs,
+  sanitizeServerText,
+  userAgentProblem,
+} from "../src/engine.js";
 import { buildQuery } from "../src/query.js";
-import { NetworkError, OpenKaApiError } from "@maschinenlesbar.org/openka-lib-errors";
+import { NetworkError, OpenKaApiError, OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { scriptedTransport, testEngine } from "@maschinenlesbar.org/openka-lib-testing";
 
 describe("query builder", () => {
@@ -339,5 +350,57 @@ describe("the default transport against a real socket", () => {
 
   it("caps a timeout at the longest delay Node's timers support", () => {
     ok(MAX_TIMEOUT_MS === 2_147_483_647);
+  });
+});
+
+describe("engine options", () => {
+  it("names its bounds", () => {
+    deepStrictEqual(
+      [MAX_RETRIES, MAX_REDIRECTS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES],
+      [10, 10, 60_000, 1024],
+    );
+  });
+
+  it("refuses an option out of range, fractional or not finite, before any request", () => {
+    const calls: unknown[] = [];
+    const transport = async (request: unknown) => {
+      calls.push(request);
+      return { status: 200, headers: {}, body: Buffer.alloc(0) };
+    };
+    for (const [option, value, reason] of [
+      ["maxRetries", -1, "Must be >= 0."],
+      ["maxRetries", 1.5, "Expected an integer."],
+      ["maxRetries", 11, "Must be <= 10."],
+      ["maxRedirects", Number.NaN, "Expected an integer."],
+      ["maxRedirects", 11, "Must be <= 10."],
+      ["maxResponseBytes", 1023, "Must be >= 1024."],
+      ["maxResponseBytes", Number.POSITIVE_INFINITY, "Expected an integer."],
+      ["minHostIntervalMs", -1, "Must be >= 0."],
+      ["timeoutMs", MAX_TIMEOUT_MS + 1, `Must be <= ${MAX_TIMEOUT_MS}.`],
+      ["timeoutMs", -1, "Must be >= 0."],
+    ] as const) {
+      throws(
+        () => new FetchEngine({ transport, [option]: value }),
+        (error: unknown) => error instanceof OpenKaValidationError && error.message === `Invalid ${option}: ${reason}`,
+        `${option} ${value}`,
+      );
+    }
+    deepStrictEqual(calls, []);
+  });
+
+  it("refuses a User-Agent that is blank or not a header value", () => {
+    strictEqual(userAgentProblem("openka-test/1.0 (+https://example.invalid; é)"), undefined);
+    strictEqual(userAgentProblem("a\tb"), undefined);
+    for (const blank of ["", "  "]) strictEqual(userAgentProblem(blank), "Expected a non-empty value.");
+    for (const bad of ["a\r\nb", "a\u0000b", "a\u007fb", "a€"]) {
+      strictEqual(userAgentProblem(bad), "Expected a header value: no control characters, nothing above U+00FF.");
+      throws(() => new FetchEngine({ userAgent: bad }), OpenKaValidationError);
+    }
+  });
+
+  it("accepts the bounds and keeps its defaults when nothing is set", () => {
+    const engine = new FetchEngine({ maxRetries: 0, maxRedirects: 0, timeoutMs: 0, minHostIntervalMs: 0, maxResponseBytes: Number.MAX_SAFE_INTEGER });
+    strictEqual(engine.userAgent, DEFAULT_USER_AGENT);
+    strictEqual(new FetchEngine({ maxRetries: MAX_RETRIES, maxRedirects: MAX_REDIRECTS, timeoutMs: MAX_TIMEOUT_MS, minHostIntervalMs: MAX_HOST_INTERVAL_MS }).userAgent, DEFAULT_USER_AGENT);
   });
 });

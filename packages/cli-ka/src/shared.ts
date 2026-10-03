@@ -19,7 +19,14 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { statSync } from "node:fs";
 import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
-import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/openka-lib-http";
+import {
+  MAX_HOST_INTERVAL_MS,
+  MAX_REDIRECTS,
+  MAX_RETRIES,
+  MAX_TIMEOUT_MS,
+  MIN_RESPONSE_BYTES,
+  userAgentProblem,
+} from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
 import type { CliDeps } from "./io.js";
@@ -305,11 +312,13 @@ export function addGlobalOptions(program: Command): Command {
   return program
     .option("--corpus <dir>", `corpus directory (default: $${CORPUS_ENV} or ~/.local/share/openka)`, parseNonEmpty)
     .option("--timeout <ms>", "timeout per request attempt in milliseconds (a timed-out request is retried once)", parseBoundedInt(0, MAX_TIMEOUT_MS))
-    .option("--user-agent <ua>", "User-Agent sent to upstreams", parseNonEmpty)
-    .option("--max-retries <n>", "retries for a transient 429/503 or a dropped connection (never an over-size response)", parseBoundedInt(0, 10))
-    .option("--max-response-bytes <n>", "hard cap on a single response body", parseBoundedInt(1024))
-    .option("--min-host-interval <ms>", "minimum delay between requests to one host", parseBoundedInt(0, 60_000))
-    .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, 10))
+    // The bounds and the User-Agent rule are FetchEngine's (assertEngineOptions);
+    // these parsers only read argv into numbers and strings.
+    .option("--user-agent <ua>", "User-Agent sent to upstreams", problemParser(userAgentProblem))
+    .option("--max-retries <n>", "retries for a transient 429/503 or a dropped connection (never an over-size response)", parseBoundedInt(0, MAX_RETRIES))
+    .option("--max-response-bytes <n>", "hard cap on a single response body", parseBoundedInt(MIN_RESPONSE_BYTES))
+    .option("--min-host-interval <ms>", "minimum delay between requests to one host", parseBoundedInt(0, MAX_HOST_INTERVAL_MS))
+    .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, MAX_REDIRECTS))
     .option("--compact", "compact JSON output")
     .option("--quiet", "suppress progress output on stderr");
 }

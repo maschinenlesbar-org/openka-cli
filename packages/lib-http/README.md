@@ -22,6 +22,14 @@ would fail the same way at the same cost. The transport says which it was throug
 `--base-url` is trusted input but only `http:` and `https:` are accepted, checked at
 parse time, in the engine, and again per hop.
 
+**What the constructor refuses.** `new FetchEngine(options)` runs
+`assertEngineOptions` first and throws `OpenKaValidationError` for `timeoutMs`
+outside 0–`MAX_TIMEOUT_MS`, `maxRetries` outside 0–`MAX_RETRIES`, `maxRedirects`
+outside 0–`MAX_REDIRECTS`, `minHostIntervalMs` outside 0–`MAX_HOST_INTERVAL_MS`,
+`maxResponseBytes` below `MIN_RESPONSE_BYTES` (all integers), and a User-Agent that
+is blank or not a header value (`userAgentProblem`). An omitted option keeps its
+`DEFAULT_*`. `ka`'s global options use the same constants and rule.
+
 ## What is in here
 
 - **`src/engine.ts`** — The fetch engine: URL building, retry/backoff, redirects, conditional requests and per-host rate limiting.
@@ -33,7 +41,7 @@ parse time, in the engine, and again per hop.
 Everything is re-exported from the package root:
 
 ```
-DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, EngineOptions, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, QueryValue, QueryParams, buildQuery
+DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_RETRIES, MAX_RETRIES, DEFAULT_MAX_REDIRECTS, MAX_REDIRECTS, DEFAULT_MIN_HOST_INTERVAL_MS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES, userAgentProblem, assertEngineOptions, EngineOptions, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, QueryValue, QueryParams, buildQuery
 ```
 
 ## Depends on

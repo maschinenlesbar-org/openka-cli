@@ -3,7 +3,14 @@
 // a good citizen" (CONCEPT.md §7) is a property of the line rather than something
 // each adapter has to remember.
 
-import { NetworkError, OpenKaApiError } from "@maschinenlesbar.org/openka-lib-errors";
+import {
+  NetworkError,
+  OpenKaApiError,
+  assertValid,
+  intRangeProblem,
+  nonBlankProblem,
+  type Problem,
+} from "@maschinenlesbar.org/openka-lib-errors";
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 import { buildQuery, type QueryParams } from "./query.js";
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
@@ -16,6 +23,62 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** 64 MiB — a Landtag PDF is rarely over 20 MiB, a Wahlperiode XML export can be 60. */
 export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+
+/** Retries of a transient failure when none is set. */
+export const DEFAULT_MAX_RETRIES = 3;
+/** The most retries an engine takes: past this, retrying is hammering a server that is down. */
+export const MAX_RETRIES = 10;
+/** Redirects followed when none is set. */
+export const DEFAULT_MAX_REDIRECTS = 5;
+/** The most redirects an engine follows; a longer chain is a loop or a trap. */
+export const MAX_REDIRECTS = 10;
+/** Minimum milliseconds between two requests to one host when none is set. */
+export const DEFAULT_MIN_HOST_INTERVAL_MS = 500;
+/** The longest engine-wide interval: a minute between requests is already a crawl at walking pace. */
+export const MAX_HOST_INTERVAL_MS = 60_000;
+/** The smallest response cap: below a kilobyte not even an error page fits. */
+export const MIN_RESPONSE_BYTES = 1024;
+
+/**
+ * Why `value` cannot be sent as the User-Agent, or `undefined` when it can. It is
+ * what a robots.txt rule is matched against and how a parliament's operator finds
+ * us (CONCEPT.md §7), so it may not be blank; and it is a header value, so CR/LF
+ * (header injection), other control characters and anything above U+00FF — which
+ * Node refuses with a raw TypeError mid-request — are refused up front.
+ */
+export const userAgentProblem: Problem<string> = (value) => {
+  const blank = nonBlankProblem(value);
+  if (blank !== undefined) return blank;
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if ((code < 0x20 && code !== 0x09) || code === 0x7f || code > 0xff) {
+      return "Expected a header value: no control characters, nothing above U+00FF.";
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Check the engine options a caller set; an omitted one keeps its default. Throws
+ * `OpenKaValidationError`: `timeoutMs` 0–`MAX_TIMEOUT_MS`, `maxRetries`
+ * 0–`MAX_RETRIES`, `maxRedirects` 0–`MAX_REDIRECTS`, `minHostIntervalMs`
+ * 0–`MAX_HOST_INTERVAL_MS`, `maxResponseBytes` >= `MIN_RESPONSE_BYTES`, all
+ * integers; `userAgent` per `userAgentProblem`. `maxRetries: -1` used to make no
+ * request at all and fail with "NetworkError: undefined", `25` sent 26 requests to
+ * a server answering 503, and a blank User-Agent went out as an empty header.
+ */
+export function assertEngineOptions(options: EngineOptions): void {
+  const check = (name: keyof EngineOptions, problem: Problem<number>): void => {
+    const value = options[name];
+    if (value !== undefined) assertValid(name, value as number, problem);
+  };
+  check("timeoutMs", intRangeProblem(0, MAX_TIMEOUT_MS));
+  check("maxRetries", intRangeProblem(0, MAX_RETRIES));
+  check("maxRedirects", intRangeProblem(0, MAX_REDIRECTS));
+  check("minHostIntervalMs", intRangeProblem(0, MAX_HOST_INTERVAL_MS));
+  check("maxResponseBytes", intRangeProblem(MIN_RESPONSE_BYTES));
+  if (options.userAgent !== undefined) assertValid("userAgent", options.userAgent, userAgentProblem);
+}
 
 /** Headers that must never travel to a different host on a redirect. */
 const SENSITIVE_HEADERS = ["authorization", "x-api-key", "cookie"];
@@ -95,14 +158,16 @@ export class FetchEngine {
   /** Per-host floors raised during a run, above the engine-wide minimum. */
   private readonly hostIntervals = new Map<string, number>();
 
+  /** Throws `OpenKaValidationError` for an option out of range (`assertEngineOptions`). */
   constructor(options: EngineOptions = {}) {
+    assertEngineOptions(options);
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
-    this.timeoutMs = Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
-    this.maxRetries = options.maxRetries ?? 3;
+    this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
-    this.maxRedirects = options.maxRedirects ?? 5;
-    this.minHostIntervalMs = options.minHostIntervalMs ?? 500;
+    this.maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
+    this.minHostIntervalMs = options.minHostIntervalMs ?? DEFAULT_MIN_HOST_INTERVAL_MS;
     this.transport = options.transport ?? nodeHttpTransport;
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
@@ -310,7 +375,10 @@ export class FetchEngine {
         await this.sleep(retryDelayMs(undefined, attempt));
       }
     }
-    throw lastError instanceof Error ? lastError : new NetworkError(String(lastError));
+    // The loop always runs once (maxRetries >= 0) and leaves only through a
+    // caught failure, so lastError is set; the fallback still names the request
+    // rather than reading "undefined".
+    throw lastError instanceof Error ? lastError : new NetworkError(`${method} ${url} failed: ${String(lastError ?? "no attempt was made")}`);
   }
 
   /**
