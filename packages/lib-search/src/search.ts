@@ -13,7 +13,10 @@ export interface SearchFilters {
   period?: number[];
   /** Restrict to records in these review states. */
   reviewStatus?: string[];
-  /** Only records the extractor abstained on somewhere. */
+  /**
+   * Only records the extractor abstained on somewhere — verified or not. The
+   * review queue (`reviewQueue`) is narrower: it leaves out `human_verified`.
+   */
   onlyAbstained?: boolean;
   /** ISO dates bounding `dates.submitted` (falling back to `answered`). */
   from?: string;
@@ -215,4 +218,36 @@ export function selectRecords(store: Store, query = "", options: SelectOptions =
     else records.push(record);
   }
   return { records, missing };
+}
+
+/** How many rows `reviewQueue` returns when no limit is given. */
+export const DEFAULT_REVIEW_LIMIT = 20;
+
+export interface ReviewQueueOptions {
+  /** Only this parliament's records. */
+  parliament?: string;
+  /** At most this many rows; `DEFAULT_REVIEW_LIMIT` when omitted. */
+  limit?: number;
+}
+
+export interface ReviewQueue {
+  /** Every record in the queue, before the limit. */
+  total: number;
+  entries: CatalogEntry[];
+}
+
+/**
+ * The abstention queue `ka review` works: records the extractor abstained on
+ * somewhere that no human has verified yet, most abstentions first, ties on the
+ * id. Unlike the `onlyAbstained` search filter — which selects records with holes,
+ * verified or not — a verified record has left the queue: a person checked its
+ * holes, which is what the queue is for.
+ */
+export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): ReviewQueue {
+  const filters: SearchFilters = { onlyAbstained: true, ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }) };
+  const queue = store
+    .catalog()
+    .filter((entry) => entry.review_status !== "human_verified" && matchesFilters(entry, filters))
+    .sort((a, b) => b.abstained - a.abstained || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return { total: queue.length, entries: queue.slice(0, options.limit ?? DEFAULT_REVIEW_LIMIT) };
 }

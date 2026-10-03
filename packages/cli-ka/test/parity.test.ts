@@ -6,10 +6,10 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FileStore, indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { addGolden, importEmbeddings, loadBaseline, saveBaseline } from "@maschinenlesbar.org/openka-cli-ka-factory";
-import { selectRecords } from "@maschinenlesbar.org/openka-lib-search";
+import { reviewQueue, search, selectRecords } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { rmSync } from "node:fs";
@@ -255,5 +255,76 @@ describe("the feed's newest-first selection and the export set (finding 8)", () 
     deepStrictEqual(result.lib, { ok: true, value: ["berlin-19-00002"], requests: [] });
     ok(result.cli.err.includes("berlin-19-00002"), result.cli.err);
     strictEqual(exportedIds(result.cli.out).length, 25);
+  });
+});
+
+describe("the review queue and the human_verified mark (finding 9)", () => {
+  function seedQueue(corpus: string): void {
+    const store = new FileStore(corpus);
+    const abstaining = (id: string, reference: string, period: number, fields: string[]) =>
+      sampleRecord({
+        id,
+        parliament: id.split("-")[0] as ReturnType<typeof sampleRecord>["parliament"],
+        reference,
+        legislative_period: period,
+        qa: [],
+        ...(fields.includes("answered_by.ministry") ? { answered_by: {} } : {}),
+        extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: fields, review_status: "needs_review" },
+      });
+    for (const record of [
+      sampleRecord(),
+      abstaining("berlin-19-12346", "19/12346", 19, ["qa"]),
+      abstaining("berlin-19-12347", "19/12347", 19, ["answered_by.ministry", "markers", "qa"]),
+      abstaining("bayern-18-00001", "18/00001", 18, ["markers", "qa"]),
+    ]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    store.flushCatalog();
+  }
+
+  it("lists the same queue as reviewQueue, filtered and cut the same way", async () => {
+    for (const [extra, options] of [
+      [[], {}],
+      [["--source", "berlin", "--limit", "1"], { parliament: "berlin", limit: 1 }],
+    ] as const) {
+      const result = await parity({
+        seed: seedQueue,
+        argv: (corpus) => ["--compact", "--corpus", corpus, "review", "--json", ...extra],
+        lib: ({ store }) => {
+          const queue = reviewQueue(store, options);
+          return { total: queue.total, records: queue.entries };
+        },
+      });
+      strictEqual(result.cli.code, 0, result.cli.err);
+      ok(result.lib.ok);
+      deepStrictEqual(JSON.parse(result.cli.out), result.lib.value);
+    }
+  });
+
+  it("marks a record verified in record and catalog alike, as markHumanVerified does", async () => {
+    const after = (store: FileStore) => ({
+      record: store.getRecord("berlin-19-12346")?.extraction.review_status,
+      catalog: store.catalogEntry("berlin-19-12346")?.review_status,
+      verified: search(store, "", { reviewStatus: ["human_verified"] }).total,
+      queue: reviewQueue(store).entries.map((entry) => entry.id),
+    });
+    let cliCorpus = "";
+    const result = await parity({
+      seed: seedQueue,
+      argv: (corpus) => {
+        cliCorpus = corpus;
+        return ["--corpus", corpus, "review", "--mark-verified", "berlin-19-12346"];
+      },
+      lib: ({ store }) => {
+        markHumanVerified(store, "berlin-19-12346");
+        // Read both corpora back while they still exist: the CLI's and the library's.
+        return { cli: after(new FileStore(cliCorpus)), lib: after(store) };
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok);
+    const expected = { record: "human_verified", catalog: "human_verified", verified: 1, queue: ["berlin-19-12347", "bayern-18-00001"] };
+    deepStrictEqual(result.lib.value, { cli: expected, lib: expected });
   });
 });

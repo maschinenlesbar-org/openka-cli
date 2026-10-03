@@ -83,7 +83,8 @@ text was read, otherwise the source's own tier — a text-layer source whose PDF
 is not promoted to `structured`.
 
 **Abstention** — the extractor refusing to produce a value it cannot derive with
-certainty. Recorded in `abstained_fields`, surfaced by `ka review`. The project's
+certainty. Recorded in `abstained_fields`, surfaced by `ka review`, whose queue is
+every record with an abstention that no person has marked `human_verified` yet. The project's
 central safety mechanism: a record may publish with holes, because holes are honest
 and invented content is not.
 A field the schema requires keeps a placeholder while it is abstained — `markers`

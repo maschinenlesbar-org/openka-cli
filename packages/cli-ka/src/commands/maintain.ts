@@ -6,7 +6,8 @@ import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors"
 import { verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
-import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
+import { DEFAULT_REVIEW_LIMIT, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
 import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
 import { action, parseBoundedInt, parseParliament, parseRecordId, printJson } from "../shared.js";
@@ -102,7 +103,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .command("review")
     .description("work the abstention queue: records the extractor refused to complete")
     .option("--source <key>", "restrict to one parliament", parseParliament)
-    .option("--limit <n>", "how many records to list", parseBoundedInt(1, 10_000))
+    .option("--limit <n>", `how many records to list (default: ${DEFAULT_REVIEW_LIMIT})`, parseBoundedInt(1, 10_000))
     .option("--mark-verified <id>", "record that a human checked this record against its source", parseRecordId)
     .option("--json", "print the queue as JSON")
     .action(
@@ -111,11 +112,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
 
         const mark = ctx.opts["markVerified"] as string | undefined;
         if (mark !== undefined) {
-          const record = store.getRecord(mark);
-          if (record === undefined) throw new OpenKaError(`No record ${mark} in ${ctx.corpusRoot()}`);
-          record.extraction.review_status = "human_verified";
-          store.putRecord(record);
-          indexRecord(store, record);
+          if (markHumanVerified(store, mark) === undefined) throw new OpenKaError(`No record ${mark} in ${ctx.corpusRoot()}`);
           ctx.deps.io.out(`${mark}: marked human_verified.`);
           // Saying this out loud matters: a human decision is the one thing in the
           // corpus that re-extraction cannot reproduce, and `ka verify` knows it.
@@ -127,22 +124,21 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         }
 
         const parliament = ctx.opts["source"] as string | undefined;
-        const limit = (ctx.opts["limit"] as number | undefined) ?? 20;
-        const queue = store
-          .catalog()
-          .filter((entry) => entry.abstained > 0 && entry.review_status !== "human_verified")
-          .filter((entry) => parliament === undefined || entry.parliament === parliament)
-          .sort((a, b) => b.abstained - a.abstained || (a.id < b.id ? -1 : 1));
+        const limit = ctx.opts["limit"] as number | undefined;
+        const queue = reviewQueue(store, {
+          ...(parliament === undefined ? {} : { parliament }),
+          ...(limit === undefined ? {} : { limit }),
+        });
 
         if (ctx.opts["json"] === true) {
-          printJson(ctx, { total: queue.length, records: queue.slice(0, limit) });
+          printJson(ctx, { total: queue.total, records: queue.entries });
           return;
         }
-        if (queue.length === 0) {
+        if (queue.total === 0) {
           ctx.deps.io.out("Nothing in the review queue — every stored record extracted completely.");
           return;
         }
-        for (const entry of queue.slice(0, limit)) {
+        for (const entry of queue.entries) {
           const record = store.getRecord(entry.id);
           ctx.deps.io.out(`${pad(entry.id, 24)} ${pad(String(entry.abstained), 3)} ${truncate(entry.title, 60)}`);
           for (const field of record?.extraction.abstained_fields.slice(0, 5) ?? []) {
@@ -150,7 +146,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           }
         }
         ctx.deps.io.err(
-          `${Math.min(limit, queue.length)} of ${queue.length} record(s) with abstentions. ` +
+          `${queue.entries.length} of ${queue.total} record(s) with abstentions. ` +
             "Check one against its source with `ka open <id>`, then `ka review --mark-verified <id>`.",
         );
       }),

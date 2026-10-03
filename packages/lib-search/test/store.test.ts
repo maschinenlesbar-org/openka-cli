@@ -9,8 +9,8 @@ import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
-import { indexableFields, indexRecord, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
-import { makeSnippet, matchesFilters, search, selectRecords } from "../src/search.js";
+import { indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
 import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -481,5 +481,58 @@ describe("selectRecords", () => {
     const { records, missing } = selectRecords(store, "");
     deepStrictEqual(records.map((record) => record.id), ["berlin-19-00001", "berlin-19-00003"]);
     deepStrictEqual(missing, ["berlin-19-00002"]);
+  });
+});
+
+describe("the review queue", () => {
+  function abstaining(id: string, reference: string, period: number, fields: string[]) {
+    const parliament = id.split("-")[0] as ReturnType<typeof sampleRecord>["parliament"];
+    return sampleRecord({
+      id,
+      parliament,
+      reference,
+      legislative_period: period,
+      qa: [],
+      ...(fields.includes("answered_by.ministry") ? { answered_by: {} } : {}),
+      extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: fields, review_status: "needs_review" },
+    });
+  }
+  function corpus(): MemoryStore {
+    const store = new MemoryStore();
+    for (const record of [
+      sampleRecord(),
+      abstaining("berlin-19-12346", "19/12346", 19, ["qa"]),
+      abstaining("berlin-19-12347", "19/12347", 19, ["answered_by.ministry", "markers", "qa"]),
+      abstaining("bayern-18-00001", "18/00001", 18, ["markers", "qa"]),
+    ]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    return store;
+  }
+  const ids = (queue: { entries: { id: string }[] }): string[] => queue.entries.map((entry) => entry.id);
+
+  it("lists records with holes, most abstentions first, ties on the id", () => {
+    const queue = reviewQueue(corpus());
+    strictEqual(queue.total, 3);
+    deepStrictEqual(ids(queue), ["berlin-19-12347", "bayern-18-00001", "berlin-19-12346"]);
+  });
+
+  it("filters by parliament before it cuts at the limit", () => {
+    const queue = reviewQueue(corpus(), { parliament: "berlin", limit: 1 });
+    strictEqual(queue.total, 2);
+    deepStrictEqual(ids(queue), ["berlin-19-12347"]);
+    strictEqual(DEFAULT_REVIEW_LIMIT, 20);
+  });
+
+  it("leaves out a record a human verified, which the mark records in record and catalog alike", () => {
+    const store = corpus();
+    const marked = markHumanVerified(store, "berlin-19-12346");
+    strictEqual(marked?.extraction.review_status, "human_verified");
+    strictEqual(store.getRecord("berlin-19-12346")?.extraction.review_status, "human_verified");
+    strictEqual(store.catalogEntry("berlin-19-12346")?.review_status, "human_verified");
+    deepStrictEqual(ids(reviewQueue(store)), ["berlin-19-12347", "bayern-18-00001"]);
+    strictEqual(search(store, "", { reviewStatus: ["human_verified"] }).total, 1);
+    strictEqual(markHumanVerified(store, "berlin-19-99999"), undefined);
   });
 });

@@ -177,3 +177,20 @@ export function reindexAll(
   store.replaceCatalog(rows);
   return count;
 }
+
+/**
+ * Record that a person checked a record against its source: `review_status`
+ * becomes `human_verified` in the record *and* its catalog row, which search,
+ * the review queue and `verifyRecord` read. Setting it and calling `putRecord`
+ * alone left the catalog saying `needs_review`. The abstained fields are
+ * unchanged — the holes were checked, not filled. `undefined` when there is no
+ * such record.
+ */
+export function markHumanVerified(store: IndexTarget, id: string): KaRecord | undefined {
+  const record = store.getRecord(id);
+  if (record === undefined) return undefined;
+  record.extraction.review_status = "human_verified";
+  store.putRecord(record);
+  indexRecord(store, record);
+  return record;
+}

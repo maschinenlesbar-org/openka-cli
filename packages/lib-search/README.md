@@ -27,7 +27,7 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, SelectOptions, Selection, selectRecords, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
 ```
 
 ## Depends on

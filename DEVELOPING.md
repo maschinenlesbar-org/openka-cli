@@ -207,6 +207,11 @@ What the library now computes that a `ka` action used to compute on its own:
   ids of catalog rows whose record file is gone; `renderAtom` orders its entries
   newest first itself (`newestFirst`, `lib-render`) and keeps the newest `limit` of
   the whole set. `ka export` and `ka feed` call exactly these.
+- **The review queue and the verified mark** — `reviewQueue(store, { parliament,
+  limit })` (`lib-search`: abstained, not `human_verified`, most abstentions first)
+  and `markHumanVerified(store, id)` (`lib-store`: record *and* catalog row, so
+  search and the queue see it). The `onlyAbstained` search filter stays "abstained,
+  verified or not". `ka review` calls these.
 
 ## Reproducibility, concretely
 
