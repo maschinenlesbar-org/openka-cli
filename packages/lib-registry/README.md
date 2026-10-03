@@ -20,8 +20,12 @@ point both ways.
 Everything is re-exported from the package root:
 
 ```
-SOURCE_REGISTRY, sourceEntry, sourceKeys, createSource
+SOURCE_REGISTRY, sourceEntry, sourceKeys, sourceKeyProblem, createSource
 ```
+
+`createSource(key)` checks the key first (`sourceKeyProblem`): a blank or unknown
+key throws `OpenKaValidationError` ("Invalid source: Unknown source …", listing every
+key), which `ka sync --source` prints as its usage error. Keys match exactly.
 
 ## Depends on
 
@@ -42,6 +46,7 @@ SOURCE_REGISTRY, sourceEntry, sourceKeys, createSource
 - `connector-sachsen-anhalt` — the sachsen-anhalt connector
 - `connector-schleswig-holstein` — the schleswig-holstein connector
 - `connector-thueringen` — the thueringen connector
+- `lib-errors` — the shared error hierarchy
 - `lib-parlamentsspiegel` — the shared aggregator adapter
 - `lib-source` — the `Source` protocol and the scraping helpers
 

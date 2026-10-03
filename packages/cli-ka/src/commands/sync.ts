@@ -1,24 +1,18 @@
 // `ka sync` — the ingest command. Deterministic from end to end: discovery, fetch
 // with conditional requests, the declared tier, then store and index.
 
-import { InvalidArgumentError, type Command } from "commander";
+import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
-import { createSource, sourceEntry, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
+import { createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import type { CliDeps } from "../io.js";
-import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, toEngineOptions } from "../shared.js";
+import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { truncate } from "../text.js";
 
-/** commander value-parser: a source key the registry knows — a typo is a usage error. */
-function parseSourceKey(value: string): string {
-  const key = parseNonEmpty(value);
-  if (sourceEntry(key) === undefined) {
-    throw new InvalidArgumentError(`Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
-  }
-  return key;
-}
+/** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
+const parseSourceKey = problemParser(sourceKeyProblem);
 
 /**
  * The most Anfragen one `ka sync` run may take on: a cap on the command, not a
@@ -53,12 +47,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--json", "print the sync report as JSON")
     .action(
       action(deps, async (ctx) => {
-        const key = ctx.opts["source"] as string;
-        const entry = sourceEntry(key);
-        if (entry === undefined) {
-          throw new UsageError(`Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
-        }
-        const source = createSource(key);
+        const source = createSource(ctx.opts["source"] as string);
         const store = ctx.store();
         // A source's politeness floor is applied by sync() itself, raising the
         // global --min-host-interval and never lowering it.

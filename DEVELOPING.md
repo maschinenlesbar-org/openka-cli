@@ -201,6 +201,19 @@ What the library rejects with `OpenKaValidationError`, so far:
   one that is not a string (`baselinePathProblem`). The
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so
   `goldens add --source ..` and `embed --model-sha256 abc` are now usage errors too.
+- **A malformed record id or an unknown source key** — every `FileStore` method that
+  takes a record id (`getRecord`, `getRecordBytes`, `hasRecord`, `deleteRecord`, so
+  also `verifyRecord`, `archivedDocument`, `markHumanVerified`) runs `assertRecordId`
+  first (`recordIdProblem`, `RECORD_ID_REASON`, `lib-store`): "BERLIN-19-10006" or
+  "../x" is `Invalid id: Not a record id: …`, where it used to be a `StoreError`
+  ("the corpus is damaged", exit 3 for a library caller's own mistake). An unsafe
+  record file name found *inside* the corpus stays a `StoreError`, now raised by
+  `recordIds()`. `createSource(key)` (`lib-registry`) refuses a blank or unknown key
+  (`sourceKeyProblem`: `Invalid source: Unknown source "narnia". Known sources: …`)
+  where it threw a plain `Error`; a registered key with no adapter is an
+  `OpenKaError`. `ka`'s `<id>` arguments and `sync --source` are these rules as
+  parsers, with their messages unchanged, and `ka sync` lost its second, unreachable
+  copy of the source check.
 - **An embedding size the factory cannot build** — `buildEmbeddings` refuses a
   `dimensions` that is not an integer in 16–4096 (`dimensionsProblem`,
   `MIN_DIMENSIONS`, `MAX_DIMENSIONS`); 0 used to build a set of empty vectors that

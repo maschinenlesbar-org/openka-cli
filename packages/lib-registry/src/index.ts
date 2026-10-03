@@ -13,6 +13,7 @@
 
 import { ParlamentsspiegelAllLaender } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { Source, SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
+import { OpenKaError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 
 import { ENTRY as BADEN_WUERTTEMBERG } from "@maschinenlesbar.org/openka-connector-baden-wuerttemberg";
 import { ENTRY as BAYERN } from "@maschinenlesbar.org/openka-connector-bayern";
@@ -75,15 +76,25 @@ export function sourceKeys(): string[] {
   return [...BY_KEY.keys()].sort();
 }
 
-/** Build a source, or throw with a message naming what is available. */
+/**
+ * Why `key` names no registered source, or `undefined` when it does. Keys are
+ * matched exactly: "Bund" and " bund" are unknown, and the reason lists every key
+ * there is. A blank key is blank, as everywhere else.
+ */
+export const sourceKeyProblem: Problem<string> = (key) =>
+  nonBlankProblem(key) ??
+  (BY_KEY.has(key) ? undefined : `Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`);
+
+/**
+ * Build a source. An unknown key throws `OpenKaValidationError` ("Invalid source:
+ * Unknown source …", `sourceKeyProblem`) before anything is built; a registered key
+ * with no adapter an `OpenKaError`.
+ */
 export function createSource(key: string): Source {
+  assertValid("source", key, sourceKeyProblem);
   const entry = BY_KEY.get(key);
   if (entry?.factory === undefined) {
-    throw new Error(
-      entry === undefined
-        ? `Unknown source "${key}". Known sources: ${sourceKeys().join(", ")}.`
-        : `Source "${key}" is registered but has no adapter yet (${entry.note}).`,
-    );
+    throw new OpenKaError(`Source "${key}" is registered but has no adapter yet (${entry?.note ?? "no note"}).`);
   }
   return entry.factory();
 }

@@ -28,7 +28,7 @@ import {
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { CORPUS_ENV, isSafeKey, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { CORPUS_ENV, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory (lib-store's). */
 export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
@@ -73,16 +73,12 @@ export function problemParser(problem: Problem<string>): (value: string) => stri
 export const parseNonEmpty: (value: string) => string = problemParser(nonBlankProblem);
 
 /**
- * commander value-parser: a record id. A malformed one ("BERLIN-19-10006",
- * "../x") is a usage mistake, and it used to surface from the store as exit 3 —
- * "the corpus is missing or unreadable", which says nothing about the id.
+ * commander value-parser: a record id — the library's `recordIdProblem`. A
+ * malformed one ("BERLIN-19-10006", "../x") is a usage mistake on both sides; it
+ * used to surface from the store as exit 3, "the corpus is missing or unreadable",
+ * which says nothing about the id.
  */
-export function parseRecordId(value: string): string {
-  if (!isSafeKey(value)) {
-    throw new InvalidArgumentError("Not a record id: expected lower-case letters, digits, '.', '_' and '-', like berlin-19-10006.");
-  }
-  return value;
-}
+export const parseRecordId: (value: string) => string = problemParser(recordIdProblem);
 
 /** commander value-parser: an ISO `YYYY-MM-DD` calendar date — the library's rule. */
 export function parseIsoDate(value: string): string {

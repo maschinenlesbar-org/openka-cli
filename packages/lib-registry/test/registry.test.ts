@@ -1,9 +1,10 @@
 // The registry: every parliament is listed, each connector's own entry is picked
 // up, and a key that has no adapter says so rather than failing silently.
 
-import { match, ok, strictEqual } from "node:assert/strict";
+import { match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeys } from "../src/index.js";
+import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem, sourceKeys } from "../src/index.js";
+import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
 import { PARLIAMENTS } from "@maschinenlesbar.org/openka-lib-models";
 
 describe("source registry", () => {
@@ -119,5 +120,25 @@ describe("every connector's own entry", () => {
   it("covers all sixteen Länder and the Bund, plus the aggregator itself", () => {
     strictEqual(new Set([...IMPLEMENTED, ...VIA_AGGREGATOR]).size, 17);
     strictEqual(sourceKeys().length, 18);
+  });
+});
+
+describe("an unknown source key", () => {
+  it("is named with every key there is, and a blank one as blank", () => {
+    strictEqual(sourceKeyProblem("bund"), undefined);
+    strictEqual(sourceKeyProblem("parlamentsspiegel"), undefined);
+    for (const blank of ["", "  "]) strictEqual(sourceKeyProblem(blank), "Expected a non-empty value.");
+    for (const unknown of ["narnia", "Bund", " bund", "bund ", "__proto__", "constructor"]) {
+      strictEqual(sourceKeyProblem(unknown), `Unknown source "${unknown}". Known sources: ${sourceKeys().join(", ")}.`, unknown);
+    }
+  });
+
+  it("makes createSource throw the validation error a caller can tell from a crash", () => {
+    throws(
+      () => createSource("narnia"),
+      (error: unknown) =>
+        error instanceof OpenKaValidationError &&
+        error.message === `Invalid source: Unknown source "narnia". Known sources: ${sourceKeys().join(", ")}.`,
+    );
   });
 });

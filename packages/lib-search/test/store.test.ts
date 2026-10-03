@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
-import { FileStore, archivedDocument, documentRoleProblem } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, RECORD_ID_REASON, archivedDocument, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
@@ -260,7 +260,42 @@ describe("file store", () => {
   });
 
   it("refuses a record id that would escape the records directory", () => {
-    throws(() => store.getRecord("../../etc/passwd"), /Unsafe record id/);
+    throws(
+      () => store.getRecord("../../etc/passwd"),
+      (error: unknown) => error instanceof OpenKaValidationError && error.message === `Invalid id: ${RECORD_ID_REASON}`,
+    );
+  });
+
+  it("names what a record id may be, and refuses a malformed one as a usage error before any file access", () => {
+    for (const good of ["berlin-19-12345", "bund-20-1.2", "a_b"]) strictEqual(recordIdProblem(good), undefined);
+    for (const bad of ["", " ", "BERLIN-19-12345", " berlin-19-1", "berlin-19-1 ", "../x", "a..b", "-x", "a/b"]) {
+      strictEqual(recordIdProblem(bad), RECORD_ID_REASON, bad);
+      throws(() => assertRecordId(bad), OpenKaValidationError, bad);
+    }
+    strictEqual(RECORD_ID_REASON, "Not a record id: expected lower-case letters, digits, '.', '_' and '-', like berlin-19-10006.");
+    // Every public method that takes an id refuses it the same way.
+    for (const call of [
+      () => store.hasRecord("BERLIN-19-1"),
+      () => store.getRecordBytes("BERLIN-19-1"),
+      () => store.getRecord("BERLIN-19-1"),
+      () => store.deleteRecord("BERLIN-19-1"),
+    ]) {
+      throws(call, OpenKaValidationError);
+    }
+  });
+
+  it("calls a malformed record file name in the corpus a store problem, not a usage error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-records-"));
+    try {
+      mkdirSync(join(dir, "records"), { recursive: true });
+      writeFileSync(join(dir, "records", "BAD.json"), "{}");
+      throws(
+        () => new FileStore(dir).recordIds(),
+        (error: unknown) => error instanceof StoreError && !(error instanceof OpenKaValidationError) && /BAD\.json/.test(error.message),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("refuses a blob name that is not a digest", () => {

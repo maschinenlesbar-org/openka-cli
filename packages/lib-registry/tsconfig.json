@@ -60,6 +60,9 @@
       "path": "../connector-thueringen"
     },
     {
+      "path": "../lib-errors"
+    },
+    {
       "path": "../lib-parlamentsspiegel"
     },
     {

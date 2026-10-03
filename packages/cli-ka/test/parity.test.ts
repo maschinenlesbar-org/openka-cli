@@ -9,7 +9,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { CORPUS_ENV, FileStore, archivedDocument, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
+import { SOURCE_REGISTRY, createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES, type Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { fixturesOf, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import {
@@ -37,7 +37,7 @@ import {
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { assertVerified, verifyCorpus } from "@maschinenlesbar.org/openka-lib-verify";
+import { assertVerified, verifyCorpus, verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
 import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -1407,4 +1407,39 @@ describe("a source's politeness floor (#12)", () => {
     deepStrictEqual(libSlept, cliSlept);
     ok((libSlept ?? []).every((ms) => ms === 4000), JSON.stringify(libSlept));
   });
+});
+
+describe("a malformed record id or an unknown source key (#17)", () => {
+  const RECORD_ID = "Not a record id: expected lower-case letters, digits, '.', '_' and '-', like berlin-19-10006.";
+
+  for (const source of ["narnia", "Bund", " bund", "bund "]) {
+    it(`refuses sync --source ${JSON.stringify(source)} on both sides, as a usage error`, async () => {
+      const result = await parity({
+        argv: (corpus) => ["--corpus", corpus, "sync", "--source", source],
+        lib: () => createSource(source),
+      });
+      bothRefused(result, "source", `Unknown source "${source}". Known sources: ${sourceKeys().join(", ")}.`);
+    });
+  }
+
+  it("refuses a blank --source the same way on both sides", async () => {
+    const result = await parity({
+      argv: (corpus) => ["--corpus", corpus, "sync", "--source", " "],
+      lib: () => createSource(" "),
+    });
+    bothRefused(result, "source", BLANK);
+  });
+
+  for (const id of ["BERLIN-19-12345", "../x", "a..b"]) {
+    it(`refuses get/show/verify ${JSON.stringify(id)} on both sides, as a usage error`, async () => {
+      for (const [command, lib] of [
+        ["get", ({ store }: { store: FileStore }) => store.getRecord(id)],
+        ["show", ({ store }: { store: FileStore }) => store.getRecord(id)],
+        ["verify", ({ store }: { store: FileStore }) => verifyRecord(id, { store })],
+      ] as const) {
+        const result = await parity({ seed: seedOneRecord, argv: (corpus) => ["--corpus", corpus, command, id], lib });
+        bothRefused(result, "id", RECORD_ID);
+      }
+    });
+  }
 });

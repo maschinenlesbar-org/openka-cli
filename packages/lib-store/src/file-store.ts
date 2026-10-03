@@ -14,7 +14,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { MissingCorpusError, StoreError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
@@ -28,6 +28,28 @@ const SAFE_KEY = /^[a-z0-9][a-z0-9._-]*$/;
 /** Whether `value` can be a record id or source key — the rule every path is built under. */
 export function isSafeKey(value: string): boolean {
   return SAFE_KEY.test(value) && !value.includes("..");
+}
+
+/** Why a record id is refused: the reason `recordIdProblem` gives and `ka` prints. */
+export const RECORD_ID_REASON =
+  "Not a record id: expected lower-case letters, digits, '.', '_' and '-', like berlin-19-10006.";
+
+/**
+ * Why `value` cannot be a record id, or `undefined` when it can: the store's key
+ * rule (`isSafeKey`), since an id becomes a file name. "BERLIN-19-10006" and
+ * "../x" are a caller's mistake, not a damaged corpus.
+ */
+export const recordIdProblem: Problem<string> = (value) =>
+  typeof value === "string" && isSafeKey(value) ? undefined : RECORD_ID_REASON;
+
+/**
+ * Throw `OpenKaValidationError` ("Invalid id: Not a record id: …") for an id that
+ * fails `recordIdProblem`. Every `FileStore` method that takes a record id calls
+ * it before touching a file; an unsafe name found inside the corpus stays a
+ * `StoreError` (`recordIds`).
+ */
+export function assertRecordId(id: string): void {
+  assertValid("id", id, recordIdProblem);
 }
 
 function assertSafeKey(value: string, what: string): void {
@@ -107,7 +129,7 @@ export class FileStore implements Store {
   }
 
   private recordPath(id: string): string {
-    assertSafeKey(id, "record id");
+    assertRecordId(id);
     return this.path("records", `${id}.json`);
   }
 
@@ -220,14 +242,24 @@ export class FileStore implements Store {
     rmSync(this.recordPath(id), { force: true });
   }
 
-  /** Every record id in the corpus, sorted — the basis for a full re-index. */
+  /**
+   * Every record id in the corpus, sorted — the basis for a full re-index. A record
+   * file whose name is not a record id was not written by the store: it is a
+   * `StoreError` here, so it does not reach `getRecord` as a caller's usage error.
+   */
   recordIds(): string[] {
     const dir = this.path("records");
     if (!existsSync(dir)) return [];
-    return readdirSync(dir)
+    const ids = readdirSync(dir)
       .filter((name) => name.endsWith(".json"))
       .map((name) => name.slice(0, -".json".length))
       .sort();
+    for (const id of ids) {
+      if (!isSafeKey(id)) {
+        throw new StoreError(`Unsafe record file "${id}.json" in ${dir}: expected [a-z0-9][a-z0-9._-]*.json`);
+      }
+    }
+    return ids;
   }
 
   // -------------------------------------------------------------- catalog
