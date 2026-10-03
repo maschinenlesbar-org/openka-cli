@@ -457,7 +457,7 @@ describe("search filter rules (finding 2)", () => {
     const like = await parity({
       seed: seedFilters,
       argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", "--like", "berlin-19-1", "--parliament", "Berlin"],
-      lib: ({ store }) => ({ hits: searchLike(store, "berlin-19-1", { parliament: ["Berlin"] }) }),
+      lib: ({ store }) => searchLike(store, "berlin-19-1", { parliament: ["Berlin"] }),
     });
     strictEqual(like.cli.code, 0, like.cli.err);
     deepStrictEqual(ids(JSON.parse(like.cli.out)), ["berlin-19-2"]);
@@ -1327,5 +1327,42 @@ describe("a record's archived document (finding 15)", () => {
     strictEqual(result.lib.error.name, "OpenKaError");
     strictEqual(result.cli.err, `Error: ${result.lib.error.message}`);
     match(result.lib.error.message, /^Record berlin-19-12345 has no archived document with role answer_pdf\./);
+  });
+});
+
+describe("semantic search's total (finding 16)", () => {
+  /** Four Berlin records, each with a frozen vector. */
+  const seedVectors = (corpus: string): void => {
+    const store = new FileStore(corpus);
+    for (const n of ["1", "2", "3", "4"]) {
+      const record = sampleRecord({ id: `berlin-19-${n}`, reference: `19/${n}` });
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    store.flushCatalog();
+    store.saveEmbeddings({ model: "test", dimensions: 2, vectors: { "berlin-19-1": [1, 0], "berlin-19-2": [0.9, 0.1], "berlin-19-3": [0.8, 0.2], "berlin-19-4": [0.1, 0.9] } });
+  };
+
+  it("counts every similar record before the page is cut, on both sides", async () => {
+    const result = await parity({
+      seed: seedVectors,
+      argv: (corpus) => ["--compact", "--corpus", corpus, "search", "--json", "--like", "berlin-19-1", "--limit", "1"],
+      lib: ({ store }) => searchLike(store, "berlin-19-1", { limit: 1 }),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
+    const value = (result.lib as { value: { total: number; hits: unknown[] } }).value;
+    deepStrictEqual([value.total, value.hits.length], [3, 1]);
+  });
+
+  it("notes the page against the total on stderr, like keyword search", async () => {
+    const result = await parity({
+      seed: seedVectors,
+      argv: (corpus) => ["--corpus", corpus, "search", "--like", "berlin-19-1", "--limit", "2"],
+      lib: ({ store }) => searchLike(store, "berlin-19-1", { limit: 2 }).total,
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    strictEqual(result.cli.err, "2 of 3 similar record(s).");
+    deepStrictEqual(result.lib, { ok: true, value: 3, requests: [] });
   });
 });

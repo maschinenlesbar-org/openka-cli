@@ -315,6 +315,12 @@ What the library now computes that a `ka` action used to compute on its own:
   `artifact()`, so `verifyRecord` with a plain `new TesseractJsPerceiver()` no
   longer reports a false non-reproduction. Both are extraction code: the digest
   moved and the goldens were re-frozen.
+- **Semantic search's total** — `searchLike(store, id, options)` (`lib-search`)
+  returns `{ total, hits }` like `search()`, with `total` counted before the page is
+  cut; it used to return the bare page, and `ka search --like --json` filled `total`
+  with the page length. `ka` prints the library's result unchanged and notes "N of
+  M similar record(s)." on stderr, as keyword search does. Library callers that
+  used the returned array read `.hits` now.
 - **A record's archived document** — `archivedDocument(store, id, { role? })`
   (`lib-store`) picks the first document with archived bytes (with that role, if
   given; `documentRoleProblem` refuses a role no record can have), checks the bytes

@@ -141,13 +141,18 @@ export function registerQuery(program: Command, deps: CliDeps): void {
               "similarity to one record; it has no query terms to offset or to highlight.",
           );
         }
-        const hits = searchLike(store, ctx.opts["like"] as string, { ...filters, limit });
+        // The total is the library's, counted before the page is cut.
+        const similar = searchLike(store, ctx.opts["like"] as string, { ...filters, limit });
         if (ctx.opts["json"] === true) {
-          printJson(ctx, { total: hits.length, hits });
+          printJson(ctx, similar);
           return;
         }
-        if (hits.length === 0) ctx.deps.io.out("No similar records.");
-        for (const hit of hits) ctx.deps.io.out(formatHit(hit.entry, hit.score));
+        if (similar.total === 0) {
+          ctx.deps.io.out("No similar records.");
+          return;
+        }
+        for (const hit of similar.hits) ctx.deps.io.out(formatHit(hit.entry, hit.score));
+        ctx.deps.io.err(`${similar.hits.length} of ${similar.total} similar record(s).`);
         return;
       }
 

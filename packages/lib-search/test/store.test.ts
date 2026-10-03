@@ -228,8 +228,8 @@ describe("the store's roles", () => {
       replaceCatalog: () => undefined,
       batchCatalog: (work) => work(),
     };
-    const hits = searchLike(tiny, "a");
-    strictEqual(hits.length, 1);
+    const { total, hits } = searchLike(tiny, "a");
+    deepStrictEqual([total, hits.length], [1, 1]);
     strictEqual(hits[0]?.entry.id, "berlin-19-12345");
   });
 });
@@ -459,9 +459,11 @@ describe("semantic search", () => {
       dimensions: 2,
       vectors: { "berlin-19-12345": [1, 0], "berlin-19-22222": [0.9, 0.1] },
     });
-    const hits = searchLike(store, "berlin-19-12345");
-    strictEqual(hits.length, 1);
+    const { total, hits } = searchLike(store, "berlin-19-12345");
+    deepStrictEqual([total, hits.length], [1, 1]);
     strictEqual(hits[0]?.entry.id, "berlin-19-22222");
+    // The total counts every similar record, not the page.
+    strictEqual(searchLike(store, "berlin-19-12345", { limit: 1 }).total, 1);
   });
 });
 

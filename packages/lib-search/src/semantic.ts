@@ -9,7 +9,7 @@
 
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
-import { matchesFilters, type SearchFilters, type SearchHit } from "./search.js";
+import { matchesFilters, type SearchFilters, type SearchHit, type SearchResult } from "./search.js";
 import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters } from "./filters.js";
 
 /** Cosine similarity of two equal-length vectors. */
@@ -36,7 +36,9 @@ export interface SemanticOptions extends SearchFilters {
 }
 
 /**
- * Rank records by similarity to the record `id`. Throws when the corpus carries no
+ * Rank records by similarity to the record `id`. Returns the same shape as
+ * `search()`: `total` counts every similar record that passed the filters and
+ * `minScore`, before the page is cut to `limit`. Throws when the corpus carries no
  * frozen embeddings, rather than silently degrading to keyword search — a caller
  * asking for semantic results should learn that it did not get them.
  */
@@ -44,7 +46,7 @@ export function searchLike(
   store: EmbeddingStore & CatalogStore,
   id: string,
   semanticOptions: SemanticOptions = {},
-): SearchHit[] {
+): SearchResult {
   // The same paging and filter rules as keyword search, checked before anything is read.
   assertPaging({ limit: semanticOptions.limit });
   const options: SemanticOptions = { ...semanticOptions, ...normalizeSearchFilters(semanticOptions) };
@@ -71,5 +73,5 @@ export function searchLike(
     hits.push({ entry, score });
   }
   hits.sort((a, b) => b.score - a.score || (a.entry.id < b.entry.id ? -1 : 1));
-  return hits.slice(0, limit);
+  return { total: hits.length, hits: hits.slice(0, limit) };
 }

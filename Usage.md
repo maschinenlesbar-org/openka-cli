@@ -51,7 +51,8 @@ ka search "radwege" --snippet --json
 ```
 
 Filters are repeatable (`--parliament berlin --parliament bund`). An empty query
-lists everything that passes the filters.
+lists everything that passes the filters. With `--like`, `total` in the JSON counts
+every similar record, not just the page `--limit` shows, as it does for keyword search.
 
 ## `ka get` / `ka show` / `ka open`
 
