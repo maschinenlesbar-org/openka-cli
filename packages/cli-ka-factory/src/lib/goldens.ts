@@ -107,13 +107,26 @@ export function goldenRootFor(source: string, ws: string = workspaceRoot()): str
   );
 }
 
+/**
+ * How the default set of goldens — every package's `fixtures/`, found from the
+ * workspace root — is named in messages and help text. It is a label, never a
+ * path: `goldens add` once resolved it as one and filed goldens nothing reads.
+ */
+export const DEFAULT_FIXTURES = "every package's fixtures/";
+
 /** Every golden in the workspace, ordered by package, then source, then id. */
 export function listAllGoldens(root: string = workspaceRoot()): Golden[] {
+  assertValid("root", root, nonBlankProblem);
   return goldenRoots(root).flatMap((dir) => listGoldens(dir));
 }
 
-/** Every golden under `root`, ordered by source then id. */
+/**
+ * Every golden under `root`, ordered by source then id. A missing `root` holds
+ * none; a blank one is refused (`OpenKaValidationError`) rather than read as the
+ * cwd.
+ */
 export function listGoldens(root: string): Golden[] {
+  assertValid("root", root, nonBlankProblem);
   if (!existsSync(root)) return [];
   const goldens: Golden[] = [];
   for (const source of readdirSync(root).sort()) {
@@ -277,4 +290,51 @@ function comparableRecord(record: KaRecord): Record<string, unknown> {
   // A human's review decision is not reproducible by definition; see `ka verify`.
   if (copy.extraction.review_status === "human_verified") copy.extraction.review_status = "needs_review";
   return copy as unknown as Record<string, unknown>;
+}
+
+export interface VerifyGoldensOptions {
+  /** One fixture directory to verify; every package's `fixtures/` when omitted. */
+  dir?: string;
+  /** The workspace whose packages' `fixtures/` are verified when `dir` is omitted; `workspaceRoot()` by default. */
+  workspace?: string;
+  /** The OCR engine for goldens produced with one; such goldens fail without it. */
+  perceiver?: Perceiver;
+}
+
+/** The regression gate's tally: what `ka-factory goldens verify --json` prints. */
+export interface GoldensReport {
+  checked: number;
+  passed: number;
+  results: GoldenResult[];
+}
+
+/**
+ * Re-extract a set of goldens and tally the results — the regression gate.
+ *
+ * A set with no goldens in it is an `OpenKaError` ("No goldens in … — nothing to
+ * verify."), never a pass: a gate that checked nothing (a wrong directory, a cwd
+ * outside the workspace) has guarded nothing. A blank `dir` or `workspace` is
+ * refused with `OpenKaValidationError`. The verdict on the tally is
+ * `assertGoldensPass`.
+ */
+export async function verifyGoldens(options: VerifyGoldensOptions = {}): Promise<GoldensReport> {
+  assertValid("dir", options.dir, nonBlankProblem);
+  assertValid("workspace", options.workspace, nonBlankProblem);
+  const dir = options.dir === undefined ? undefined : resolve(options.dir);
+  const found = dir === undefined ? listAllGoldens(options.workspace ?? workspaceRoot()) : listGoldens(dir);
+  if (found.length === 0) throw new OpenKaError(`No goldens in ${dir ?? DEFAULT_FIXTURES} — nothing to verify.`);
+  const results: GoldenResult[] = [];
+  for (const golden of found) results.push(await verifyGolden(golden, options.perceiver));
+  return { checked: results.length, passed: results.filter((result) => result.ok).length, results };
+}
+
+/**
+ * The gate's verdict: throws `OpenKaError` when any golden in `report` did not
+ * reproduce, because an extractor may not be promoted while a golden is red.
+ */
+export function assertGoldensPass(report: GoldensReport): void {
+  const failed = report.checked - report.passed;
+  if (failed > 0) {
+    throw new OpenKaError(`${failed} golden(s) regressed — an extractor may not be promoted while a golden is red`);
+  }
 }

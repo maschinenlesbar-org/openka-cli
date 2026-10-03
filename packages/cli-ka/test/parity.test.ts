@@ -4,7 +4,7 @@
 
 import { deepStrictEqual, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
@@ -17,18 +17,21 @@ import {
   MAX_DIMENSIONS,
   MIN_DIMENSIONS,
   addGolden,
+  assertGoldensPass,
   baselinePath,
   buildEmbeddings,
   detectDrift,
   importEmbeddings,
   lintLine,
   listAllGoldens,
+  listGoldens,
   loadBaseline,
   loadCorpusBaseline,
   measureHealth,
   saveBaseline,
   saveCorpusBaseline,
   sweepAnswers,
+  verifyGoldens,
 } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
@@ -898,5 +901,87 @@ describe("a lint that would scan nothing (finding 23)", () => {
       const result = await parity({ runner: runFactory, argv: ["lint", "--root", blank], lib: () => lintLine(blank) });
       bothRefused(result, "root", BLANK);
     }
+  });
+});
+
+describe("the goldens gate (finding 25)", () => {
+  /** Copies of real Berlin goldens under `<corpus>/goldens`; `tamper` edits the first one's frozen answer. */
+  const seedGoldens = (tamper: boolean) => (corpus: string): void => {
+    const real = listAllGoldens().filter((golden) => golden.meta.source === "berlin" && golden.meta.tier !== "ocr" && golden.record.qa.length > 0);
+    ok(real.length >= 2, "expected two Berlin goldens with Q/A in the workspace");
+    for (const [index, golden] of real.slice(0, 2).entries()) {
+      const target = join(corpus, "goldens", "berlin", golden.meta.id);
+      cpSync(golden.dir, target, { recursive: true });
+      if (tamper && index === 0) {
+        const qa = golden.record.qa.map((pair, at) => (at === 0 ? { ...pair, answer: "erfunden" } : pair));
+        writeFileSync(join(target, "record.json"), canonicalJsonLine({ ...golden.record, qa }));
+      }
+    }
+  };
+
+  it("refuses an empty set on both sides, rather than passing it", async () => {
+    for (const [label, dir] of [
+      ["an empty directory", (corpus: string) => corpus],
+      ["a missing directory", (corpus: string) => join(corpus, "missing")],
+    ] as const) {
+      let cliDir = "";
+      let libDir = "";
+      const result = await parity({
+        runner: runFactory,
+        argv: (corpus) => {
+          cliDir = dir(corpus);
+          return ["goldens", "verify", "--dir", cliDir, "--json"];
+        },
+        lib: async ({ corpus }) => {
+          libDir = dir(corpus);
+          return verifyGoldens({ dir: libDir });
+        },
+      });
+      const nothing = (path: string): string => `No goldens in ${path} — nothing to verify.`;
+      strictEqual(result.cli.code, 1, `${label}: ${result.cli.err}`);
+      strictEqual(result.cli.err, `Error: ${nothing(cliDir)}`);
+      deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: nothing(libDir) }, requests: [] });
+    }
+  });
+
+  it("refuses a blank directory on both sides", async () => {
+    for (const blank of ["", "  "]) {
+      bothRefused(await parity({ runner: runFactory, argv: ["goldens", "verify", "--dir", blank], lib: () => verifyGoldens({ dir: blank }) }), "dir", BLANK);
+      bothRefused(await parity({ runner: runFactory, argv: ["goldens", "list", "--dir", blank], lib: () => listGoldens(blank) }), "root", BLANK);
+    }
+  });
+
+  it("reports the same tally as the CLI, and passes the gate when every golden reproduces", async () => {
+    const result = await parity({
+      runner: runFactory,
+      seed: seedGoldens(false),
+      argv: (corpus) => ["--compact", "goldens", "verify", "--dir", join(corpus, "goldens"), "--json"],
+      lib: async ({ corpus }) => {
+        const report = await verifyGoldens({ dir: join(corpus, "goldens") });
+        assertGoldensPass(report);
+        return report;
+      },
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
+    strictEqual((result.lib as { value: { checked: number; passed: number } }).value.passed, 2);
+  });
+
+  it("fails the gate on both sides when one golden regressed", async () => {
+    const regressed = "1 golden(s) regressed — an extractor may not be promoted while a golden is red";
+    let libReport: unknown;
+    const result = await parity({
+      runner: runFactory,
+      seed: seedGoldens(true),
+      argv: (corpus) => ["--compact", "goldens", "verify", "--dir", join(corpus, "goldens"), "--json"],
+      lib: async ({ corpus }) => {
+        libReport = await verifyGoldens({ dir: join(corpus, "goldens") });
+        assertGoldensPass(libReport as Awaited<ReturnType<typeof verifyGoldens>>);
+      },
+    });
+    strictEqual(result.cli.code, 1, result.cli.err);
+    strictEqual(result.cli.err, `Error: ${regressed}`);
+    deepStrictEqual(JSON.parse(JSON.stringify(libReport)), JSON.parse(result.cli.out));
+    deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: regressed }, requests: [] });
   });
 });

@@ -27,7 +27,16 @@ import {
 } from "@maschinenlesbar.org/openka-cli-ka";
 import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
-import { addGolden, goldenKeyProblem, listAllGoldens, listGoldens, verifyGolden, workspaceRoot } from "../lib/goldens.js";
+import {
+  DEFAULT_FIXTURES,
+  addGolden,
+  assertGoldensPass,
+  goldenKeyProblem,
+  listAllGoldens,
+  listGoldens,
+  verifyGoldens,
+  workspaceRoot,
+} from "../lib/goldens.js";
 import {
   BASELINE_FILE,
   baselinePath,
@@ -49,15 +58,6 @@ import {
 } from "../lib/embed.js";
 import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, sweepAnswers } from "../lib/answer-index.js";
 import { buildPerceiver, OCR_MODES, type OcrMode } from "@maschinenlesbar.org/openka-cli-ka";
-
-/**
- * What `--dir` of `goldens list` and `goldens verify` defaults to, for the help
- * text. Each Land's goldens live in its own connector package, so the default is
- * not a directory at all: it is every package's `fixtures/`, found from the
- * workspace root. It is never resolved as a path — `goldens add` used to, and filed
- * goldens under a literal "every package's fixtures" directory nothing reads.
- */
-export const DEFAULT_FIXTURES = "every package's fixtures/";
 
 export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
   const program = new Command();
@@ -146,7 +146,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .action(
       action(deps, async (ctx) => {
         const chosen = ctx.opts["dir"] as string | undefined;
-        const dir = chosen === undefined ? "every package's fixtures/" : resolve(chosen);
+        const dir = chosen === undefined ? DEFAULT_FIXTURES : resolve(chosen);
         const found = chosen === undefined ? listAllGoldens() : listGoldens(resolve(chosen));
         if (ctx.opts["json"] === true) {
           printJson(ctx, found.map((golden) => golden.meta));
@@ -174,31 +174,26 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .option("--json", "print results as JSON")
     .action(
       action(deps, async (ctx) => {
-        const chosen = ctx.opts["dir"] as string | undefined;
-        const dir = chosen === undefined ? "every package's fixtures/" : resolve(chosen);
-        const found = chosen === undefined ? listAllGoldens() : listGoldens(resolve(chosen));
-        if (found.length === 0) throw new OpenKaError(`No goldens in ${dir} — nothing to verify.`);
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
         const perceiver = mode === "off" ? undefined : await buildPerceiver(mode);
-
-        const results = [];
-        for (const golden of found) results.push(await verifyGolden(golden, perceiver));
-        const failed = results.filter((result) => !result.ok);
+        // The set, the "nothing to verify" error and the verdict are the
+        // library's (verifyGoldens, assertGoldensPass); this only renders.
+        const dir = ctx.opts["dir"] as string | undefined;
+        const report = await verifyGoldens({
+          ...(dir === undefined ? {} : { dir }),
+          ...(perceiver === undefined ? {} : { perceiver }),
+        });
 
         if (ctx.opts["json"] === true) {
-          printJson(ctx, { checked: results.length, passed: results.length - failed.length, results });
+          printJson(ctx, report);
         } else {
-          for (const result of failed) {
+          for (const result of report.results.filter((result) => !result.ok)) {
             ctx.deps.io.out(`FAIL ${result.id}: ${result.reason ?? "mismatch"}`);
             for (const path of result.differences.slice(0, 10)) ctx.deps.io.out(`       differs at ${path}`);
           }
-          ctx.deps.io.out(`${results.length - failed.length}/${results.length} golden(s) reproduced.`);
+          ctx.deps.io.out(`${report.passed}/${report.checked} golden(s) reproduced.`);
         }
-        if (failed.length > 0) {
-          throw new OpenKaError(
-            `${failed.length} golden(s) regressed — an extractor may not be promoted while a golden is red`,
-          );
-        }
+        assertGoldensPass(report);
       }),
     );
 

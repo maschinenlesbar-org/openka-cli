@@ -277,6 +277,13 @@ What the library now computes that a `ka` action used to compute on its own:
   is strict: no file at a path the caller named is an `OpenKaError` ("No baseline at
   …"), where it used to read as a first run; only `loadCorpusBaseline` returns
   `undefined`, for a corpus whose default baseline was never written.
+- **The goldens gate** — `verifyGoldens({ dir?, workspace?, perceiver? })` (factory)
+  re-extracts a fixture directory, or every package's `fixtures/`, and returns the
+  `{ checked, passed, results }` tally `goldens verify --json` prints; an empty set
+  is an `OpenKaError` ("No goldens in … — nothing to verify.") rather than a vacuous
+  pass, and a blank `dir` is refused. `assertGoldensPass(report)` is the verdict:
+  any golden that did not reproduce throws. `listGoldens` refuses a blank root. A
+  hand-built loop over `listGoldens` + `verifyGolden` used to pass an empty set.
 
 ## Reproducibility, concretely
 

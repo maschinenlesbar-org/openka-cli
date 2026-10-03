@@ -9,7 +9,7 @@ import { isoInstant, sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { listAllGoldens, verifyGolden } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
@@ -529,10 +529,11 @@ describe("golden fixtures", () => {
   });
 
   it("every golden re-extracts to exactly its frozen record", async () => {
-    for (const golden of listAllGoldens(PROJECT_ROOT)) {
-      const result = await verifyGolden(golden);
-      strictEqual(result.ok, true, `${golden.meta.id}: ${result.reason} ${result.differences.join(", ")}`);
+    const report = await verifyGoldens({ workspace: PROJECT_ROOT });
+    for (const result of report.results) {
+      strictEqual(result.ok, true, `${result.id}: ${result.reason} ${result.differences.join(", ")}`);
     }
+    assertGoldensPass(report);
   });
 
   it("stores goldens in canonical form", () => {
