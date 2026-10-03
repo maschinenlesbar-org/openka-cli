@@ -21,6 +21,7 @@ import {
   buildEmbeddings,
   detectDrift,
   importEmbeddings,
+  lintLine,
   listAllGoldens,
   loadBaseline,
   loadCorpusBaseline,
@@ -856,5 +857,46 @@ describe("a named drift baseline that is not there (finding 22)", () => {
     strictEqual(result.cli.code, 0, result.cli.err);
     deepStrictEqual(result.lib, { ok: true, value: JSON.parse(result.cli.out), requests: [] });
     strictEqual((result.lib as { value: { baseline: unknown } }).value.baseline, null);
+  });
+});
+
+describe("a lint that would scan nothing (finding 23)", () => {
+  const nothing = (root: string): string => `nothing to lint: no packages/*/src under ${root} — is this the workspace root?`;
+
+  for (const [label, dir] of [
+    ["an empty directory", (corpus: string) => corpus],
+    ["a missing directory", (corpus: string) => join(corpus, "missing")],
+    ["a packages/ with no sources", (corpus: string) => join(corpus, "ws")],
+  ] as const) {
+    it(`fails on ${label} on both sides, rather than passing`, async () => {
+      let cliRoot = "";
+      let libRoot = "";
+      const seed = (corpus: string): void => {
+        mkdirSync(join(corpus, "ws", "packages", "lib-x"), { recursive: true });
+      };
+      const result = await parity({
+        runner: runFactory,
+        seed,
+        argv: (corpus) => {
+          cliRoot = dir(corpus);
+          return ["lint", "--json", "--root", cliRoot];
+        },
+        lib: ({ corpus }) => {
+          libRoot = dir(corpus);
+          return lintLine(libRoot);
+        },
+      });
+      strictEqual(result.cli.code, 1, result.cli.err);
+      strictEqual(result.cli.err, `Error: ${nothing(cliRoot)}`);
+      ok(!result.lib.ok);
+      deepStrictEqual(result.lib.error, { name: "OpenKaError", message: nothing(libRoot) });
+    });
+  }
+
+  it("refuses a blank root on both sides", async () => {
+    for (const blank of ["", "  "]) {
+      const result = await parity({ runner: runFactory, argv: ["lint", "--root", blank], lib: () => lintLine(blank) });
+      bothRefused(result, "root", BLANK);
+    }
   });
 });

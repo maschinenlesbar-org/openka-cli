@@ -211,6 +211,11 @@ What the library rejects with `OpenKaValidationError`, so far:
   range used to save an empty map claiming that range as swept. `ka-factory answers`
   builds its parsers from the constants; `--to` before `--from` is now a usage error
   (exit 2, `Invalid to: Must be >= from (…).`) rather than exit 1.
+- **A lint of nothing** — `lintLine(root)` (factory) refuses a blank root
+  (`OpenKaValidationError`) and throws `OpenKaError` ("nothing to lint: no
+  packages/*/src under …") when no line source is found, instead of returning a
+  clean `{ filesChecked: 0, violations: [] }` that read as a pass. `ka-factory lint`
+  used to be the only place that checked.
 - **A search filter that cannot match** — `search()`, `searchLike()` and
   `reviewQueue()` run `normalizeSearchFilters` (`lib-search`): an unknown parliament
   (keys are trimmed and case-folded, so `Berlin` works), a blank party, an unknown

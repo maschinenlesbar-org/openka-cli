@@ -84,13 +84,9 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         // suite with that package as the cwd, where there is no packages/ to scan.
         const given = ctx.opts["root"] as string | undefined;
         const root = given === undefined ? workspaceRoot() : resolve(given);
+        // A scan of nothing (a wrong --root, a cwd outside the workspace) is an
+        // error from lintLine itself, not "no violations".
         const report = lintLine(root);
-        // A guardrail that scanned nothing has guarded nothing. The likely cause
-        // is a wrong --root or a cwd outside the workspace, and "no violations"
-        // would be the wrong answer to either.
-        if (report.filesChecked === 0) {
-          throw new OpenKaError(`nothing to lint: no packages/*/src under ${root} — is this the workspace root?`);
-        }
         if (ctx.opts["json"] === true) {
           printJson(ctx, report);
         } else {

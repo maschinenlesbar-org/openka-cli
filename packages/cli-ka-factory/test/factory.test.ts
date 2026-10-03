@@ -22,6 +22,17 @@ describe("the no-LLM-on-the-line guardrail", () => {
     ok(report.filesChecked > 30, `expected to have scanned the line, saw ${report.filesChecked} files`);
   });
 
+  it("fails a scan of nothing instead of passing it, and refuses a blank root", () => {
+    const empty = mkdtempSync(join(tmpdir(), "openka-lint-"));
+    try {
+      throws(() => lintLine(empty), /^OpenKaError: nothing to lint: no packages\/\*\/src under /);
+      throws(() => lintLine(join(empty, "missing")), /nothing to lint/);
+      throws(() => lintLine("  "), /^OpenKaValidationError: Invalid root: Expected a non-empty value\.$/);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it("catches a forbidden import however it is written", () => {
     // A line-by-line scan missed the multi-line form, which is the prevailing
     // style in this codebase — so the guardrail enforced nothing against the

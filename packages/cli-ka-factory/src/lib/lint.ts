@@ -18,6 +18,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { OpenKaError, assertValid, nonBlankProblem } from "@maschinenlesbar.org/openka-lib-errors";
 
 /** The one package that is not on the line: build-time tooling. */
 export const FACTORY_PACKAGE = "cli-ka-factory";
@@ -34,7 +35,7 @@ export function lineRoots(projectRoot: string): string[] {
     names = readdirSync(packages).sort();
   } catch {
     // No `packages/` means this is not the workspace: there is no line here to
-    // lint, and the caller says so rather than passing a scan of nothing.
+    // lint, and `lintLine` says so rather than passing a scan of nothing.
     return [];
   }
   return names
@@ -229,9 +230,20 @@ export interface LintReport {
   violations: LintViolation[];
 }
 
-/** Lint the whole line. */
+/**
+ * Lint the whole line under `projectRoot` (the workspace root). A blank root is
+ * refused with `OpenKaValidationError`; a root with no `packages/*\/src` under it —
+ * an empty or missing directory, a cwd outside the workspace — throws
+ * `OpenKaError`. A guardrail that scanned nothing has guarded nothing, and a report
+ * of `{ filesChecked: 0, violations: [] }` read as a clean pass to any caller that
+ * only checked `violations`.
+ */
 export function lintLine(projectRoot: string): LintReport {
+  assertValid("root", projectRoot, nonBlankProblem);
   const files = lineFiles(projectRoot);
+  if (files.length === 0) {
+    throw new OpenKaError(`nothing to lint: no packages/*/src under ${projectRoot} — is this the workspace root?`);
+  }
   const violations: LintViolation[] = [];
   for (const file of files) {
     let source: string;
