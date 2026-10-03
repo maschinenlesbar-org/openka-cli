@@ -107,4 +107,4 @@ export class AbstainError extends OpenKaError {
   }
 }
 
-export { assertValid, isBlank, nonBlankProblem, BLANK_REASON, type Problem } from "./validate.js";
+export { assertValid, isBlank, intRangeProblem, nonBlankProblem, BLANK_REASON, type Problem } from "./validate.js";

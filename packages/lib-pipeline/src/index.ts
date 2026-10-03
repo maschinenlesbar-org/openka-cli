@@ -14,6 +14,7 @@ import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenle
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { normalizeSyncWindow } from "./window.js";
 
 export interface SyncOptions {
   source: Source;
@@ -66,8 +67,13 @@ export interface SyncReport {
   upstreamUnchanged: boolean;
 }
 
-/** Run one source end to end. */
-export async function sync(options: SyncOptions): Promise<SyncReport> {
+/**
+ * Run one source end to end. The window and budget are checked first
+ * (`normalizeSyncWindow`): a bad one rejects with `OpenKaValidationError` before
+ * any request, and is not recorded as a source error.
+ */
+export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
+  const options = normalizeSyncWindow(rawOptions);
   const { source, store, engine } = options;
   const now = options.now ?? (() => new Date());
   const state = store.getSourceState(source.key);
@@ -449,3 +455,4 @@ export function isoInstant(date: Date): string {
   return `${date.toISOString().slice(0, 19)}Z`;
 }
 export { sourceStatus, type SourceStatusRow } from "./status.js";
+export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";

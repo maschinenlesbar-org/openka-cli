@@ -5,10 +5,19 @@ import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/st
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isoInstant, sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import {
+  SYNC_LIMIT_MIN,
+  isoInstant,
+  normalizeSyncWindow,
+  sourceStatus,
+  sync,
+  syncLimitProblem,
+  syncPeriodProblem,
+} from "@maschinenlesbar.org/openka-lib-pipeline";
+import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
@@ -577,5 +586,55 @@ describe("source status", () => {
       // A source with no parliament of its own has no record count of its own.
       { key: "parlamentsspiegel", parliament: undefined, label: "PS", status: "implemented", records: undefined, last_sync: undefined, last_success: undefined, last_error: undefined, note: "all" },
     ]);
+  });
+});
+
+describe("the sync window", () => {
+  it("names the bounds and the reasons ka prints", () => {
+    deepStrictEqual([SYNC_LIMIT_MIN, PERIOD_RANGE], [1, [1, 99]]);
+    strictEqual(syncLimitProblem(1), undefined);
+    strictEqual(syncLimitProblem(0), "Must be >= 1.");
+    strictEqual(syncLimitProblem(2.5), "Expected an integer.");
+    strictEqual(syncPeriodProblem(99), undefined);
+    strictEqual(syncPeriodProblem(100), "Must be <= 99.");
+    strictEqual(syncPeriodProblem(Number.NaN), "Expected an integer.");
+  });
+
+  it("trims the dates and keeps what is valid, idempotently", () => {
+    const window = normalizeSyncWindow({ since: " 2024-01-01", until: "2024-12-31 ", period: 19, limit: 5 });
+    deepStrictEqual(window, { since: "2024-01-01", until: "2024-12-31", period: 19, limit: 5 });
+    deepStrictEqual(normalizeSyncWindow(window), window);
+    deepStrictEqual(normalizeSyncWindow({}), {});
+  });
+
+  it("refuses a bad window before discovery, and records no source error", async () => {
+    for (const [window, message] of [
+      [{ since: "" }, "Invalid since: Expected a date as YYYY-MM-DD."],
+      [{ until: "2024-02-30" }, "Invalid until: Not a calendar date."],
+      [{ period: 0 }, "Invalid period: Must be >= 1."],
+      [{ limit: -1 }, "Invalid limit: Must be >= 1."],
+      [{ since: "2024-06-01", until: "2024-01-01" }, "Invalid until: Must be >= since (2024-06-01)."],
+    ] as const) {
+      const source = new StubSource();
+      const store = new MemoryStore();
+      await rejects(
+        sync({ source, store, engine: testEngine(async () => ({ status: 200, headers: {}, body: PDF })), ...window }),
+        (error: unknown) => error instanceof OpenKaValidationError && error.message === message,
+      );
+      strictEqual(source.discoveries, 0);
+      strictEqual(store.getSourceState("berlin").last_error, undefined);
+    }
+  });
+
+  it("hands discovery the trimmed window", async () => {
+    let seen: DiscoverOptions | undefined;
+    const source = Object.assign(new StubSource(), {
+      async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+        seen = options;
+        return { refs: [], warnings: [] };
+      },
+    });
+    await sync({ source, store: new MemoryStore(), engine: testEngine(async () => ({ status: 200, headers: {}, body: PDF })), since: " 2024-01-01", until: "2024-12-31 " });
+    deepStrictEqual([seen?.since, seen?.until], ["2024-01-01", "2024-12-31"]);
   });
 });

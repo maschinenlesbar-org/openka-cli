@@ -3,7 +3,8 @@
 
 import { InvalidArgumentError, type Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import {
   TesseractCliPerceiver,
   TesseractJsPerceiver,
@@ -64,6 +65,13 @@ function parseSourceKey(value: string): string {
   return key;
 }
 
+/**
+ * The most Anfragen one `ka sync` run may take on: a cap on the command, not a
+ * rule of the library, whose `sync()` only needs a limit of at least
+ * `SYNC_LIMIT_MIN`.
+ */
+const SYNC_LIMIT_CAP = 100_000;
+
 export function registerSync(program: Command, deps: CliDeps): void {
   program
     .command("sync")
@@ -71,8 +79,11 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .requiredOption("--source <key>", `source to sync (${sourceKeys().join(", ")})`, parseSourceKey)
     .option("--since <date>", "only Anfragen dated on or after this date (YYYY-MM-DD)", parseIsoDate)
     .option("--until <date>", "only Anfragen dated on or before this date (YYYY-MM-DD)", parseIsoDate)
-    .option("--period <n>", "restrict to one legislative period", parseBoundedInt(1, 99))
-    .option("--limit <n>", "stop after this many Anfragen", parseBoundedInt(1, 100_000))
+    // The window's rules are the library's (normalizeSyncWindow): these parsers
+    // use the same date rule and bounds, so a typo fails before the corpus is
+    // touched, and an --until before --since is refused by sync() itself.
+    .option("--period <n>", "restrict to one legislative period", parseBoundedInt(...PERIOD_RANGE))
+    .option("--limit <n>", "stop after this many Anfragen", parseBoundedInt(SYNC_LIMIT_MIN, SYNC_LIMIT_CAP))
     .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
     .option("--metadata-only", "do not download documents; qa is abstained")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")

@@ -14,7 +14,7 @@
 // question→answer map as an artifact, and the line consumes it (CONCEPT.md §0).
 
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
-import { OpenKaApiError, OpenKaError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, OpenKaError, assertValid, intRangeProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { extractPdfText } from "@maschinenlesbar.org/openka-lib-pdf";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import {
@@ -54,15 +54,6 @@ export interface SweepReport {
 export const SWEEP_PERIOD_RANGE = [1, 99] as const;
 /** The Drucksachennummern a sweep may read; Niedersachsen's URLs hold up to six digits. */
 export const DRUCKSACHE_RANGE = [1, 999_999] as const;
-
-function intRangeProblem(min: number, max: number): Problem<number> {
-  return (value) => {
-    if (!Number.isSafeInteger(value)) return "Expected an integer.";
-    if (value < min) return `Must be >= ${min}.`;
-    if (value > max) return `Must be <= ${max}.`;
-    return undefined;
-  };
-}
 
 /** A period a sweep can read: an integer in `SWEEP_PERIOD_RANGE`. */
 export const sweepPeriodProblem: Problem<number> = intRangeProblem(...SWEEP_PERIOD_RANGE);

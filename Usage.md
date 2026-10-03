@@ -35,7 +35,8 @@ stores nothing. `--force` bypasses both the feed's `ETag` and the per-record che
 **Dates mean when the Anfrage was asked.** `--since`/`--until` here, and `--year`
 and `--from`/`--to` on `search` and `export`, all filter on the question's date, not
 the answer's — a question asked in June is often answered in August, and the other
-reading makes a window exclude exactly what it was meant to include.
+reading makes a window exclude exactly what it was meant to include. An `--until`
+before `--since` is a usage error (exit 2), not an empty sync.
 
 ## `ka search`
 

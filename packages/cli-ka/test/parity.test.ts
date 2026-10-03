@@ -8,8 +8,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, corpusStats, indexRecord, markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
-import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { SOURCE_REGISTRY } from "@maschinenlesbar.org/openka-lib-registry";
+import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { SOURCE_REGISTRY, createSource } from "@maschinenlesbar.org/openka-lib-registry";
+import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import {
   BASELINE_FILE,
@@ -983,5 +984,53 @@ describe("the goldens gate (finding 25)", () => {
     strictEqual(result.cli.err, `Error: ${regressed}`);
     deepStrictEqual(JSON.parse(JSON.stringify(libReport)), JSON.parse(result.cli.out));
     deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: regressed }, requests: [] });
+  });
+});
+
+describe("the sync window and budget (finding 5)", () => {
+  const syncLib = (window: Record<string, unknown>) => ({ store, engine }: { store: FileStore; engine: FetchEngine }) =>
+    sync({ source: createSource("berlin"), store, engine, metadataOnly: true, ...window });
+
+  for (const [flag, value, option, libValue, reason] of [
+    ["--since", "", "since", "", "Expected a date as YYYY-MM-DD."],
+    ["--until", "  ", "until", "  ", "Expected a date as YYYY-MM-DD."],
+    ["--since", "2026-02-30", "since", "2026-02-30", "Not a calendar date."],
+    ["--since", "2021-9-1", "since", "2021-9-1", "Expected a date as YYYY-MM-DD."],
+    ["--period", "0", "period", 0, "Must be >= 1."],
+    ["--period", "100", "period", 100, "Must be <= 99."],
+    ["--period", "1.5", "period", 1.5, "Expected an integer."],
+    ["--limit", "0", "limit", 0, "Must be >= 1."],
+    ["--limit", "-1", "limit", -1, "Must be >= 1."],
+  ] as const) {
+    it(`refuses ${flag} ${JSON.stringify(value)} on both sides, before any request`, async () => {
+      const result = await parity({
+        argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--metadata-only", flag, value],
+        lib: syncLib({ [option]: libValue }),
+      });
+      bothRefused(result, option, reason);
+    });
+  }
+
+  it("refuses a window that ends before it starts, on both sides", async () => {
+    const result = await parity({
+      argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--metadata-only", "--since", "2024-06-01", "--until", "2024-01-01"],
+      lib: syncLib({ since: "2024-06-01", until: "2024-01-01" }),
+    });
+    bothRefused(result, "until", "Must be >= since (2024-06-01).");
+  });
+
+  it("trims a padded date on both sides, so DIP gets the same request", async () => {
+    const result = await parity({
+      env: { DIP_API_KEY: "test-key" },
+      responder: async () => ({ status: 200, headers: { "content-type": "application/json" }, body: Buffer.from('{"documents":[]}') }),
+      argv: (corpus) => ["--corpus", corpus, "sync", "--source", "bund", "--metadata-only", "--since", " 2026-08-01", "--until", "2026-08-31 "],
+      lib: ({ store, engine }) =>
+        sync({ source: createSource("bund"), store, engine, apiKey: "test-key", metadataOnly: true, since: " 2026-08-01", until: "2026-08-31 " }),
+    });
+    strictEqual(result.cli.code, 0, result.cli.err);
+    ok(result.lib.ok, JSON.stringify(result.lib));
+    deepStrictEqual(result.lib.requests, result.cli.requests);
+    ok(result.cli.requests.length > 0);
+    ok(result.cli.requests.every((request) => /f\.datum\.start=2026-08-01&/.test(request) && !/=%20|%20&/.test(request)), result.cli.requests.join("\n"));
   });
 });

@@ -25,7 +25,7 @@ Everything is re-exported from the package root:
 ```
 OpenKaError, OpenKaApiError, NetworkFailure, NetworkError, ParseError, StoreError, MissingCorpusError, UsageError,
 OpenKaValidationError, AbstainError,
-Problem, assertValid, isBlank, nonBlankProblem, BLANK_REASON
+Problem, assertValid, isBlank, nonBlankProblem, BLANK_REASON, intRangeProblem
 ```
 
 ## Depends on

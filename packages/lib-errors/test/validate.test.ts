@@ -10,6 +10,7 @@ import {
   OpenKaValidationError,
   UsageError,
   assertValid,
+  intRangeProblem,
   isBlank,
   nonBlankProblem,
   type Problem,
@@ -64,5 +65,17 @@ describe("the blank rule", () => {
     strictEqual(nonBlankProblem(""), BLANK_REASON);
     strictEqual(nonBlankProblem("  "), BLANK_REASON);
     strictEqual(BLANK_REASON, "Expected a non-empty value.");
+  });
+});
+
+describe("intRangeProblem", () => {
+  it("accepts an integer in range and names what is wrong otherwise", () => {
+    const problem = intRangeProblem(1, 99);
+    strictEqual(problem(1), undefined);
+    strictEqual(problem(99), undefined);
+    strictEqual(problem(0), "Must be >= 1.");
+    strictEqual(problem(100), "Must be <= 99.");
+    for (const value of [1.5, Number.NaN, Number.POSITIVE_INFINITY]) strictEqual(problem(value), "Expected an integer.");
+    strictEqual(intRangeProblem(0)(Number.MAX_SAFE_INTEGER), undefined);
   });
 });

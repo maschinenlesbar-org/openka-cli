@@ -32,7 +32,7 @@ maps to.
 Everything is re-exported from the package root:
 
 ```
-RECORD_JSON_SCHEMA, ParliamentKeys, ParliamentKey, Parliament, PARLIAMENTS, parliamentByKey, parliamentByHerkunft, isParliamentKey, normalizeParliamentKey, parliamentKeyProblem, Reference, periodNumber, parseReference, formatReference, referenceSlug, SCHEMA_VERSION, DocumentTypes, DocumentType, Tiers, Tier, ReviewStatuses, ReviewStatus, SourceDocumentRoles, SourceDocumentRole, Asker, AnsweredBy, Dates, QaPair, Markers, SourceDocument, ModelArtifact, Extraction, KaRecord, makeRecordId, ValidationIssue, isCalendarDate, normalizeIsoDate, isoDateProblem, validateRecord, assertValidRecord
+RECORD_JSON_SCHEMA, ParliamentKeys, ParliamentKey, Parliament, PARLIAMENTS, parliamentByKey, parliamentByHerkunft, isParliamentKey, normalizeParliamentKey, parliamentKeyProblem, Reference, periodNumber, parseReference, formatReference, referenceSlug, SCHEMA_VERSION, DocumentTypes, DocumentType, Tiers, Tier, ReviewStatuses, ReviewStatus, SourceDocumentRoles, SourceDocumentRole, Asker, AnsweredBy, Dates, QaPair, Markers, SourceDocument, ModelArtifact, Extraction, KaRecord, makeRecordId, ValidationIssue, PERIOD_RANGE, isCalendarDate, normalizeIsoDate, isoDateProblem, validateRecord, assertValidRecord
 ```
 
 ## Depends on

@@ -37,3 +37,16 @@ export const BLANK_REASON = "Expected a non-empty value.";
  */
 export const nonBlankProblem: Problem<string | undefined> = (value) =>
   value !== undefined && isBlank(value) ? BLANK_REASON : undefined;
+
+/**
+ * An integer in `[min, max]` (no upper bound when `max` is omitted). The reasons
+ * read as `ka`'s `parseBoundedInt` prints them, because that parser calls this.
+ */
+export function intRangeProblem(min: number, max?: number): Problem<number> {
+  return (value) => {
+    if (!Number.isSafeInteger(value)) return "Expected an integer.";
+    if (value < min) return `Must be >= ${min}.`;
+    if (max !== undefined && value > max) return `Must be <= ${max}.`;
+    return undefined;
+  };
+}

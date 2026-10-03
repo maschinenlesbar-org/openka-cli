@@ -236,6 +236,17 @@ What the library rejects with `OpenKaValidationError`, so far:
   `DEFAULT_SEARCH_LIMIT`). A negative one used to wrap around through `slice`. The
   per-command maxima (`search` 1000, `export` 1 000 000, `feed` 500, `review`
   10 000) stay in `ka`: they are presentation caps.
+- **A sync window that cannot be honoured** — `sync()` runs `normalizeSyncWindow`
+  (`lib-pipeline`) before it reads source state or sends a request: `since`/`until`
+  must be `YYYY-MM-DD` calendar dates (padding is trimmed, so `" 2024-01-01"` reaches
+  DIP as `2024-01-01` rather than `%202024-01-01`), `until` not before `since`,
+  `period` an integer in `PERIOD_RANGE` (1–99, `lib-models`) and `limit` an integer
+  >= `SYNC_LIMIT_MIN`. A refused window is not recorded as a source error. `ka sync`
+  builds `--period`/`--limit` from the same bounds; its `--limit` maximum (100 000)
+  is a cap of the command. `--until` before `--since` is now exit 2 (`Invalid until:
+  Must be >= since (…).`) where it used to sync nothing. The integer rule itself is
+  `intRangeProblem` in `lib-errors`, shared with the search filters and the
+  factory's sweep.
 - **An unknown render format or a blank feed title or id** — `renderRecord` checks
   the format against `RENDER_FORMATS` (`renderFormatProblem`) instead of falling back
   to JSON; `renderAtom` refuses a blank `title`/`id` and applies

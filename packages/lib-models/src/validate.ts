@@ -29,6 +29,12 @@ export interface ValidationIssue {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
+/**
+ * The legislative periods (Wahlperioden) a caller may name, in a search filter or
+ * a sync window: no parliament is anywhere near its hundredth.
+ */
+export const PERIOD_RANGE = [1, 99] as const;
+
 /** True for a calendar-valid `YYYY-MM-DD` date (rejects 2024-02-31). */
 export function isCalendarDate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;

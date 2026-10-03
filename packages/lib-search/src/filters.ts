@@ -3,9 +3,10 @@
 // filter that cannot match anything — an unknown parliament, a blank party, a
 // date that is no date — is a usage error on every path, never "No matches.".
 
-import { assertValid, isBlank, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { assertValid, intRangeProblem, isBlank, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { parseQuery } from "@maschinenlesbar.org/openka-lib-store";
 import {
+  PERIOD_RANGE,
   ReviewStatuses,
   isoDateProblem,
   normalizeIsoDate,
@@ -16,18 +17,12 @@ import type { SearchFilters } from "./search.js";
 
 /** The years `year` may name: the first Bundestag to well past any corpus. */
 export const YEAR_RANGE = [1949, 2999] as const;
-/** The legislative periods `period` may name. */
-export const PERIOD_RANGE = [1, 99] as const;
-
-/** An integer in `[min, max]`; the reasons read as `ka`'s parsers print them. */
-export function intRangeProblem(min: number, max?: number): Problem<number> {
-  return (value) => {
-    if (!Number.isSafeInteger(value)) return "Expected an integer.";
-    if (value < min) return `Must be >= ${min}.`;
-    if (max !== undefined && value > max) return `Must be <= ${max}.`;
-    return undefined;
-  };
-}
+// Re-exported where search callers have always found them; the rules themselves
+// are shared with the sync window (lib-pipeline), so they live below both.
+/** The legislative periods `period` may name (lib-models). */
+export { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
+/** An integer in `[min, max]` (lib-errors). */
+export { intRangeProblem } from "@maschinenlesbar.org/openka-lib-errors";
 
 /** How many hits `search()` and `searchLike()` return when no `limit` is given. */
 export const DEFAULT_SEARCH_LIMIT = 20;

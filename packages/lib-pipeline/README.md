@@ -17,8 +17,14 @@ producing the same abstentions it produced the first time.
 Everything is re-exported from the package root:
 
 ```
-SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus
+SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
+SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow
 ```
+
+`sync()` checks its window first (`normalizeSyncWindow`, `src/window.ts`): calendar
+dates for `since`/`until` (trimmed), `until` not before `since`, `period` in
+`PERIOD_RANGE`, `limit` >= `SYNC_LIMIT_MIN`. A bad one rejects with
+`OpenKaValidationError` before any request and is not recorded as a source error.
 
 `sourceStatus(store, registry)` (`src/status.ts`) is the table `ka sources list`
 prints: each registry entry with its record count and last sync state.
