@@ -4,12 +4,17 @@
 // that *cannot* be checked is not the same as a claim that is *wrong*, and
 // conflating them would be dishonest in the direction that flatters us.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { diffPaths, verifyRecord } from "../src/index.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DEFAULT_VERIFY_SAMPLE, assertVerified, diffPaths, evenSample, verifyCorpus, verifyRecord } from "../src/index.js";
+import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { OpenKaError, OpenKaValidationError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MemoryStore, questionPaper, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { extract } from "@maschinenlesbar.org/openka-lib-extract";
-import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
+import { extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 
 describe("verifying a record", () => {
   it("says so when there is no such record", async () => {
@@ -156,5 +161,86 @@ describe("diffPaths", () => {
   it("calls a change of shape a difference at the root", () => {
     deepStrictEqual(diffPaths({ a: 1 }, "not an object"), ["<root>"]);
     deepStrictEqual(diffPaths(null, { a: 1 }), ["<root>"]);
+  });
+});
+
+describe("a record that cannot be read", () => {
+  it("is a failed row marked unreadable, not a throw that stops the caller", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-verify-"));
+    try {
+      const store = new FileStore(root);
+      store.putRecord(sampleRecord());
+      writeFileSync(join(root, "records", "berlin-19-12345.json"), '{"broken');
+      const result = await verifyRecord("berlin-19-12345", { store, env: {} });
+      deepStrictEqual(result, {
+        id: "berlin-19-12345",
+        ok: false,
+        unreadable: true,
+        reason: "Corrupt record berlin-19-12345",
+        differences: [],
+        storedVersion: "unknown",
+        currentVersion: extractorVersion({}),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verifying a corpus", () => {
+  const ids = [
+    ...Array.from({ length: 15 }, (_, i) => `berlin-19-${i}`),
+    ...Array.from({ length: 15 }, (_, i) => `sachsen-8-${i}`),
+    ...Array.from({ length: 15 }, (_, i) => `thueringen-8-${i}`),
+  ];
+
+  it("samples across the corpus rather than one alphabetical prefix", () => {
+    // Record ids sort by parliament, so `slice(0, n)` checked the same first
+    // records every run and whole Länder were never verified.
+    const sample = evenSample(ids, DEFAULT_VERIFY_SAMPLE);
+    strictEqual(sample.length, 25);
+    for (const parliament of ["berlin", "sachsen", "thueringen"]) {
+      ok(sample.some((id: string) => id.startsWith(parliament)), `${parliament} missing from the sample`);
+    }
+    // Deterministic: a reproducibility check must pick the same records each run.
+    deepStrictEqual(evenSample(ids, 25), sample);
+    deepStrictEqual(evenSample(ids, 100), ids);
+  });
+
+  it("checks every record past a corrupt one and tallies the unreadable", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-verify-"));
+    try {
+      const store = new FileStore(root);
+      for (const n of ["1", "2", "3"]) store.putRecord(sampleRecord({ id: `berlin-19-${n}`, reference: `19/${n}` }));
+      writeFileSync(join(root, "records", "berlin-19-2.json"), '{"broken');
+      const report = await verifyCorpus({ store, env: {}, all: true });
+      deepStrictEqual([report.checked, report.unreadable], [3, 1]);
+      deepStrictEqual(report.results.map((result) => result.id), ["berlin-19-1", "berlin-19-2", "berlin-19-3"]);
+      strictEqual(report.reproduced, report.results.filter((result) => result.ok).length);
+      throws(() => assertVerified(report), (error: unknown) =>
+        error instanceof StoreError && error.message === `${3 - report.reproduced} record(s) did not reproduce, 1 of them unreadable`);
+
+      const one = await verifyCorpus({ store, env: {}, ids: ["berlin-19-1"] });
+      deepStrictEqual(one.results.map((result) => result.id), ["berlin-19-1"]);
+      const sampled = await verifyCorpus({ store, env: {}, limit: 2 });
+      deepStrictEqual(sampled.results.map((result) => result.id), evenSample(store.recordIds(), 2));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gives a verdict: a mismatch fails, a clean report passes", () => {
+    const row = { id: "x", differences: [], storedVersion: "v", currentVersion: "v" };
+    throws(() => assertVerified({ checked: 1, reproduced: 0, unreadable: 0, results: [{ ...row, ok: false }] }), (error: unknown) =>
+      error instanceof OpenKaError && !(error instanceof StoreError) && error.message === "1 record(s) did not reproduce");
+    assertVerified({ checked: 1, reproduced: 1, unreadable: 0, results: [{ ...row, ok: true }] });
+  });
+
+  it("refuses an empty corpus and a sample size below one", async () => {
+    const store = new MemoryStore();
+    await rejects(verifyCorpus({ store, env: {} }), (error: unknown) =>
+      error instanceof OpenKaError && error.message === `No records in ${store.root}`);
+    await rejects(verifyCorpus({ store, env: {}, limit: 0 }), (error: unknown) =>
+      error instanceof OpenKaValidationError && error.message === "Invalid limit: Must be >= 1.");
   });
 });

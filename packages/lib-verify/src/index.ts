@@ -12,6 +12,7 @@ import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
+import { OpenKaError, StoreError, assertValid, intRangeProblem } from "@maschinenlesbar.org/openka-lib-errors";
 
 export interface VerifyResult {
   id: string;
@@ -24,6 +25,12 @@ export interface VerifyResult {
   storedVersion: string;
   /** The extractor version this run used. */
   currentVersion: string;
+  /**
+   * Set when the stored record itself could not be read (a corrupt file): the
+   * corpus is damaged, which is a different finding from a record that does not
+   * reproduce.
+   */
+  unreadable?: true;
 }
 
 export interface VerifyOptions {
@@ -39,8 +46,17 @@ export interface VerifyOptions {
  * the direction that flatters us.
  */
 export async function verifyRecord(id: string, options: VerifyOptions): Promise<VerifyResult> {
-  const stored = options.store.getRecord(id);
   const currentVersion = extractorVersion(options.env);
+  let stored: KaRecord | undefined;
+  try {
+    stored = options.store.getRecord(id);
+  } catch (err) {
+    // A record file that will not parse is one failed row, like every other
+    // record that cannot be checked — not a throw that ends a corpus-wide run at
+    // the first damaged file, leaving the rest unchecked.
+    if (!(err instanceof StoreError)) throw err;
+    return { id, ok: false, unreadable: true, reason: err.message, differences: [], storedVersion: "unknown", currentVersion };
+  }
   if (stored === undefined) {
     return { id, ok: false, reason: "no such record", differences: [], storedVersion: "", currentVersion };
   }
@@ -128,6 +144,88 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
         : `record was produced by ${stored.extraction.extractor_version}, this build is ${currentVersion}`,
     differences: diffPaths(stored as unknown as Record<string, unknown>, record as unknown as Record<string, unknown>),
   };
+}
+
+/** How many records `verifyCorpus` checks when it is given neither ids nor `all`. */
+export const DEFAULT_VERIFY_SAMPLE = 25;
+
+/**
+ * An evenly spaced selection across a sorted list — the default corpus sample.
+ *
+ * `slice(0, n)` was not a sample: record ids sort by parliament, so it checked the
+ * same alphabetically-first records on every run and whole Länder were never
+ * verified at all. Stepping through the range keeps the choice deterministic (the
+ * same corpus always yields the same sample, which a reproducibility check needs)
+ * while covering every part of it.
+ */
+export function evenSample(ids: string[], count: number): string[] {
+  if (count >= ids.length) return ids;
+  const step = ids.length / count;
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) out.push(ids[Math.floor(i * step)] as string);
+  return out;
+}
+
+export interface VerifyCorpusOptions extends VerifyOptions {
+  /** Exactly these records. Wins over `all` and `limit`. */
+  ids?: string[];
+  /** Every record in the corpus. Wins over `limit`. */
+  all?: boolean;
+  /** Sample size when neither `ids` nor `all` is given: `DEFAULT_VERIFY_SAMPLE`, an integer >= 1. */
+  limit?: number;
+}
+
+/** What `ka verify --json` prints. */
+export interface CorpusVerifyReport {
+  checked: number;
+  reproduced: number;
+  /** Rows whose stored record could not be read at all. */
+  unreadable: number;
+  results: VerifyResult[];
+}
+
+/**
+ * Verify a set of records — given ids, every record, or an even sample — and
+ * tally the results. A corrupt record is a failed row (`unreadable`), and the run
+ * carries on past it. A corpus with no records to check is an `OpenKaError`
+ * ("No records in …"), never a vacuous pass; a `limit` below 1 is refused with
+ * `OpenKaValidationError`. The verdict on the tally is `assertVerified`.
+ */
+export async function verifyCorpus(options: VerifyCorpusOptions): Promise<CorpusVerifyReport> {
+  if (options.limit !== undefined) assertValid("limit", options.limit, intRangeProblem(1));
+  const { store } = options;
+  const ids =
+    options.ids !== undefined
+      ? options.ids
+      : options.all === true
+        ? store.recordIds()
+        : evenSample(store.recordIds(), options.limit ?? DEFAULT_VERIFY_SAMPLE);
+  if (ids.length === 0) throw new OpenKaError(`No records in ${store.root}`);
+  const single: VerifyOptions = {
+    store,
+    ...(options.perceiver === undefined ? {} : { perceiver: options.perceiver }),
+    ...(options.env === undefined ? {} : { env: options.env }),
+  };
+  const results: VerifyResult[] = [];
+  for (const id of ids) results.push(await verifyRecord(id, single));
+  return {
+    checked: results.length,
+    reproduced: results.filter((result) => result.ok).length,
+    unreadable: results.filter((result) => result.unreadable === true).length,
+    results,
+  };
+}
+
+/**
+ * The verdict on a corpus run: a `StoreError` when any record could not be read
+ * (the corpus is damaged), else an `OpenKaError` when any did not reproduce.
+ */
+export function assertVerified(report: CorpusVerifyReport): void {
+  const failed = report.checked - report.reproduced;
+  if (report.unreadable > 0) {
+    throw new StoreError(`${failed} record(s) did not reproduce, ${report.unreadable} of them unreadable`);
+  }
+  if (failed > 0) throw new OpenKaError(`${failed} record(s) did not reproduce`);
 }
 
 /**

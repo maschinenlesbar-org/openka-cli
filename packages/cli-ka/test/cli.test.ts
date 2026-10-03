@@ -11,7 +11,6 @@ import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
 import { resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
-import { evenSample } from "../src/commands/maintain.js";
 import { renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
@@ -511,24 +510,6 @@ describe("ka-factory", () => {
   it("says so rather than printing a blank when nothing was extracted", () => {
     const lines = renderShowLines(sampleRecord({ qa: [] }));
     ok(lines.includes("(no question/answer pairs were extracted)"));
-  });
-
-  it("samples across the corpus rather than one alphabetical prefix", () => {
-    // Record ids sort by parliament, so `slice(0, n)` checked the same first
-    // records every run and whole Länder were never verified.
-    const ids = [
-      ...Array.from({ length: 15 }, (_, i) => `berlin-19-${i}`),
-      ...Array.from({ length: 15 }, (_, i) => `sachsen-8-${i}`),
-      ...Array.from({ length: 15 }, (_, i) => `thueringen-8-${i}`),
-    ];
-    const sample = evenSample(ids, 25);
-    strictEqual(sample.length, 25);
-    for (const parliament of ["berlin", "sachsen", "thueringen"]) {
-      ok(sample.some((id: string) => id.startsWith(parliament)), `${parliament} missing from the sample`);
-    }
-    // Deterministic: a reproducibility check must pick the same records each run.
-    deepStrictEqual(evenSample(ids, 25), sample);
-    deepStrictEqual(evenSample(ids, 100), ids);
   });
 
   it("sanitises an error message, which routinely quotes upstream data", async () => {

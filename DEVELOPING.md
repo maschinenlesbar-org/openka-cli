@@ -315,6 +315,15 @@ What the library now computes that a `ka` action used to compute on its own:
   `artifact()`, so `verifyRecord` with a plain `new TesseractJsPerceiver()` no
   longer reports a false non-reproduction. Both are extraction code: the digest
   moved and the goldens were re-frozen.
+- **Verifying a corpus** — `verifyCorpus({ store, ids?, all?, limit? })`
+  (`lib-verify`) picks the records (given ids, all, or `evenSample` of
+  `DEFAULT_VERIFY_SAMPLE`), verifies each and tallies `{ checked, reproduced,
+  unreadable, results }`; `assertVerified` is the verdict (`StoreError` when a record
+  was unreadable, else `OpenKaError`). `verifyRecord` now returns a corrupt record
+  as a failed row with `unreadable: true` instead of throwing, so a library loop no
+  longer stops at the first damaged file. An empty set is an `OpenKaError` ("No
+  records in …"). `ka verify` renders the report; its JSON gained the `unreadable`
+  count.
 - **The goldens gate** — `verifyGoldens({ dir?, workspace?, perceiver? })` (factory)
   re-extracts a fixture directory, or every package's `fixtures/`, and returns the
   `{ checked, passed, results }` tally `goldens verify --json` prints; an empty set

@@ -13,16 +13,25 @@ stamp. With verification inside `lib-repro` — where it used to live — that i
 dependency cycle. Separating the primitive (hash, canonical JSON, stamp) from the
 service (re-extract and compare) breaks it.
 
+`verifyCorpus({ store, ids?, all?, limit? })` is `ka verify`: given ids, every
+record, or an even sample (`evenSample`, `DEFAULT_VERIFY_SAMPLE`), tallied as
+`{ checked, reproduced, unreadable, results }`. A record whose file will not parse is
+a failed row marked `unreadable` — `verifyRecord` returns it rather than throwing —
+and the run carries on past it. `assertVerified(report)` is the verdict: a
+`StoreError` when anything was unreadable, else an `OpenKaError` when anything did
+not reproduce.
+
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-VerifyResult, VerifyOptions, verifyRecord, diffPaths
+VerifyResult, VerifyOptions, verifyRecord, DEFAULT_VERIFY_SAMPLE, evenSample, VerifyCorpusOptions, CorpusVerifyReport, verifyCorpus, assertVerified, diffPaths
 ```
 
 ## Depends on
 
+- `lib-errors` — the shared error hierarchy
 - `lib-extract` — the deterministic tier stack
 - `lib-models` — the canonical record schema, validators and the parliament table
 - `lib-perceive` — the Perceiver seam (OCR)

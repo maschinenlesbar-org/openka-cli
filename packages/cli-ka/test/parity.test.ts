@@ -37,6 +37,7 @@ import {
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
 import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { assertVerified, verifyCorpus } from "@maschinenlesbar.org/openka-lib-verify";
 import { rmSync } from "node:fs";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -1189,5 +1190,64 @@ describe("OCR engine setup (finding 10)", () => {
       process.env["PATH"] = path;
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe("verifying a corpus (finding 13)", () => {
+  /** One record, plus a second whose file is corrupt. */
+  const seedWithCorrupt = (corpus: string): void => {
+    seedOneRecord(corpus);
+    const store = new FileStore(corpus);
+    const other = sampleRecord({ id: "berlin-19-22222", reference: "19/22222" });
+    store.putRecord(other);
+    indexRecord(store, other);
+    store.flushCatalog();
+    writeFileSync(join(corpus, "records", "berlin-19-22222.json"), '{"broken');
+  };
+
+  const cases: [string, string[], { all?: boolean; ids?: string[] }][] = [
+    ["verify --all", ["--all"], { all: true }],
+    ["verify of the corrupt record", ["berlin-19-22222"], { ids: ["berlin-19-22222"] }],
+    ["the default sample", [], {}],
+  ];
+  for (const [label, argv, lib] of cases) {
+    it(`${label}: the same rows, and the same unreadable verdict`, async () => {
+      let report: unknown;
+      const result = await parity({
+        seed: seedWithCorrupt,
+        argv: (corpus) => ["--compact", "--corpus", corpus, "verify", ...argv, "--json"],
+        lib: async ({ store }) => {
+          report = await verifyCorpus({ store, env: {}, ...lib });
+          assertVerified(report as Awaited<ReturnType<typeof verifyCorpus>>);
+        },
+      });
+      strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+      deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify(report)));
+      ok(!result.lib.ok);
+      deepStrictEqual(result.lib.error.name, "StoreError");
+      strictEqual(result.cli.err, `Error: ${result.lib.error.message}`);
+      ok(/unreadable$/.test(result.lib.error.message), result.lib.error.message);
+    });
+  }
+
+  it("calls a corpus with no records an error on both sides", async () => {
+    let cliRoot = "";
+    let libRoot = "";
+    const result = await parity({
+      seed: (corpus) => {
+        new FileStore(corpus).flushCatalog();
+      },
+      argv: (corpus) => {
+        cliRoot = corpus;
+        return ["--corpus", corpus, "verify"];
+      },
+      lib: ({ store }) => {
+        libRoot = store.root;
+        return verifyCorpus({ store, env: {} });
+      },
+    });
+    strictEqual(result.cli.code, 1, result.cli.err);
+    strictEqual(result.cli.err, `Error: No records in ${resolve(cliRoot)}`);
+    deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: `No records in ${libRoot}` }, requests: [] });
   });
 });

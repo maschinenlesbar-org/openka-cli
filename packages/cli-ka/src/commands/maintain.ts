@@ -3,8 +3,7 @@
 
 import type { Command } from "commander";
 import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
-import { verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
-import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
+import { DEFAULT_VERIFY_SAMPLE, assertVerified, verifyCorpus } from "@maschinenlesbar.org/openka-lib-verify";
 import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
@@ -16,87 +15,48 @@ import { pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
 
-/**
- * An evenly spaced selection across a sorted list — the default `ka verify` sample.
- *
- * `slice(0, n)` was not a sample: record ids sort by parliament, so it checked the
- * same alphabetically-first records on every run and whole Länder were never
- * verified at all. Stepping through the range keeps the choice deterministic (the
- * same corpus always yields the same sample, which a reproducibility check needs)
- * while covering every part of it.
- */
-export function evenSample(ids: string[], count: number): string[] {
-  if (count >= ids.length) return ids;
-  const step = ids.length / count;
-  const out: string[] = [];
-  for (let i = 0; i < count; i++) out.push(ids[Math.floor(i * step)] as string);
-  return out;
-}
-
 export function registerMaintain(program: Command, deps: CliDeps): void {
   program
     .command("verify")
     .description("re-run an extraction from the archived bytes and assert identical output")
     .argument("[id]", "record id; omit to verify an evenly spaced sample of the corpus", parseRecordId)
     .option("--all", "verify every record")
-    .option("--limit <n>", "how many records to verify when no id is given", parseBoundedInt(1, 1_000_000))
+    .option("--limit <n>", `how many records to verify when no id is given (default: ${DEFAULT_VERIFY_SAMPLE})`, parseBoundedInt(1, 1_000_000))
     .addOption(choiceOption("--ocr <mode>", "OCR engine to use for records produced with one", OCR_MODES))
     .option("--json", "print results as JSON")
     .action(
       action(deps, async (ctx, positionals) => {
         const store = ctx.existingStore();
-        const all = store.recordIds();
-        const ids =
-          positionals[0] !== undefined
-            ? [positionals[0]]
-            : ctx.opts["all"] === true
-              ? all
-              : evenSample(all, (ctx.opts["limit"] as number | undefined) ?? 25);
-        if (ids.length === 0) throw new OpenKaError(`No records in ${ctx.corpusRoot()}`);
-
         const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
         const perceiver = mode === "off" ? undefined : await createPerceiver(mode);
-
-        const results = [];
-        let unreadable = 0;
-        for (const id of ids) {
-          try {
-            results.push(
-              await verifyRecord(id, { store, ...(perceiver === undefined ? {} : { perceiver }), env: ctx.deps.env }),
-            );
-          } catch (err) {
-            // `verify --all` is the natural tool for finding a corrupt record, and it
-            // stopped at the first one: the rest were never checked.
-            if (!(err instanceof StoreError)) throw err;
-            unreadable++;
-            results.push({
-              id,
-              ok: false,
-              reason: err.message,
-              differences: [] as string[],
-              storedVersion: "unknown",
-              currentVersion: extractorVersion(ctx.deps.env),
-            });
-          }
-        }
-        const failed = results.filter((result) => !result.ok);
+        // Which records, the corrupt-record rows, "no records" and the verdict
+        // are the library's (verifyCorpus, assertVerified); this only renders.
+        const report = await verifyCorpus({
+          store,
+          env: ctx.deps.env,
+          ...(perceiver === undefined ? {} : { perceiver }),
+          ...(positionals[0] !== undefined
+            ? { ids: [positionals[0]] }
+            : ctx.opts["all"] === true
+              ? { all: true }
+              : ctx.opts["limit"] === undefined
+                ? {}
+                : { limit: ctx.opts["limit"] as number }),
+        });
 
         if (ctx.opts["json"] === true) {
-          printJson(ctx, { checked: results.length, reproduced: results.length - failed.length, results });
+          printJson(ctx, report);
         } else {
-          for (const result of failed) {
+          for (const result of report.results.filter((result) => !result.ok)) {
             ctx.deps.io.out(`FAIL ${result.id}: ${result.reason ?? "mismatch"}`);
             for (const path of result.differences.slice(0, 10)) ctx.deps.io.out(`       differs at ${path}`);
             if (result.differences.length > 10) {
               ctx.deps.io.out(`       … and ${result.differences.length - 10} more fields`);
             }
           }
-          ctx.deps.io.out(`${results.length - failed.length}/${results.length} record(s) reproduced byte-identically.`);
+          ctx.deps.io.out(`${report.reproduced}/${report.checked} record(s) reproduced byte-identically.`);
         }
-        if (unreadable > 0) {
-          throw new StoreError(`${failed.length} record(s) did not reproduce, ${unreadable} of them unreadable`);
-        }
-        if (failed.length > 0) throw new OpenKaError(`${failed.length} record(s) did not reproduce`);
+        assertVerified(report);
       }),
     );
 

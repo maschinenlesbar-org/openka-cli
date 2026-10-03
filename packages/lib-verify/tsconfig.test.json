@@ -12,10 +12,16 @@
       "path": "./tsconfig.json"
     },
     {
+      "path": "../lib-errors"
+    },
+    {
       "path": "../lib-extract"
     },
     {
       "path": "../lib-repro"
+    },
+    {
+      "path": "../lib-store"
     },
     {
       "path": "../lib-testing"
