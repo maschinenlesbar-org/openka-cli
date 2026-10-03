@@ -170,6 +170,24 @@ a subprocess, touches the network, or reads the clock.
 A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
 place a trained model may run at execution time.
 
+## The library validates its own inputs
+
+Every rule about what a caller may pass lives in the library, not in a `ka` value
+parser, so the published entry gives a library caller the same answer the CLI gives.
+A rule is a pure `Problem` function (`(value) => reason | undefined`, in the package
+that owns the concept); the library function calls `assertValid(name, value,
+problem)` from `lib-errors` before it fetches, writes or reads anything, and the CLI's
+commander parser calls the same `Problem` and turns its reason into an
+`InvalidArgumentError`. The library throws **`OpenKaValidationError`** (a
+`UsageError`, message `Invalid <name>: <reason>`); a promise-returning function
+rejects rather than throwing synchronously. Both `run()` and `runFactory()` map it to
+exit 2, printed as `Error: <message>`.
+
+`packages/cli-ka/test/helpers.ts` has the `parity()` helper: one input through
+`run()`/`runFactory()` and through the library call, on one recording transport and
+identically seeded corpora. Every such rule gets a parity test in
+`packages/cli-ka/test/parity.test.ts`.
+
 ## Reproducibility, concretely
 
 The claim is "same input → byte-identical output". Three things make it true rather

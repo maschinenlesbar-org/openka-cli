@@ -59,6 +59,8 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return err.status === 404 ? EXIT_NOT_FOUND : EXIT_ERROR;
     }
+    // Includes OpenKaValidationError: an input a library function refused is a
+    // usage error, the same as one commander's value parser refused.
     if (err instanceof UsageError) {
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_USAGE;

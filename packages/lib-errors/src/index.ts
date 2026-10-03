@@ -62,6 +62,22 @@ export class StoreError extends OpenKaError {}
 export class UsageError extends OpenKaError {}
 
 /**
+ * An input the library refuses before doing anything with it: a blank option, an
+ * unknown enum value, an out-of-range number. A `UsageError` — so it exits 2 like
+ * one, and every existing `instanceof UsageError` check keeps catching it — whose
+ * message reads `Invalid <name>: <reason>`. `reason` is the bare sentence, which is
+ * what a CLI value parser prints after commander's own prefix.
+ */
+export class OpenKaValidationError extends UsageError {
+  readonly reason: string;
+
+  constructor(message: string, options: { reason: string; cause?: unknown }) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+    this.reason = options.reason;
+  }
+}
+
+/**
  * An extractor refused to produce a value it could not derive with certainty.
  * Carrying this as an error type (rather than a null) keeps "we do not know" from
  * being mistaken for "there is nothing there" anywhere on the line.
@@ -76,3 +92,5 @@ export class AbstainError extends OpenKaError {
     this.reason = reason;
   }
 }
+
+export { assertValid, isBlank, nonBlankProblem, BLANK_REASON, type Problem } from "./validate.js";

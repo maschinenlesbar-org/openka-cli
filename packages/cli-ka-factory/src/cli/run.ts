@@ -1,7 +1,7 @@
 // argv in, exit code out — the factory's equivalent of `src/cli/run.ts`.
 
 import { CommanderError } from "commander";
-import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, OpenKaValidationError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE } from "@maschinenlesbar.org/openka-cli-ka";
 import { defaultDeps, sanitizeForTerminal, type CliDeps } from "@maschinenlesbar.org/openka-cli-ka";
 import { buildFactoryProgram } from "./program.js";
@@ -24,6 +24,12 @@ export async function runFactory(argv: string[], deps: CliDeps = defaultDeps): P
     return EXIT_OK;
   } catch (err) {
     if (err instanceof CommanderError) return err.exitCode === 0 ? EXIT_OK : EXIT_USAGE;
+    // An input the library refused is a usage error wherever it was caught: at
+    // parse time by commander, or here, when a library function rejects it.
+    if (err instanceof OpenKaValidationError) {
+      deps.io.err(`Error: ${err.message}`);
+      return EXIT_USAGE;
+    }
     if (err instanceof StoreError) {
       deps.io.err(`Error: ${err.message}`);
       return EXIT_STORE;
