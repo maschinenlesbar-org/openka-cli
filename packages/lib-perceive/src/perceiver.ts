@@ -11,6 +11,7 @@
 // The default implementation abstains on everything. That is "strict mode" from the
 // concept: no neural component on the line at all, at the cost of coverage on scans.
 
+import { assertValid, nonBlankProblem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { ModelArtifact } from "@maschinenlesbar.org/openka-lib-models";
 
 export interface PerceiveInput {
@@ -55,3 +56,23 @@ export const abstainingPerceiver: Perceiver = {
     reason: `strict mode: no OCR model is enabled, page ${input.page} not read`,
   }),
 };
+
+/** The options both Tesseract perceivers take. */
+export interface PerceiverOptions {
+  language?: string;
+  requireVersion?: string;
+  traineddataPath?: string;
+}
+
+/**
+ * Refuse a present-but-blank option with `OpenKaValidationError`. An omitted one
+ * means the default (`deu`, any version, the binary's own traineddata); a blank one
+ * is a mistake, and accepting it stamped a provenance naming no language
+ * (`tesseract-5.3.4+`) or failed late with an empty slot in the message. Both
+ * perceiver constructors call this first.
+ */
+export function assertPerceiverOptions(options: PerceiverOptions): void {
+  assertValid("language", options.language, nonBlankProblem);
+  assertValid("requireVersion", options.requireVersion, nonBlankProblem);
+  assertValid("traineddataPath", options.traineddataPath, nonBlankProblem);
+}

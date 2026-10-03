@@ -13,6 +13,11 @@ nothing installs it for you, so the line keeps its zero-required-runtime-depende
 property — and it is imported dynamically, so a corpus built without OCR never loads
 a 10 MB WASM module.
 
+Both constructors refuse a present-but-blank `language`, `requireVersion` or
+`traineddataPath` with `OpenKaValidationError` (`assertPerceiverOptions`): an omitted
+option means the default, a blank one is a mistake that used to stamp a provenance
+naming no language.
+
 This package is part of the **extraction digest**: changing it changes what a
 document turns into, so `npm run stamp` and a golden re-freeze are required.
 
@@ -35,7 +40,7 @@ dead coverage wearing a green tick.
 Everything is re-exported from the package root:
 
 ```
-PerceiveInput, PerceiveOutput, Perceiver, abstainingPerceiver, TesseractOptions, TesseractCliPerceiver, TesseractJsOptions, TesseractJsPerceiver
+PerceiveInput, PerceiveOutput, Perceiver, abstainingPerceiver, PerceiverOptions, assertPerceiverOptions, TesseractOptions, TesseractCliPerceiver, TesseractJsOptions, TesseractJsPerceiver
 ```
 
 ## Depends on

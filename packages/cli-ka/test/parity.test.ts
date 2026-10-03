@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { EXIT_USAGE, run } from "../src/run.js";
+import { TesseractCliPerceiver, TesseractJsPerceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { cliHarness } from "./harness.js";
 import { parity } from "./helpers.js";
 
@@ -45,4 +46,36 @@ describe("the parity helper", () => {
     deepStrictEqual(result.cli.requests, []);
     deepStrictEqual(result.lib, { ok: false, error: { name: "UsageError", message: "refused" }, requests: [] });
   });
+});
+
+describe("blank OCR options (finding 11)", () => {
+  const cases = [
+    { flag: "--ocr-language", option: "language" },
+    { flag: "--ocr-version", option: "requireVersion" },
+    { flag: "--ocr-traineddata", option: "traineddataPath" },
+  ] as const;
+
+  for (const { flag, option } of cases) {
+    for (const blank of ["", "  "]) {
+      it(`refuses ${flag} ${JSON.stringify(blank)} on both sides, before any request`, async () => {
+        for (const [mode, Perceiver] of [
+          ["tesseract", TesseractCliPerceiver],
+          ["tesseract-js", TesseractJsPerceiver],
+        ] as const) {
+          const result = await parity({
+            argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--ocr", mode, flag, blank],
+            lib: () => new Perceiver({ [option]: blank }),
+          });
+          strictEqual(result.cli.code, EXIT_USAGE);
+          ok(result.cli.err.includes("Expected a non-empty value."), result.cli.err);
+          deepStrictEqual(result.cli.requests, []);
+          deepStrictEqual(result.lib, {
+            ok: false,
+            error: { name: "OpenKaValidationError", message: `Invalid ${option}: Expected a non-empty value.` },
+            requests: [],
+          });
+        }
+      });
+    }
+  }
 });

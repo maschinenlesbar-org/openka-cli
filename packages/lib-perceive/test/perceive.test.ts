@@ -6,12 +6,13 @@
 // seam exists to enforce — a pinned version, hashed weights, no silent guessing,
 // and an abstention whenever any of that cannot be honoured.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, doesNotThrow, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TesseractCliPerceiver, TesseractJsPerceiver, abstainingPerceiver } from "../src/index.js";
+import { OpenKaValidationError } from "@maschinenlesbar.org/openka-lib-errors";
+import { TesseractCliPerceiver, TesseractJsPerceiver, abstainingPerceiver, assertPerceiverOptions } from "../src/index.js";
 
 const page = { data: Buffer.from("not really an image"), format: "jpeg", page: 3 };
 
@@ -219,5 +220,30 @@ describe("tesseract.js, the optional peer", () => {
     const brokenOut = await broken.recognize(page);
     strictEqual(brokenOut.abstained, true);
     match(brokenOut.reason ?? "", /tesseract\.js failed on page 3: wasm out of memory/);
+  });
+});
+
+describe("the options both perceivers share", () => {
+  // A blank language used to be passed straight to `tesseract -l ""` and stamped
+  // into the provenance as `tesseract-5.3.4+`, a record naming no language; a
+  // blank version or traineddata path failed late with an empty slot in the
+  // message. Omitting an option means the default; a blank one is a mistake.
+  const options = ["language", "requireVersion", "traineddataPath"] as const;
+
+  it("refuses a present-but-blank value, naming the option", () => {
+    for (const option of options) {
+      for (const blank of ["", "  "]) {
+        const expected = (error: unknown): boolean =>
+          error instanceof OpenKaValidationError && error.message === `Invalid ${option}: Expected a non-empty value.`;
+        throws(() => assertPerceiverOptions({ [option]: blank }), expected, `${option}=${JSON.stringify(blank)}`);
+        throws(() => new TesseractCliPerceiver({ [option]: blank }), expected, `cli ${option}=${JSON.stringify(blank)}`);
+        throws(() => new TesseractJsPerceiver({ [option]: blank }), expected, `js ${option}=${JSON.stringify(blank)}`);
+      }
+    }
+  });
+
+  it("lets an omitted option fall back to its default", () => {
+    doesNotThrow(() => assertPerceiverOptions({}));
+    doesNotThrow(() => assertPerceiverOptions({ language: "deu", requireVersion: "5.3.4", traineddataPath: "/x/deu.traineddata" }));
   });
 });

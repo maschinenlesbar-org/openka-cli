@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { ModelArtifact } from "@maschinenlesbar.org/openka-lib-models";
-import type { PerceiveInput, PerceiveOutput, Perceiver } from "./perceiver.js";
+import { assertPerceiverOptions, type PerceiveInput, type PerceiveOutput, type Perceiver } from "./perceiver.js";
 
 /** The shape of `tesseract.js` this perceiver uses — kept minimal on purpose. */
 interface TesseractJsModule {
@@ -47,6 +47,7 @@ export class TesseractJsPerceiver implements Perceiver {
   private loadError: string | undefined;
 
   constructor(options: TesseractJsOptions = {}) {
+    assertPerceiverOptions(options);
     this.language = options.language ?? "deu";
     this.requireVersion = options.requireVersion;
     this.traineddataPath = options.traineddataPath;

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { ModelArtifact } from "@maschinenlesbar.org/openka-lib-models";
-import type { PerceiveInput, PerceiveOutput, Perceiver } from "./perceiver.js";
+import { assertPerceiverOptions, type PerceiveInput, type PerceiveOutput, type Perceiver } from "./perceiver.js";
 
 export interface TesseractOptions {
   /** Binary name or absolute path. */
@@ -41,6 +41,7 @@ export class TesseractCliPerceiver implements Perceiver {
   private cachedVersion: string | undefined;
 
   constructor(options: TesseractOptions = {}) {
+    assertPerceiverOptions(options);
     this.binary = options.binary ?? "tesseract";
     this.language = options.language ?? "deu";
     this.psm = options.psm ?? 1;

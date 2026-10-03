@@ -188,6 +188,12 @@ exit 2, printed as `Error: <message>`.
 identically seeded corpora. Every such rule gets a parity test in
 `packages/cli-ka/test/parity.test.ts`.
 
+What the library rejects with `OpenKaValidationError`, so far:
+
+- **A blank OCR option** — `language`, `requireVersion` or `traineddataPath` given as
+  `""` or whitespace to `TesseractCliPerceiver` / `TesseractJsPerceiver`
+  (`assertPerceiverOptions`, `lib-perceive`). An omitted one still means the default.
+
 ## Reproducibility, concretely
 
 The claim is "same input → byte-identical output". Three things make it true rather
