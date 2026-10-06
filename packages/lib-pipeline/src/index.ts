@@ -355,10 +355,38 @@ async function syncRef(
   }
 
   const { record } = await extract(request);
+  // A person's `human_verified` mark is the one thing re-extraction cannot
+  // reproduce. It survives a re-extraction that changed nothing a person checked
+  // (`--force` over the same bytes and extractor); when the content did change,
+  // the mark goes and the report says so, since what was checked is gone.
+  if (existing?.extraction.review_status === "human_verified") {
+    if (sameContent(existing, record)) record.extraction.review_status = "human_verified";
+    else {
+      run.warnings.push(
+        `${ref.reference}: was marked human_verified; the re-extracted record differs, so the mark was dropped — ` +
+          "check it again (`ka review --mark-verified`)",
+      );
+    }
+  }
   store.putRecord(record);
   // The postings in the index are the stored record's, which putRecord just replaced.
   indexRecord(store, record, existing);
   return { id: record.id, action: "stored", bytesFetched, record };
+}
+
+/**
+ * Whether two extractions of one record say the same thing: equal apart from the
+ * review mark and the instants the documents were fetched at, which a re-fetch of
+ * the same bytes moves without changing a word.
+ */
+function sameContent(a: KaRecord, b: KaRecord): boolean {
+  const comparable = (record: KaRecord): string =>
+    canonicalJson({
+      ...record,
+      extraction: { ...record.extraction, review_status: "<mark>" },
+      source_documents: record.source_documents.map(({ retrieved_at: _retrievedAt, ...document }) => document),
+    });
+  return comparable(a) === comparable(b);
 }
 
 /**

@@ -112,7 +112,9 @@ ka review --mark-verified berlin-19-10041     # a person checked it against the 
 ```
 
 Marking a record verified does **not** fill its holes; it records that someone
-looked. `ka verify` knows this and does not treat it as a mismatch. A verified record
+looked. The mark survives `ka sync --force` when re-extraction yields the same record
+(same bytes, same extractor); when the record changes, the mark is dropped and the sync
+warns, since what was checked is no longer what is stored. `ka verify` knows this and does not treat it as a mismatch. A verified record
 leaves the queue, but `ka search --needs-review` still finds it: that filter selects
 records with abstained fields, verified or not.
 

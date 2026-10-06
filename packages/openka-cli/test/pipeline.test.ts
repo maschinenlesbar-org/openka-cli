@@ -25,7 +25,7 @@ import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connect
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
-import { FileStore, catalogGaps, indexRecord, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, catalogGaps, indexRecord, markHumanVerified, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
@@ -374,6 +374,29 @@ describe("sync pipeline", () => {
     const afterSync = store.shardNames().map((shard) => [shard, store.loadShard(shard)] as const);
     reindexAll(store);
     deepStrictEqual(afterSync, store.shardNames().map((shard) => [shard, store.loadShard(shard)] as const));
+  });
+
+  // Finding 02#5: `--force` over unchanged bytes dropped a person's mark.
+  it("keeps a human_verified mark through --force when nothing changed, and says when it drops one", async () => {
+    const store = new MemoryStore();
+    const engine = (body: Buffer) => testEngine(scriptedTransport([{ match: ".pdf", body }]).transport);
+    await sync({ source: new StubSource(), store, engine: engine(PDF), now: () => new Date("2026-01-02T03:04:05Z") });
+    markHumanVerified(store, "berlin-19-10006");
+    const forced = await sync({ source: new StubSource(), store, engine: engine(PDF), force: true, now: () => new Date("2026-02-03T04:05:06Z") });
+    strictEqual(forced.stored, 1);
+    strictEqual(store.getRecord("berlin-19-10006")?.extraction.review_status, "human_verified");
+    strictEqual(store.catalogEntry("berlin-19-10006")?.review_status, "human_verified");
+    deepStrictEqual(forced.warnings, []);
+
+    const other = fixturesOf("@maschinenlesbar.org/openka-connector-berlin", import.meta.url).readFixture(
+      "berlin",
+      "berlin-19-10041",
+      "1b11b97d7fbfc91f18ac5b101752d8dc25e39c5c64d76858f4b838c6bccc64c0.bin",
+    );
+    const changed = await sync({ source: new StubSource(), store, engine: engine(other) });
+    strictEqual(changed.stored, 1);
+    ok(store.getRecord("berlin-19-10006")?.extraction.review_status !== "human_verified");
+    ok(changed.warnings.some((warning) => /19\/10006: was marked human_verified; .* the mark was dropped/.test(warning)), changed.warnings.join("\n"));
   });
 
   it("refuses a second sync on a corpus another sync is writing", async () => {

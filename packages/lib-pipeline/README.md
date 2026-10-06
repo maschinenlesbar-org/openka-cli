@@ -45,6 +45,13 @@ what an interrupted run left behind, before the checkpoints — is indexed again
 counted in `recatalogued`, so the next sync over the window repairs it; before, every
 later run called it "unchanged" and it stayed invisible to search, stats and export.
 
+## A person's mark
+
+A record a person marked `human_verified` keeps the mark when it is re-extracted
+(`force`, an extractor upgrade) into the same content — equal apart from the mark and
+the documents' `retrieved_at`. When the content changed, the mark is dropped and the
+report carries a warning naming the record.
+
 ## robots.txt
 
 Every document URL is checked against its host's `robots.txt` before it is fetched,
