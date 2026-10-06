@@ -99,8 +99,9 @@ ka verify --all --json           # everything, machine-readable
 
 Re-runs the extraction from the archived bytes and asserts the canonical output is
 byte-identical. Exits non-zero if any record does not reproduce. A record that cannot
-be read is reported as a `FAIL` and the rest are still checked; the exit code is then
-3, the corpus-problem code. The JSON report counts those rows as `unreadable`, and
+be read — a corrupt record file, or archived bytes that are missing or no longer hash
+to their name — is reported as a `FAIL` and the rest are still checked; the exit code
+is then 3, the corpus-problem code, as `ka open` gives for the same missing file. The JSON report counts those rows as `unreadable`, and
 marks each with `"unreadable": true`.
 
 ## `ka review`

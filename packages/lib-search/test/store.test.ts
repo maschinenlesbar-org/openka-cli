@@ -381,6 +381,18 @@ describe("file store", () => {
     }
   });
 
+  it("names a file it cannot remove as a corpus problem, not an unexpected error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-remove-"));
+    try {
+      const store = new FileStore(dir);
+      // A directory where a shard file should be: rmSync refuses it, like EACCES would.
+      mkdirSync(join(dir, "index", "tokens", "ab.json", "x"), { recursive: true });
+      throws(() => store.saveShard("ab", {}), (err: unknown) => err instanceof StoreError && /Could not remove .*ab\.json/.test((err as Error).message));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps per-source state", () => {
     store.putSourceState({ source: "berlin", http_cache: { "https://x": { etag: '"1"' } }, last_sync: "2026-01-01T00:00:00Z" });
     strictEqual(store.getSourceState("berlin").http_cache["https://x"]?.etag, '"1"');

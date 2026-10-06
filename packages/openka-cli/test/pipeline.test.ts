@@ -646,6 +646,8 @@ describe("ka verify", () => {
     const result = await verifyRecord("berlin-19-10006", { store, env: {} });
     strictEqual(result.ok, false);
     match(result.reason ?? "", /archived bytes .* are missing/);
+    // A corpus problem, as `ka open` calls it (finding 02#6): exit 3, not 1.
+    strictEqual(result.unreadable, true);
   });
 
   it("detects a tampered record and names the field", async () => {

@@ -198,9 +198,9 @@ export class FileStore implements Store {
    * corpus corruption rather than an interrupted run.
    */
   private writeAtomic(path: string, data: Buffer | string): void {
-    mkdirSync(dirname(path), { recursive: true });
     const temporary = `${path}.tmp-${process.pid}`;
     try {
+      mkdirSync(dirname(path), { recursive: true });
       writeFileSync(temporary, data);
       renameSync(temporary, path);
     } catch (err) {
@@ -296,7 +296,21 @@ export class FileStore implements Store {
   }
 
   deleteRecord(id: string): void {
-    rmSync(this.recordPath(id), { force: true });
+    this.remove(this.recordPath(id));
+  }
+
+  /**
+   * Remove a file, as a `StoreError` when it cannot be: a read-only corpus made
+   * `ka reindex` fail with "Unexpected error: EACCES" (exit 1) at the first shard
+   * it emptied, where every other write names the corpus problem (exit 3).
+   */
+  private remove(path: string): void {
+    try {
+      rmSync(path, { force: true });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new StoreError(`Could not remove ${path}: ${reason}`, { cause: err });
+    }
   }
 
   /**
@@ -444,7 +458,7 @@ export class FileStore implements Store {
     assertSafeKey(shard, "index shard");
     const path = this.path("index", "tokens", `${shard}.json`);
     if (Object.keys(data).length === 0) {
-      rmSync(path, { force: true });
+      this.remove(path);
       return;
     }
     this.writeJson(path, data);

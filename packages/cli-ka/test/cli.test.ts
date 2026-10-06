@@ -205,7 +205,7 @@ describe("ka", () => {
       const digest = store.getRecord("berlin-19-10006")?.source_documents[0]?.sha256;
       ok(digest !== undefined);
       writeFileSync(store.blobPath(digest), "%PDF-1.4 not the archived document");
-      strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_ERROR);
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_STORE);
       match(harness.stdout(), /FAIL berlin-19-10006: archived bytes for .* are unreadable: .* are corrupt: they hash to [0-9a-f]{64}, not to their name/);
       doesNotMatch(harness.stdout(), /different bytes with the same extractor version/);
       harness.err.length = 0;
@@ -279,6 +279,21 @@ describe("ka", () => {
       strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
       release();
       strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("calls a missing archived document a corpus problem in verify, as open does", async () => {
+    const harness = await seeded();
+    try {
+      const record = new FileStore(harness.corpus).getRecord("berlin-19-10006");
+      const digest = record?.source_documents[0]?.sha256;
+      ok(digest !== undefined);
+      rmSync(join(harness.corpus, "blobs", digest.slice(0, 2), `${digest}.bin`));
+      strictEqual(await run(["--corpus", harness.corpus, "open", "berlin-19-10006"], harness.deps), EXIT_STORE);
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_STORE);
+      match(harness.stdout(), /FAIL berlin-19-10006: archived bytes .* are missing/);
     } finally {
       harness.cleanup();
     }

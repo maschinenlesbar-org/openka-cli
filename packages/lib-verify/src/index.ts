@@ -26,9 +26,9 @@ export interface VerifyResult {
   /** The extractor version this run used. */
   currentVersion: string;
   /**
-   * Set when the stored record itself could not be read (a corrupt file): the
-   * corpus is damaged, which is a different finding from a record that does not
-   * reproduce.
+   * Set when the stored record or the archived bytes it was built from could not
+   * be read (a corrupt file, a missing or altered blob): the corpus is damaged,
+   * which is a different finding from a record that does not reproduce.
    */
   unreadable?: true;
 }
@@ -72,7 +72,7 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
   for (const document of stored.source_documents) {
     if (document.sha256 === undefined) continue;
     if (!options.store.hasBlob(document.sha256)) {
-      return { ...base, reason: `archived bytes for ${document.url} (${document.sha256}) are missing` };
+      return { ...base, unreadable: true, reason: `archived bytes for ${document.url} (${document.sha256}) are missing` };
     }
     let bytes: Buffer;
     try {
@@ -82,7 +82,7 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
       // be re-extracted into anything meaningful; "the extractor is
       // non-deterministic" would name the wrong culprit.
       const reason = err instanceof Error ? err.message : String(err);
-      return { ...base, reason: `archived bytes for ${document.url} are unreadable: ${reason}` };
+      return { ...base, unreadable: true, reason: `archived bytes for ${document.url} are unreadable: ${reason}` };
     }
     const fetched: FetchedDocument = {
       role: document.role,
@@ -217,8 +217,10 @@ export async function verifyCorpus(options: VerifyCorpusOptions): Promise<Corpus
 }
 
 /**
- * The verdict on a corpus run: a `StoreError` when any record could not be read
- * (the corpus is damaged), else an `OpenKaError` when any did not reproduce.
+ * The verdict on a corpus run: a `StoreError` when any record or its archived
+ * bytes could not be read (the corpus is damaged; `ka verify` exits 3, as `ka
+ * open` does for the same missing blob), else an `OpenKaError` when any did not
+ * reproduce.
  */
 export function assertVerified(report: CorpusVerifyReport): void {
   const failed = report.checked - report.reproduced;

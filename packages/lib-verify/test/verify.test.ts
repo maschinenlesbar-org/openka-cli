@@ -214,11 +214,14 @@ describe("verifying a corpus", () => {
       for (const n of ["1", "2", "3"]) store.putRecord(sampleRecord({ id: `berlin-19-${n}`, reference: `19/${n}` }));
       writeFileSync(join(root, "records", "berlin-19-2.json"), '{"broken');
       const report = await verifyCorpus({ store, env: {}, all: true });
-      deepStrictEqual([report.checked, report.unreadable], [3, 1]);
+      // One corrupt record file, and two records whose archived bytes were never
+      // stored here — all three a damaged corpus, not a mismatch (finding 02#6).
+      deepStrictEqual([report.checked, report.unreadable], [3, 3]);
+      match(report.results[0]?.reason ?? "", /archived bytes .* are missing/);
       deepStrictEqual(report.results.map((result) => result.id), ["berlin-19-1", "berlin-19-2", "berlin-19-3"]);
       strictEqual(report.reproduced, report.results.filter((result) => result.ok).length);
       throws(() => assertVerified(report), (error: unknown) =>
-        error instanceof StoreError && error.message === `${3 - report.reproduced} record(s) did not reproduce, 1 of them unreadable`);
+        error instanceof StoreError && error.message === "3 record(s) did not reproduce, 3 of them unreadable");
 
       const one = await verifyCorpus({ store, env: {}, ids: ["berlin-19-1"] });
       deepStrictEqual(one.results.map((result) => result.id), ["berlin-19-1"]);
