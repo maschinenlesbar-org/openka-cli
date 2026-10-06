@@ -356,7 +356,8 @@ async function syncRef(
 
   const { record } = await extract(request);
   store.putRecord(record);
-  indexRecord(store, record);
+  // The postings in the index are the stored record's, which putRecord just replaced.
+  indexRecord(store, record, existing);
   return { id: record.id, action: "stored", bytesFetched, record };
 }
 

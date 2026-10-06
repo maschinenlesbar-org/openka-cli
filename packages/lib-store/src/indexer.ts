@@ -73,9 +73,14 @@ export type IndexTarget = CatalogStore & IndexStore & RecordStore & LockableStor
  * twice. That matters after an interrupted sync, which wrote a record's postings
  * but never its catalog row — `unindexRecord` finds nothing to remove for a record
  * the catalog does not know, and re-indexing it used to double every posting.
+ *
+ * `previous` is the record whose postings are in the index now, when the caller
+ * has already replaced the file: a re-extraction writes the new record first, and
+ * reading the token set back from disk then found the *new* text, so the words
+ * only the old document had kept pointing at the record.
  */
-export function indexRecord(store: IndexTarget, record: KaRecord): void {
-  unindexRecord(store, record.id);
+export function indexRecord(store: IndexTarget, record: KaRecord, previous?: KaRecord): void {
+  unindexRecord(store, record.id, previous);
   const counts = termFrequencies(indexableFields(record));
   const byShard = new Map<string, [string, number][]>();
   for (const [token, tf] of counts) {
@@ -98,13 +103,17 @@ export function indexRecord(store: IndexTarget, record: KaRecord): void {
 }
 
 /**
- * Remove a record's postings. Reads the stored record to recover its token set;
- * when the record is already gone, falls back to scanning every shard, which is
- * slower but keeps the index honest rather than leaving dangling postings behind.
+ * Remove a record's postings. Reads the stored record to recover its token set —
+ * or takes `previous`, the record the index was built from, when the file has
+ * already been replaced; when the record is gone, falls back to scanning every
+ * shard, which is slower but keeps the index honest rather than leaving dangling
+ * postings behind. Without a catalog row and without `previous` there is nothing
+ * known to remove.
  */
-export function unindexRecord(store: IndexTarget, id: string): void {
-  if (store.catalogEntry(id) === undefined) return;
-  const record = store.getRecord(id);
+export function unindexRecord(store: IndexTarget, id: string, previous?: KaRecord): void {
+  const catalogued = store.catalogEntry(id) !== undefined;
+  if (!catalogued && previous === undefined) return;
+  const record = previous ?? store.getRecord(id);
   const shards =
     record !== undefined
       ? [...new Set([...termFrequencies(indexableFields(record)).keys()].map(shardOf))].sort()
@@ -123,7 +132,7 @@ export function unindexRecord(store: IndexTarget, id: string): void {
     }
     if (changed) store.saveShard(shard, data);
   }
-  store.removeCatalogEntry(id);
+  if (catalogued) store.removeCatalogEntry(id);
 }
 
 /** Where the catalog and the record files disagree — see `catalogGaps`. */

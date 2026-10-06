@@ -25,7 +25,7 @@ import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connect
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
-import { FileStore, catalogGaps, indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, catalogGaps, indexRecord, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
@@ -357,6 +357,23 @@ describe("sync pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  // Finding 02#4: a re-extraction read the new record back to decide which
+  // postings to remove, so the words only the old document had stayed in the index.
+  it("removes the old text's postings when a changed document is re-extracted", async () => {
+    const store = new MemoryStore();
+    const other = fixturesOf("@maschinenlesbar.org/openka-connector-berlin", import.meta.url).readFixture(
+      "berlin",
+      "berlin-19-10041",
+      "1b11b97d7fbfc91f18ac5b101752d8dc25e39c5c64d76858f4b838c6bccc64c0.bin",
+    );
+    await sync({ source: new StubSource(), store, engine: testEngine(scriptedTransport([{ match: ".pdf", body: PDF }]).transport) });
+    const replaced = await sync({ source: new StubSource(), store, engine: testEngine(scriptedTransport([{ match: ".pdf", body: other }]).transport) });
+    strictEqual(replaced.stored, 1);
+    const afterSync = store.shardNames().map((shard) => [shard, store.loadShard(shard)] as const);
+    reindexAll(store);
+    deepStrictEqual(afterSync, store.shardNames().map((shard) => [shard, store.loadShard(shard)] as const));
   });
 
   it("refuses a second sync on a corpus another sync is writing", async () => {
