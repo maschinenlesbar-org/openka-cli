@@ -46,7 +46,12 @@ the asker with `role: "Fraktion"`, because inventing a person would be worse.
 which is a separate file the record references but does not contain.
 
 **Verschlusssache / VS-NUR FÜR DEN DIENSTGEBRAUCH** — a classification marking.
-`markers.classified` records that a document carries one.
+`markers.classified` records that a document carries one, read from the marking as it
+is printed: a VS grade (`VS-NfD`, `VS – NUR FÜR DEN DIENSTGEBRAUCH`, `VS-Vertraulich`),
+a grade stamped in capitals (`GEHEIM`, `STRENG GEHEIM`, `VERSCHLUSSSACHE`), or a
+sentence that something is "als Verschlusssache" classified. The words in ordinary prose
+— "unterliegt der Geheimhaltung" under a statistics table, "die Angaben sind geheim" —
+do not set it.
 
 ## The systems
 

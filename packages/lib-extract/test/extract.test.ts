@@ -20,6 +20,7 @@ import {
   trimRestatedQuestions,
 } from "../src/segment.js";
 import {
+  isClassified,
   findDate,
   findMarkers,
   findMinistry,
@@ -764,6 +765,32 @@ describe("metadata rules", () => {
     const markers = findMarkers("siehe Anlage 2 und Anlage 10.\nVS-NUR FÜR DEN DIENSTGEBRAUCH");
     strictEqual(markers.classified, true);
     deepStrictEqual(markers.attachments_referenced, ["Anlage 2", "Anlage 10"]);
+  });
+
+  // Finding 01#5: the words, not the marking, set `classified` — a footnote about
+  // statistical confidentiality stamped a public Drucksache a Verschlusssache.
+  it("reads a classification marking as printed, and not the words it is made of", () => {
+    for (const text of [
+      "Antwort enthält eine Anlage, die als VS – NUR FÜR DEN DIENSTGEBRAUCH eingestuft ist.",
+      "Die Anlage 3 ist als VS-Vertraulich eingestuft und in der Geheimschutzstelle einsehbar.",
+      "VS-NfD",
+      "VS—GEHEIM",
+      "STRENG GEHEIM",
+      "Die Antwort ist als „Verschlusssache“ eingestuft.",
+    ]) {
+      strictEqual(isClassified(text), true, text);
+    }
+    for (const text of [
+      "Wert ist kleiner als 3 und unterliegt der Geheimhaltung bzw. ist aufgrund möglicher Differenzen",
+      "Der Wert unterliegt der statistischen Geheimhaltung.",
+      "Die Angaben sind geheim.",
+      "Das Protokoll ist nicht zur Veröffentlichung bestimmt.",
+      "Das Verfahren zur Verschlusssache wird in der VSA geregelt.",
+      "Geheimdienste und Geheimhaltungspflichten",
+      "Bayern vs. Berlin – geheim",
+    ]) {
+      strictEqual(isClassified(text), false, text);
+    }
   });
 
   it("does not read an attachment out of the word after Anlage", () => {

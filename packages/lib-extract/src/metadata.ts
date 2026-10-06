@@ -254,7 +254,35 @@ export interface DocumentMarkers {
   attachments_referenced: string[];
 }
 
-const CLASSIFIED = /\b(?:VS[ -]?(?:NUR F(?:Ü|UE)R DEN DIENSTGEBRAUCH|VERTRAULICH)|VERSCHLUSSSACHE|GEHEIM(?:HALTUNG)?|NICHT ZUR VER(?:Ö|OE)FFENTLICHUNG)\b/i;
+/**
+ * A classification marking, as it is printed — not the words it is made of.
+ *
+ * The rule used to be the words, case-insensitive and anywhere: a Schleswig-Holstein
+ * table footnote "Wert ist kleiner als 3 und unterliegt der Geheimhaltung" (statistical
+ * confidentiality) stamped a public Drucksache "Als Verschlusssache gekennzeichnet",
+ * and so did "Die Angaben sind geheim." and "nicht zur Veröffentlichung bestimmt" —
+ * while the printed form "VS – NUR FÜR DEN DIENSTGEBRAUCH", with its en dash, was
+ * missed. A marking is one of three shapes:
+ *
+ * - a VS grade: `VS` in capitals, a dash (hyphen, en or em, spaced or not), then the grade —
+ *   "VS-NfD", "VS – NUR FÜR DEN DIENSTGEBRAUCH", "VS-Vertraulich";
+ * - a grade stamped in capitals on its own: GEHEIM, STRENG GEHEIM, VERSCHLUSSSACHE
+ *   (case-sensitive: "geheim" in a sentence is an adjective);
+ * - a sentence saying something is "als Verschlusssache" classified or marked.
+ */
+const VS_MARK = /(?<![\p{L}\p{N}])VS[ \t]*[-–—][ \t]*/gu;
+const VS_GRADE = /^(?:NfD|(?:streng[ \t]+)?geheim|vertraulich|nur[ \t]+f(?:ü|ue)r[ \t]+den[ \t]+dienstgebrauch)(?![\p{L}\p{N}])/iu;
+const STAMP = /(?<![\p{L}\p{N}])(?:STRENG GEHEIM|GEHEIM|VERSCHLUSSSACHE)(?![\p{L}\p{N}])/u;
+const AS_CLASSIFIED = /(?<![\p{L}\p{N}])als[ \t]+[„"»]?Verschlusssache(?![\p{L}\p{N}])/iu;
+
+/** Whether `text` carries a classification marking — see `VS_MARK`. */
+export function isClassified(text: string): boolean {
+  // "VS" in capitals, so "vs." (versus) never starts one; the grade in any case.
+  for (const match of text.matchAll(VS_MARK)) {
+    if (VS_GRADE.test(text.slice(match.index + match[0].length))) return true;
+  }
+  return STAMP.test(text) || AS_CLASSIFIED.test(text);
+}
 
 /**
  * What an attachment is numbered with: one or two digits, or an upper-case Roman
@@ -290,7 +318,7 @@ export function findMarkers(text: string): DocumentMarkers {
 
   const columnar = text.split("\n").filter((line) => /\S {3,}\S.* {3,}\S/.test(line)).length;
   return {
-    classified: CLASSIFIED.test(text),
+    classified: isClassified(text),
     contains_tables: columnar >= 3 || /\bTabelle\b/.test(text),
     attachments_referenced: [...attachments].sort((a, b) =>
       a.localeCompare(b, "de", { numeric: true, sensitivity: "base" }),
