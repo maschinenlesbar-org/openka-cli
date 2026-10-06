@@ -27,7 +27,7 @@ import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "@maschinenlesbar.org/openka-lib-pdf";
 import { textForSegmentation } from "./pages.js";
-import { findMarkers, findMinistry } from "./metadata.js";
+import { findMarkers, findMinistry, readAnfrageHead } from "./metadata.js";
 import {
   RULE_SETS,
   checkSegments,
@@ -186,6 +186,22 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
     if (ministry !== undefined) answeredBy.ministry = ministry;
   }
 
+  // What the source did not state, the paper's head may: Bayern prints its askers
+  // and the date of the question under the title (`readAnfrageHead`). Only fields
+  // the source left empty are filled, so a source's own statement always wins; the
+  // date beside the Drucksachennummer is the answer's only on a combined paper.
+  const askers: Asker[] = [...request.metadata.askers];
+  const dates: Dates = { ...request.metadata.dates };
+  const headSource = parsed.find((document) => document.role === "question_pdf" || document.role === "combined_pdf");
+  if (headSource !== undefined) {
+    const head = readAnfrageHead(headSource.text);
+    if (askers.length === 0 && head.askers !== undefined) askers.push(...head.askers);
+    if (dates.submitted === undefined && head.asked !== undefined) dates.submitted = head.asked;
+    if (dates.answered === undefined && head.printed !== undefined && headSource.role === "combined_pdf") {
+      dates.answered = head.printed;
+    }
+  }
+
   const markers = text !== undefined ? findMarkers(text) : { classified: false, contains_tables: false, attachments_referenced: [] };
   if (text === undefined) abstentions.add("markers", "markers need document text; none was available");
 
@@ -232,9 +248,9 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
     reference: request.metadata.reference,
     legislative_period: request.metadata.legislative_period,
     title: request.metadata.title,
-    askers: request.metadata.askers,
+    askers,
     answered_by: answeredBy,
-    dates: request.metadata.dates,
+    dates,
     qa,
     markers,
     source_documents: sourceDocuments,

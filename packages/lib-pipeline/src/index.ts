@@ -426,11 +426,15 @@ function sameReference(a: string, b: string): boolean {
  * ministry, the sync used to report "unchanged" and keep the wrong value
  * indefinitely.
  *
- * Two fields need care, because extraction may fill in what the source left out.
+ * Some fields need care, because extraction may fill in what the source left out.
  * `answered_by` is only compared where the source actually stated something —
  * `findMinistry` derives a ministry from the document text otherwise, and
- * comparing against that would rewrite every record on every run. The same holds
- * for a title or date a validator rejected and cleared.
+ * comparing against that would rewrite every record on every run. The askers and
+ * the dates are compared the same way, since `readAnfrageHead` reads them from a
+ * Bayern paper whose feed states none. The same holds for a title or date a
+ * validator rejected and cleared. (A value the source used to state and no longer
+ * does is not noticed here; the extractor version, which moves whenever
+ * extraction changes, re-extracts every record once anyway.)
  */
 function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: SourceMetadata): boolean {
   if (existing.extraction.extractor_version !== extractorVersion()) return false;
@@ -442,7 +446,7 @@ function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: 
 
   if (existing.reference !== metadata.reference) return false;
   if (existing.legislative_period !== metadata.legislative_period) return false;
-  if (canonicalJson(existing.askers) !== canonicalJson(metadata.askers)) return false;
+  if (metadata.askers.length > 0 && canonicalJson(existing.askers) !== canonicalJson(metadata.askers)) return false;
 
   // Stated-only fields: a value the source supplies must match; one it omits is
   // left to whatever extraction derived.
@@ -454,7 +458,6 @@ function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: 
   for (const key of ["submitted", "answered"] as const) {
     const claimed = metadata.dates[key];
     if (claimed !== undefined && existing.dates[key] !== undefined && existing.dates[key] !== claimed) return false;
-    if (claimed === undefined && existing.dates[key] !== undefined) return false;
   }
   return true;
 }

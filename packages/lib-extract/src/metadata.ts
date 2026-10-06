@@ -506,3 +506,78 @@ export function findMinistry(text: string): string | undefined {
   if (UNFINISHED.test(name) || /[.?!:;\-–]$/.test(name) || SENTENCE_VERB.test(name)) return undefined;
   return name;
 }
+
+/** What a Schriftliche Anfrage's head states about itself — see `readAnfrageHead`. */
+export interface AnfrageHead {
+  /** The askers, when every name in the head reads as a person. */
+  askers?: ParsedAsker[];
+  /** The date the Anfrage was asked: the "vom" line under the askers. */
+  asked?: string;
+  /** The date printed beside the Drucksachennummer: when the paper appeared. */
+  printed?: string;
+}
+
+/** The Fraktionen a Bayern head names after its askers. A closed list, on evidence. */
+const HEAD_PARTY = /^(.+?)\s+(AfD|CSU|SPD|FDP|FREIE WÄHLER|BÜNDNIS 90\/DIE GRÜNEN)$/u;
+
+/** How far into the first page the head may start: the header line, then the title. */
+const HEAD_WINDOW = 8;
+
+/** How many lines the askers may wrap over. */
+const MAX_ASKER_LINES = 4;
+
+/**
+ * Read the head of a Bayern Schriftliche Anfrage, the one shape this reads:
+ *
+ *     19. Wahlperiode 23.06.2026 Drucksache 19 / 12032
+ *     Schriftliche Anfrage
+ *     des Abgeordneten Ulrich Singer AfD
+ *     vom 01.04.2026
+ *
+ * — the askers wrapped over up to four lines, one Fraktion after the last name
+ * (every Bayern golden and the paper of the live sample print it so). Bayern's own
+ * feed claims neither askers nor dates, and the Parlamentsspiegel dates a Bayern row
+ * by the paper, months after the question; the head says both, and nothing else in
+ * the record does.
+ *
+ * Strict by design. Each field is read only when its line has exactly this form:
+ * askers only when every name is a person and one known Fraktion closes the list
+ * (a joint Anfrage of two Fraktionen reads as no askers); `asked` only from a "vom"
+ * line directly under them; `printed` only from a header line naming the paper's
+ * own number. Anything else is `undefined`, and the caller abstains.
+ */
+export function readAnfrageHead(text: string): AnfrageHead {
+  const firstPage = text.split("\f")[0] ?? "";
+  const lines = firstPage.split("\n").map((line) => line.trim().replace(/\s+/g, " "));
+  const start = lines.slice(0, HEAD_WINDOW).indexOf("Schriftliche Anfrage");
+  if (start < 0) return {};
+  const head: AnfrageHead = {};
+
+  const header = /^\d{1,2}\. Wahlperiode (\d{1,2}\.\d{1,2}\.\d{4}) Drucksache \d{1,2} ?\/ ?\d+$/.exec(lines[start - 1] ?? "");
+  if (header !== null) {
+    const printed = parseGermanDate(header[1] as string);
+    if (printed !== undefined) head.printed = printed;
+  }
+
+  const block: string[] = [];
+  let asked: string | undefined;
+  for (const line of lines.slice(start + 1, start + 2 + MAX_ASKER_LINES)) {
+    const vom = /^vom (\d{1,2}\.\d{1,2}\.\d{4})$/.exec(line);
+    if (vom !== null) {
+      asked = parseGermanDate(vom[1] as string);
+      break;
+    }
+    block.push(line);
+  }
+  const intro = /^(?:des|der) Abgeordneten (.+)$/.exec(block.join(" "));
+  if (asked === undefined || intro === null) return head;
+  head.asked = asked;
+
+  const listed = HEAD_PARTY.exec(intro[1] as string);
+  if (listed === null) return head;
+  const names = (listed[1] as string).split(/,\s*|\s+und\s+/).map((name) => name.trim());
+  if (names.length > 0 && names.every((name) => isPersonName(name) && !nameCarriesParty(name))) {
+    head.askers = names.map((name) => ({ name, party: listed[2] as string }));
+  }
+  return head;
+}

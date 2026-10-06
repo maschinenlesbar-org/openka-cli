@@ -42,9 +42,13 @@ Sammeldrucksachen answer 404.
 That file is a **combined paper** — question and "Antwort des Staatsministeriums …"
 in one document — which our PDF reader parses with no problems reported.
 
-**No dates are claimed from the feed.** `pubDate` is when the entry appeared, not when
-the Anfrage was submitted or answered; the document header carries both and the
-extractor reads them there.
+**No dates and no askers are claimed from the feed.** `pubDate` is when the entry
+appeared, not when the Anfrage was submitted or answered; the paper's head carries the
+askers, the question's date ("vom …") and the paper's date, and `lib-extract`'s
+`readAnfrageHead` reads them there (the paper's date as `answered`, since the file is
+the combined paper). Until 2026-10 nothing read them: these records had no askers and
+no dates, unflagged. A head of another shape is not read, and the record abstains on
+`askers` / `dates.*`.
 
 The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window. That
 is the price of not guessing, and `lib-http`'s `head()` exists for it.

@@ -14,6 +14,12 @@ are frozen constants — a minimum number density, a maximum gap in a numbered l
 minimum answer rate for a long question list — and each one is there because a real
 document forced it.
 
+**What the source did not state, the paper's head may.** `readAnfrageHead` reads a
+Bayern Schriftliche Anfrage's askers, the date it was asked ("vom …") and the date
+printed beside its number, in exactly the shape every Bayern paper prints them, and
+`extract` fills only fields the source left empty (the printed date as `answered` only
+on a combined paper). Bayern's own feed states none of them.
+
 **Metadata rules return `undefined` rather than a best guess.** Callers turn that
 into an abstention.
 
@@ -37,7 +43,7 @@ document turns into, so `npm run stamp` and a golden re-freeze are required.
 Everything is re-exported from the package root:
 
 ```
-parseGermanDate, findDate, findReference, periodFromReference, ParsedAsker, ParsedUrheber, parseUrheber, DocumentMarkers, findMarkers, findMinistry, SegmentationRules, FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT, FRAGE_ANTWORT_FOLGT, RULE_SETS, groupedAnswerNumbers, splitAtQuestionMark, MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, LARGE_QUESTION_LIST, MIN_ANSWER_RATE_LARGE, QaSegment, SegmentationResult, normaliseNumber, expandNumbers, MAX_NUMBER_SKIP, splitAtAnswerDivider, SegmentOptions, restatesSameQuestion, applyRules, checkSegments, segmentQa, FetchedDocument, SourceMetadata, ExtractRequest, ExtractResult, Abstentions, extract, ValidatorProblem, EARLIEST_PLAUSIBLE_YEAR, latestPlausibleYear, validateExtractedRecord
+parseGermanDate, findDate, findReference, periodFromReference, ParsedAsker, ParsedUrheber, parseUrheber, nameCarriesParty, DocumentMarkers, isClassified, findMarkers, findMinistry, AnfrageHead, readAnfrageHead, SegmentationRules, FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT, FRAGE_ANTWORT_FOLGT, RULE_SETS, groupedAnswerNumbers, splitAtQuestionMark, MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, LARGE_QUESTION_LIST, MIN_ANSWER_RATE_LARGE, QaSegment, SegmentationResult, normaliseNumber, expandNumbers, MAX_NUMBER_SKIP, splitAtAnswerDivider, SegmentOptions, restatesSameQuestion, applyRules, checkSegments, segmentQa, FetchedDocument, SourceMetadata, ExtractRequest, ExtractResult, Abstentions, extract, ValidatorProblem, EARLIEST_PLAUSIBLE_YEAR, latestPlausibleYear, validateExtractedRecord
 ```
 
 ## Depends on

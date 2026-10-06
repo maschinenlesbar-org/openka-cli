@@ -22,6 +22,8 @@ import { CorpusLockedError, OpenKaValidationError, UsageError } from "@maschinen
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
+import { drucksacheUrl, toRef } from "@maschinenlesbar.org/openka-connector-bayern";
+import { search } from "@maschinenlesbar.org/openka-lib-search";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
@@ -397,6 +399,37 @@ describe("sync pipeline", () => {
     strictEqual(changed.stored, 1);
     ok(store.getRecord("berlin-19-10006")?.extraction.review_status !== "human_verified");
     ok(changed.warnings.some((warning) => /19\/10006: was marked human_verified; .* the mark was dropped/.test(warning)), changed.warnings.join("\n"));
+  });
+
+  // Finding 01#1: Bayern's own feed claims no askers and no dates; the stored
+  // records had neither, unflagged, and the CLI advised filtering them by date.
+  it("reads a Bayern feed record's askers and dates from its paper, and does not churn", async () => {
+    const bayernPdf = fixturesOf("@maschinenlesbar.org/openka-connector-bayern", import.meta.url).readFixture(
+      "bayern",
+      "bayern-19-12032",
+      "cb339c218d1db37c21166aab6cc63b3604313ad4ba762ed5a87c5768743c88f1.bin",
+    );
+    const url = drucksacheUrl(19, "12032");
+    const feed: Source = {
+      key: "bayern",
+      parliament: "bayern",
+      tier: "text_layer",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => ({ warnings: [], refs: [toRef({ reference: "19/12032", period: 19, number: "12032", subject: "Hightech Agenda" }, url)] }),
+    };
+    const store = new MemoryStore();
+    const engine = testEngine(scriptedTransport([{ match: ".pdf", body: bayernPdf }]).transport);
+    const first = await sync({ source: feed, store, engine, now: () => new Date("2026-07-01T00:00:00Z") });
+    strictEqual(first.stored, 1);
+    const record = store.getRecord("bayern-19-12032");
+    deepStrictEqual(record?.askers, [{ name: "Ulrich Singer", party: "AfD" }]);
+    deepStrictEqual(record?.dates, { submitted: "2026-04-01", answered: "2026-06-23" });
+    ok(!record?.extraction.abstained_fields.some((field) => field === "askers" || field.startsWith("dates.")));
+    strictEqual(search(store, "", { year: [2026], party: ["AfD"] }).total, 1);
+    // The feed still states nothing; what the paper said is not a change to re-extract for.
+    strictEqual((await sync({ source: feed, store, engine, now: () => new Date("2026-07-02T00:00:00Z") })).unchanged, 1);
   });
 
   it("refuses a second sync on a corpus another sync is writing", async () => {

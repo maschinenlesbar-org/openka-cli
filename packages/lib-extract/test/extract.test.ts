@@ -21,6 +21,7 @@ import {
 } from "../src/segment.js";
 import {
   isClassified,
+  readAnfrageHead,
   findDate,
   findMarkers,
   findMinistry,
@@ -1501,5 +1502,47 @@ describe("a document that was read only in part", () => {
   it("leaves the complete file alone", async () => {
     const { record } = await extract(request(bytes));
     ok(!record.extraction.abstained_fields.includes("full_text"));
+  });
+});
+
+// Finding 01#1: Bayern's feed claims no askers and no dates, and the paper's head
+// states both. Read strictly, in exactly the shape every Bayern paper prints.
+describe("the head of a Bayern Schriftliche Anfrage", () => {
+  const head = (lines: string[]): string => lines.join("\n");
+
+  it("reads the askers, the question's date and the paper's date", () => {
+    deepStrictEqual(
+      readAnfrageHead(
+        head([
+          "19. Wahlperiode 10.06.2025 Drucksache 19 / 6524",
+          "Schriftliche Anfrage",
+          "der Abgeordneten Maximilian Deisenhofer, Laura Weber, Christian Hierneis,",
+          "Patrick Friedl, Eva Lettenbauer BÜNDNIS 90/DIE GRÜNEN",
+          "vom 31.03.2025",
+          "Ein Jahr nach der Hochwasserkatastrophe: Schwammregionen",
+        ]),
+      ),
+      {
+        printed: "2025-06-10",
+        asked: "2025-03-31",
+        askers: ["Maximilian Deisenhofer", "Laura Weber", "Christian Hierneis", "Patrick Friedl", "Eva Lettenbauer"].map(
+          (name) => ({ name, party: "BÜNDNIS 90/DIE GRÜNEN" }),
+        ),
+      },
+    );
+  });
+
+  it("reads the date but no askers when the list is not one Fraktion's people", () => {
+    const joint = readAnfrageHead(
+      head(["19. Wahlperiode 23.06.2026 Drucksache 19 / 1", "Schriftliche Anfrage", "der Abgeordneten Anna Huber CSU, Bernd Maier FREIE WÄHLER", "vom 01.04.2026"]),
+    );
+    deepStrictEqual(joint, { printed: "2026-06-23", asked: "2026-04-01" });
+  });
+
+  it("reads nothing from a paper of another shape", () => {
+    deepStrictEqual(readAnfrageHead("Drucksache 19/10006\nSchriftliche Anfrage des Abgeordneten Andreas Otto (Grüne)\nvom 04. November 2021"), {});
+    deepStrictEqual(readAnfrageHead(head(["Schriftliche Anfrage", "des Abgeordneten Ulrich Singer AfD", "Umsetzung der Hightech Agenda"])), {});
+    // The head belongs to the first page; a later page that happens to match is not it.
+    deepStrictEqual(readAnfrageHead(head(["Antwort", "\fSchriftliche Anfrage", "des Abgeordneten Ulrich Singer AfD", "vom 01.04.2026"])), {});
   });
 });
