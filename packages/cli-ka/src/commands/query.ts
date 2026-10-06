@@ -35,13 +35,14 @@ function addFilterOptions(command: Command): Command {
 
 /**
  * One result line: id, date, parliament, title — and a marker for holes. The date
- * is the one `--from`/`--to` filter on — when the Anfrage was asked, the answer's
- * only where that is unknown. It used to print the answer's, so a row listed under
- * `--to 2024-06-30` showed 2024-08-02.
+ * is the one `--from`/`--to` filter on: when the Anfrage was asked, and "—" where
+ * that is unknown. It used to print the answer's, so a row listed under `--to
+ * 2024-06-30` showed 2024-08-02, and then the answer's where the question's was
+ * unknown — a date no filter would have matched.
  */
-function formatHit(entry: CatalogEntry, score: number, snippet?: string): string {
+export function formatHit(entry: CatalogEntry, score: number, snippet?: string): string {
   const flag = entry.abstained > 0 ? "!" : " ";
-  const date = entry.submitted ?? entry.answered ?? "".padEnd(10);
+  const date = entry.submitted ?? "—".padEnd(10);
   const line =
     `${flag} ${pad(entry.id, 24)} ${pad(date, 10)} ${pad(truncate(entry.parliament, 14), 14)} ` +
     `${truncate(entry.title, 70)}${score > 0 ? ` (${score.toFixed(2)})` : ""}`;

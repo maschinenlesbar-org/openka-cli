@@ -9,9 +9,9 @@ import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { FileStore, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, resolveCorpusRoot, toCatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
-import { renderShowLines } from "../src/commands/query.js";
+import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
 import { defaultIO, handleOutputErrors } from "../src/io.js";
@@ -100,6 +100,14 @@ describe("terminal-safe text", () => {
 
   it("truncates with an ellipsis", () => {
     strictEqual(truncate("abcdef", 4), "abc…");
+  });
+
+  // Finding 01#2: the listed date is the one the date filters use, the question's.
+  it("lists a record without a question date as undated, not at its answer's date", () => {
+    const entry = toCatalogEntry(sampleRecord({ dates: { answered: "2025-05-14" } }), 1);
+    doesNotMatch(formatHit(entry, 0), /2025-05-14/);
+    match(formatHit(entry, 0), /— {9}/);
+    match(formatHit(toCatalogEntry(sampleRecord({ dates: { submitted: "2025-02-14", answered: "2025-05-14" } }), 1), 0), /2025-02-14/);
   });
 
   // Finding 03#6: an override reached the terminal, and truncation cut off its end.
