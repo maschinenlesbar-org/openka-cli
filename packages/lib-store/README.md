@@ -8,7 +8,17 @@
   records/<id>.json            canonical records, one file each
   index/catalog.json           denormalised rows for filtering and listing
   index/tokens/<shard>.json    inverted index shards
+  lock                         held while a run writes: pid, host and purpose
 ```
+
+**One writer at a time.** `FileStore.lock(purpose)` creates `lock` exclusively and
+returns its release; `withCorpusLock(store, purpose, work)` is the usual way in.
+`sync()`, `reindexAll` and `markHumanVerified` hold it, so a second writer gets
+`CorpusLockedError` (a `StoreError`, exit 3 in `ka`) instead of interleaving its
+writes — two concurrent syncs used to lose index postings and catalog rows while
+both reported success. Readers do not take it. The lock is re-entrant per store
+object; a lock whose process on this host is gone (a killed run) is taken over, one
+from another host is never — the error names the file to delete.
 
 `new FileStore(root)` opens a corpus or creates it on the first write — what a
 writer wants. A reader wants `FileStore.open(root)`, which requires the corpus to be
@@ -48,7 +58,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, EmbeddingSet
+FileStore, isSafeKey, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
 ```
 
 ## Depends on

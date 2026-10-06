@@ -7,14 +7,16 @@
 //     index/tokens/<shard>.json         inverted index shards (256 of them)
 //     index/embeddings.json             frozen vectors, only if the factory shipped some
 //     state/<source>.json               per-source sync + conditional-request state
+//     lock                              held while a run writes: pid, host and purpose
 //
 // Everything is plain JSON in canonical form, so a corpus diffs cleanly in git, can
 // be inspected with `cat`, and — crucially for the reproducibility claim — is
 // byte-identical for the same inputs regardless of the machine that wrote it.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { MissingCorpusError, StoreError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, MissingCorpusError, StoreError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
@@ -110,6 +112,61 @@ export class FileStore implements Store {
     }
     if (!isDirectory) throw new StoreError(`${resolved} is not a directory, so it cannot be a corpus.`);
     return new FileStore(resolved);
+  }
+
+  // ----------------------------------------------------------------- lock
+
+  /** How many times this object holds the lock: it is re-entrant per store. */
+  private locks = 0;
+
+  /**
+   * Take the corpus for writing. The lock is a file created exclusively (`wx`),
+   * holding the pid, the host and the purpose of the run that took it. A second
+   * writer — another `ka sync`, a `ka reindex`, another `FileStore` in the same
+   * process — gets `CorpusLockedError` instead of interleaving its writes.
+   *
+   * A lock left behind by a run that was killed is taken over when it names this
+   * host and a process that no longer exists. A lock from another host (a corpus
+   * on a network share) cannot be checked, so it is never taken over: the error
+   * names the file to delete.
+   */
+  lock(purpose: string): () => void {
+    if (this.locks > 0) {
+      this.locks++;
+      return this.releaseOnce();
+    }
+    const path = this.path("lock");
+    const mine = JSON.stringify({ host: hostname(), pid: process.pid, purpose }) + "\n";
+    mkdirSync(this.root, { recursive: true });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        writeFileSync(path, mine, { flag: "wx" });
+        break;
+      } catch (err) {
+        if ((err as { code?: unknown }).code !== "EEXIST") {
+          const reason = err instanceof Error ? err.message : String(err);
+          throw new StoreError(`Could not lock the corpus at ${this.root}: ${reason}`, { cause: err });
+        }
+        const holder = readLock(path);
+        if (attempt === 0 && holder !== undefined && isStale(holder)) {
+          rmSync(path, { force: true });
+          continue;
+        }
+        throw new CorpusLockedError(path, describeHolder(holder));
+      }
+    }
+    this.locks = 1;
+    return this.releaseOnce();
+  }
+
+  private releaseOnce(): () => void {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.locks--;
+      if (this.locks === 0) rmSync(this.path("lock"), { force: true });
+    };
   }
 
   // ---------------------------------------------------------------- paths
@@ -358,7 +415,9 @@ export class FileStore implements Store {
    * Re-reading here means a concurrent writer's rows survive. It does not make the
    * corpus transactional — two writes can still interleave between this read and
    * the rename — but it removes the failure that needed no race at all, just two
-   * runs that started before either finished.
+   * runs that started before either finished. The writers that go through the
+   * library (`sync`, `reindexAll`, `markHumanVerified`) now also hold `lock()`,
+   * which is what keeps the index shards, written without a merge, intact.
    */
   flushCatalog(): void {
     const merged = this.readCatalogFile();
@@ -450,4 +509,40 @@ export class FileStore implements Store {
       .map((name) => name.slice(0, -".json".length))
       .sort();
   }
+}
+
+interface LockHolder {
+  host?: unknown;
+  pid?: unknown;
+  purpose?: unknown;
+}
+
+function readLock(path: string): LockHolder | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as LockHolder) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A lock from this host whose process is gone: the run that took it was killed. */
+function isStale(holder: LockHolder): boolean {
+  if (holder.host !== hostname() || typeof holder.pid !== "number" || !Number.isInteger(holder.pid)) return false;
+  if (holder.pid === process.pid) return false;
+  try {
+    process.kill(holder.pid, 0);
+    return false;
+  } catch (err) {
+    // EPERM: the process exists and belongs to someone else — it is alive.
+    return (err as { code?: unknown }).code === "ESRCH";
+  }
+}
+
+function describeHolder(holder: LockHolder | undefined): string {
+  if (holder === undefined) return "unreadable lock file";
+  const purpose = typeof holder.purpose === "string" ? holder.purpose : "a write";
+  const pid = typeof holder.pid === "number" ? `pid ${holder.pid}` : "unknown pid";
+  const host = typeof holder.host === "string" ? ` on ${holder.host}` : "";
+  return `${purpose}, ${pid}${host}`;
 }

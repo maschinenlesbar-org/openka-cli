@@ -32,6 +32,12 @@ ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /u
 Idempotent: a second run over an unchanged window costs one conditional request and
 stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.
 
+**One writer at a time.** `sync`, `reindex` and `review --mark-verified` hold the
+corpus's `lock` file while they write; a second writer exits 3 with "The corpus is in
+use by another run (…)", where two syncs used to lose index entries and catalog rows
+silently. Reading commands do not wait. A lock left by a killed run on the same
+machine is taken over; the message names the file to delete otherwise.
+
 **Interrupting a sync is safe.** Ctrl-C (or SIGTERM) finishes the Anfrage in hand,
 saves the catalog and exits 130 (143); a second signal stops at once. The catalog is
 also saved every 25 Anfragen, so even a `kill -9` loses at most that many catalog rows

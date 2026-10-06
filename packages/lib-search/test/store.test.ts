@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { FileStore, RECORD_ID_REASON, archivedDocument, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
-import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { catalogGaps, corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
@@ -777,5 +778,79 @@ describe("a record's archived document", () => {
     throws(() => archivedDocument(store, "berlin-19-12345", { role: "combined_pdf" }), /has no archived document with role combined_pdf/);
     throws(() => archivedDocument(store, "berlin-19-99999"), /^OpenKaError: No record berlin-19-99999 in \/memory$/);
     throws(() => archivedDocument(store, "berlin-19-12345", { role: "pdf" }), OpenKaValidationError);
+  });
+});
+
+// Finding 02#3 of the 2026-10-05 review: two syncs on one corpus lost postings and
+// catalog rows, both reporting success. Writers now take the corpus's lock file.
+describe("the corpus lock", () => {
+  const dirs: string[] = [];
+  after(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+  const corpus = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-lock-"));
+    dirs.push(dir);
+    return dir;
+  };
+  /** A pid with no process behind it on this machine. */
+  const deadPid = (): number => {
+    for (let pid = 4_000_000; ; pid++) {
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        if ((err as { code?: unknown }).code === "ESRCH") return pid;
+      }
+    }
+  };
+
+  it("refuses a second writer, and lets it in once the first released", () => {
+    const dir = corpus();
+    const release = new FileStore(dir).lock("sync --source berlin");
+    ok(existsSync(join(dir, "lock")));
+    throws(
+      () => new FileStore(dir).lock("reindex"),
+      (err: unknown) => err instanceof CorpusLockedError && err instanceof StoreError && /sync --source berlin, pid \d+/.test(err.message),
+    );
+    throws(() => reindexAll(new FileStore(dir)), CorpusLockedError);
+    release();
+    ok(!existsSync(join(dir, "lock")));
+    new FileStore(dir).lock("reindex")();
+  });
+
+  it("is re-entrant within one store, and released by the outermost holder", () => {
+    const dir = corpus();
+    const store = new FileStore(dir);
+    const outer = store.lock("sync");
+    const inner = store.lock("review --mark-verified");
+    inner();
+    inner();
+    ok(existsSync(join(dir, "lock")), "an inner release twice does not drop the outer hold");
+    outer();
+    ok(!existsSync(join(dir, "lock")));
+  });
+
+  it("takes over a lock left by a killed run on this host, never one from another host", () => {
+    const dir = corpus();
+    writeFileSync(join(dir, "lock"), JSON.stringify({ host: hostname(), pid: deadPid(), purpose: "sync" }));
+    new FileStore(dir).lock("reindex")();
+    writeFileSync(join(dir, "lock"), JSON.stringify({ host: `not-${hostname()}`, pid: deadPid(), purpose: "sync" }));
+    throws(() => new FileStore(dir).lock("reindex"), /delete .*lock/);
+    writeFileSync(join(dir, "lock"), "not json");
+    throws(() => new FileStore(dir).lock("reindex"), CorpusLockedError);
+  });
+
+  it("is held by markHumanVerified, and an in-memory store has none to take", () => {
+    const dir = corpus();
+    const store = new FileStore(dir);
+    store.putRecord(sampleRecord());
+    const release = new FileStore(dir).lock("sync");
+    throws(() => markHumanVerified(store, sampleRecord().id), CorpusLockedError);
+    release();
+    strictEqual(markHumanVerified(store, sampleRecord().id)?.extraction.review_status, "human_verified");
+    ok(!existsSync(join(dir, "lock")));
+    const memory = new MemoryStore();
+    memory.putRecord(sampleRecord());
+    strictEqual(markHumanVerified(memory, sampleRecord().id)?.extraction.review_status, "human_verified");
   });
 });

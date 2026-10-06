@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
@@ -263,6 +263,22 @@ describe("ka", () => {
       harness.out.length = 0;
       strictEqual(await run(["--corpus", harness.corpus, "stats", "--json"], harness.deps), EXIT_OK);
       strictEqual((JSON.parse(harness.stdout()) as { records: number }).records, 1);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("refuses to write a corpus another run holds, with exit 3 and the lock file to delete", async () => {
+    const harness = await seeded();
+    try {
+      const release = new FileStore(harness.corpus).lock("sync --source berlin");
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /in use by another run \(sync --source berlin, pid \d+.*delete .*lock/);
+      strictEqual(await run(["--corpus", harness.corpus, "review", "--mark-verified", "berlin-19-10006"], harness.deps), EXIT_STORE);
+      // Reading is not writing: search and stats do not wait for the lock.
+      strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
+      release();
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
     } finally {
       harness.cleanup();
     }

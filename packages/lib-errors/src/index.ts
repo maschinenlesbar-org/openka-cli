@@ -69,6 +69,24 @@ export class MissingCorpusError extends StoreError {
 }
 
 /**
+ * Another run is writing to this corpus. A corpus is a directory of plain files,
+ * and two writers at once lost index postings and catalog rows silently — both
+ * runs reported success. A writer now takes the corpus's lock file first and the
+ * second one gets this instead; it exits 3 like any corpus problem.
+ */
+export class CorpusLockedError extends StoreError {
+  readonly lockFile: string;
+
+  constructor(lockFile: string, holder: string) {
+    super(
+      `The corpus is in use by another run (${holder}). Wait for it to finish; if no other ` +
+        `run is active, delete ${lockFile}.`,
+    );
+    this.lockFile = lockFile;
+  }
+}
+
+/**
  * A combination of options that cannot be honoured. Exits 2, like a parse error,
  * because the alternative — running anyway and ignoring what was asked — is the
  * silently-dropped constraint this CLI refuses to produce.

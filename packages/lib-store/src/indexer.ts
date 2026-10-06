@@ -6,7 +6,7 @@
 
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import type { CatalogEntry, CatalogStore, IndexStore, RecordStore } from "./store.js";
+import { withCorpusLock, type CatalogEntry, type CatalogStore, type IndexStore, type LockableStore, type RecordStore } from "./store.js";
 import type { IndexShard } from "./fts.js";
 import { shardOf, termFrequencies, type Posting } from "./fts.js";
 
@@ -63,8 +63,8 @@ function yearOf(date: string | undefined): number | undefined {
   return Number.isInteger(year) ? year : undefined;
 }
 
-/** The three roles indexing touches: the catalog, the shards and the records. */
-export type IndexTarget = CatalogStore & IndexStore & RecordStore;
+/** The roles indexing touches: the catalog, the shards and the records — and the lock, where there is one. */
+export type IndexTarget = CatalogStore & IndexStore & RecordStore & LockableStore;
 
 /**
  * Add or replace a record's postings and catalog row.
@@ -158,6 +158,8 @@ export function catalogGaps(store: Pick<IndexTarget, "catalog" | "recordIds">): 
  * hundred records took ten seconds, 96% of it shard I/O. Grouping every record's
  * postings first turns that into one write per shard for the whole corpus, and one
  * catalog write instead of one per record.
+ *
+ * Holds the corpus lock (`CorpusLockedError` while a sync writes).
  */
 export function reindexAll(
   store: IndexTarget,
@@ -169,6 +171,10 @@ export function reindexAll(
     onUnreadable?: (id: string, error: StoreError) => void;
   } = {},
 ): number {
+  return withCorpusLock(store, "reindex", () => rebuild(store, options));
+}
+
+function rebuild(store: IndexTarget, options: { onUnreadable?: (id: string, error: StoreError) => void }): number {
   for (const shard of store.shardNames()) store.saveShard(shard, {});
 
   const byShard = new Map<string, IndexShard>();
@@ -217,10 +223,12 @@ export function reindexAll(
  * such record.
  */
 export function markHumanVerified(store: IndexTarget, id: string): KaRecord | undefined {
-  const record = store.getRecord(id);
-  if (record === undefined) return undefined;
-  record.extraction.review_status = "human_verified";
-  store.putRecord(record);
-  indexRecord(store, record);
-  return record;
+  return withCorpusLock(store, "review --mark-verified", () => {
+    const record = store.getRecord(id);
+    if (record === undefined) return undefined;
+    record.extraction.review_status = "human_verified";
+    store.putRecord(record);
+    indexRecord(store, record);
+    return record;
+  });
 }

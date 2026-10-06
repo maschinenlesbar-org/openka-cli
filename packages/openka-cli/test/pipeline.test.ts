@@ -18,7 +18,8 @@ import {
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
@@ -353,6 +354,33 @@ describe("sync pipeline", () => {
 
       const third = await sync({ ...options, store: new FileStore(root) });
       strictEqual(third.recatalogued, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a second sync on a corpus another sync is writing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-concurrent-"));
+    try {
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+      // The first sync is held inside its run, past the lock, until the second has tried.
+      const slow: Transport = async (request) => {
+        await held;
+        return transport(request);
+      };
+      const first = sync({ source: new StubSource(), store: new FileStore(root), engine: testEngine(slow) });
+      await new Promise((resolve) => setImmediate(resolve));
+      await rejects(
+        sync({ source: new StubSource(), store: new FileStore(root), engine: testEngine(transport) }),
+        (err: unknown) => err instanceof CorpusLockedError && /sync --source berlin/.test((err as Error).message),
+      );
+      release();
+      strictEqual((await first).stored, 1);
+      // Released: the next run gets in, and nothing was lost.
+      strictEqual((await sync({ source: new StubSource(), store: new FileStore(root), engine: testEngine(transport) })).unchanged, 1);
+      deepStrictEqual(catalogGaps(new FileStore(root)), { uncatalogued: [], missingFiles: [] });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

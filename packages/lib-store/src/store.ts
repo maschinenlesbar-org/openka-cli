@@ -139,6 +139,19 @@ export interface EmbeddingStore {
   saveEmbeddings(set: EmbeddingSet): void;
 }
 
+/**
+ * Exclusive write access to a corpus. Optional: a store that cannot be shared
+ * (the in-memory test double) has nothing to lock.
+ */
+export interface LockableStore {
+  /**
+   * Take the corpus for writing, or throw `CorpusLockedError` when another run
+   * holds it. Returns the release. Re-entrant within one store object, so a
+   * writer may call another writer; `withCorpusLock` is the usual way in.
+   */
+  lock?(purpose: string): () => void;
+}
+
 export interface Store
   extends BlobStore,
     RecordStore,
@@ -146,9 +159,27 @@ export interface Store
     IndexStore,
     SourceStateStore,
     ArtifactStore,
-    EmbeddingStore {
+    EmbeddingStore,
+    LockableStore {
   /** Absolute path of the corpus root, for messages and `ka open`. */
   readonly root: string;
+}
+
+/** Run `work` holding the store's write lock, when it has one, and release it after. */
+export function withCorpusLock<T>(store: LockableStore, purpose: string, work: () => T): T {
+  const release = store.lock?.(purpose);
+  let result: T;
+  try {
+    result = work();
+  } catch (err) {
+    release?.();
+    throw err;
+  }
+  if (result instanceof Promise) {
+    return result.finally(() => release?.()) as T;
+  }
+  release?.();
+  return result;
 }
 
 /**

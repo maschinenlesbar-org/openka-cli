@@ -9,7 +9,7 @@
 import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import { indexRecord, type SourceState, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { indexRecord, withCorpusLock, type SourceState, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
@@ -97,9 +97,19 @@ export interface SyncReport {
  * A source's politeness floor (`Source.minHostIntervalMs`) is applied to the
  * engine before discovery, with `engine.raiseMinHostInterval`: it raises the
  * engine's interval and never lowers it, and it stays raised on that engine.
+ *
+ * The run holds the corpus lock (`Store.lock`): while another sync, a reindex or
+ * a review mark writes to the same corpus, it rejects with `CorpusLockedError`
+ * before any request.
  */
 export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
   const options = normalizeSyncWindow(rawOptions);
+  // One writer at a time: two syncs on one corpus lost postings and catalog rows
+  // while both reported success. The second one is refused before any request.
+  return withCorpusLock(options.store, `sync --source ${options.source.key}`, () => syncLocked(options));
+}
+
+async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   const { source, store, engine } = options;
   if (source.minHostIntervalMs !== undefined) engine.raiseMinHostInterval(source.minHostIntervalMs);
   const now = options.now ?? (() => new Date());
