@@ -28,7 +28,7 @@ import {
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { CORPUS_ENV, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { CORPUS_DEFAULT_TEXT, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory (lib-store's). */
 export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
@@ -297,7 +297,7 @@ export function choiceOption(flags: string, description: string, choices: readon
 /** Add the shared corpus/network options to the root program. */
 export function addGlobalOptions(program: Command): Command {
   return program
-    .option("--corpus <dir>", `corpus directory (default: $${CORPUS_ENV} or ~/.local/share/openka)`, parseNonEmpty)
+    .option("--corpus <dir>", `corpus directory (default: ${CORPUS_DEFAULT_TEXT})`, parseNonEmpty)
     .option("--timeout <ms>", "timeout per request attempt in milliseconds (a timed-out request is retried once)", parseBoundedInt(0, MAX_TIMEOUT_MS))
     // The bounds and the User-Agent rule are FetchEngine's (assertEngineOptions);
     // these parsers only read argv into numbers and strings.

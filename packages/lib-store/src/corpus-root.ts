@@ -12,6 +12,13 @@ import { assertValid, isBlank, nonBlankProblem } from "@maschinenlesbar.org/open
 /** Environment variable naming the corpus directory. */
 export const CORPUS_ENV = "OPENKA_CORPUS";
 
+/**
+ * Where the corpus is when no path is named, in words — the order
+ * `resolveCorpusRoot` applies, for help texts. `ka --help` used to leave out the
+ * XDG step that every run with `XDG_DATA_HOME` set actually took.
+ */
+export const CORPUS_DEFAULT_TEXT = `$${CORPUS_ENV}, else $XDG_DATA_HOME/openka, else ~/.local/share/openka`;
+
 export interface CorpusRootOptions {
   /** A path the caller named (`ka --corpus`); wins over the environment. */
   root?: string;

@@ -843,6 +843,24 @@ describe("the harness itself", () => {
 // P7 of the 2026-10-05 fix plan, adapted: the sibling repos spawn the bin, but no
 // test here spawns a subprocess, so the handler is driven with fake streams and
 // the bins are checked to install it before they run anything.
+// Finding 04#4: the help named two of the three steps of the corpus default.
+describe("the --corpus help", () => {
+  it("names the whole default, in the order it is applied, in both bins", async () => {
+    for (const [runner, argv] of [
+      [run, ["--help"]],
+      [runFactory, ["--help"]],
+    ] as const) {
+      const harness = cliHarness();
+      try {
+        strictEqual(await runner([...argv], harness.deps), EXIT_OK);
+        match(harness.stdout().replace(/\s+/g, " "), /\$OPENKA_CORPUS, else \$XDG_DATA_HOME\/openka, else ~\/\.local\/share\/openka/);
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+});
+
 describe("a closed output pipe", () => {
   function fakeStreams(): { stdout: EventEmitter; stderr: EventEmitter; exits: number[]; exit: (code: number) => void } {
     const exits: number[] = [];
