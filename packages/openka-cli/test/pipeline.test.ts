@@ -1141,3 +1141,37 @@ describe("counting the upstream beside the corpus (issue #5)", () => {
 function toCatalogEntryFor(id: string, parliament: string, period: number) {
   return { id, parliament, reference: `${period}/1`, legislative_period: period, title: "t", parties: [], review_status: "ok", tier: "structured", abstained: 0, terms: 1 };
 }
+
+describe("a metadata-only run over stored records", () => {
+  it("re-extracts a stored record from its archived documents, so a correction lands and nothing is lost", async () => {
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+    const complete = store.getRecord("berlin-19-10006");
+    ok((complete?.qa.length ?? 0) > 0);
+    requests.length = 0;
+
+    const unchanged = await sync({ source: new StubSource(), store, engine: testEngine(transport), metadataOnly: true });
+    deepStrictEqual([unchanged.stored, unchanged.unchanged], [0, 1]);
+    deepStrictEqual(store.getRecord("berlin-19-10006"), complete);
+
+    const corrected = await sync({ source: new StubSource({ title: "Korrigierter Titel" }), store, engine: testEngine(transport), metadataOnly: true });
+    strictEqual(corrected.stored, 1);
+    const record = store.getRecord("berlin-19-10006");
+    strictEqual(record?.title, "Korrigierter Titel");
+    deepStrictEqual([record?.qa, record?.source_documents.map((document) => document.sha256)], [complete?.qa, complete?.source_documents.map((document) => document.sha256)]);
+    deepStrictEqual(requests, [], "nothing was downloaded");
+  });
+
+  it("leaves a stored record alone when its archived copy is gone", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+    const before = store.getRecordBytes("berlin-19-10006");
+    store.hasBlob = () => false;
+    const report = await sync({ source: new StubSource({ title: "Anders" }), store, engine: testEngine(transport), metadataOnly: true });
+    strictEqual(report.failed, 1);
+    match(report.errors[0] ?? "", /archived copy the stored record was built from is missing/);
+    deepStrictEqual(store.getRecordBytes("berlin-19-10006"), before);
+  });
+});

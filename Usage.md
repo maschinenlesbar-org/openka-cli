@@ -26,7 +26,7 @@ ka sync --source nordrhein-westfalen --since 2025-03-01 --until 2025-04-30
 ka sync --source bund --api-key "$DIP_KEY" --period 21
 ka sync --source bund --period 3                        # 1957–1961: from DIP's Drucksachen, question only
 ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metadata + links
-ka sync --source berlin --metadata-only                 # no downloads; qa abstains
+ka sync --source berlin --metadata-only                 # no downloads: new records abstain on qa, stored ones keep their documents
 ka sync --source berlin --force                         # re-extract unchanged inputs
 ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /usr/share/tessdata/deu.traineddata
 ka sync --source berlin --source bund --since 2026-01-01  # side by side, one corpus lock

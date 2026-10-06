@@ -54,7 +54,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--period <n>", "restrict to one legislative period", parseBoundedInt(...PERIOD_RANGE))
     .option("--limit <n>", "stop after this many Anfragen (per source)", parseBoundedInt(SYNC_LIMIT_MIN, SYNC_LIMIT_CAP))
     .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
-    .option("--metadata-only", "do not download documents; qa is abstained")
+    .option("--metadata-only", "download no documents: a new record abstains on qa, a stored one is rebuilt from its archived documents")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
     .option(
       "--ignore-robots",

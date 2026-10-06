@@ -26,7 +26,11 @@ export interface SyncOptions {
   limit?: number;
   apiKey?: string;
   perceiver?: Perceiver;
-  /** Skip downloading documents; records get metadata only and abstain on `qa`. */
+  /**
+   * Download no documents. A new record gets metadata only and abstains on `qa`; a
+   * stored one is re-extracted from the documents it already archived, so a
+   * metadata correction lands and nothing it held is lost.
+   */
   metadataOnly?: boolean;
   /** Re-extract even when nothing changed. */
   force?: boolean;
@@ -118,9 +122,8 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
 async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   const { source, store, engine } = options;
   // A blob directory on an unplugged drive is the corpus's problem, named before
-  // any request — not a failed fetch per Anfrage. Also with --metadata-only: that
-  // run re-extracts a stored record without its documents, so on a corpus whose
-  // drive is away it would replace complete records with metadata-only ones.
+  // any request — not a failed fetch per Anfrage. Also with --metadata-only, which
+  // re-extracts a stored record from its archived documents.
   store.assertBlobStore?.();
   if (source.minHostIntervalMs !== undefined) engine.raiseMinHostInterval(source.minHostIntervalMs);
   const now = options.now ?? (() => new Date());
@@ -308,7 +311,29 @@ async function syncRef(
   const documents: FetchedDocument[] = [];
   let bytesFetched = 0;
 
-  if (!options.metadataOnly) {
+  if (options.metadataOnly) {
+    // Nothing is downloaded — but a stored record keeps the documents it was built
+    // from: their archived bytes are read again. Re-extracting from no documents at
+    // all replaced every complete record a metadata-only run touched with an empty
+    // one, Q/A pairs and archive links gone, and counted it as stored.
+    for (const wanted of ref.documents) {
+      const archived = existing?.source_documents.find((document) => document.url === wanted.url && document.sha256 !== undefined);
+      if (archived?.sha256 === undefined) continue;
+      if (!store.hasBlob(archived.sha256)) {
+        throw new OpenKaError(
+          `${wanted.url}: the archived copy the stored record was built from is missing, and --metadata-only ` +
+            "fetches nothing; the stored record was left as it was",
+        );
+      }
+      documents.push({
+        role: wanted.role,
+        url: wanted.url,
+        bytes: store.getBlob(archived.sha256),
+        urlStable: wanted.urlStable,
+        ...(archived.retrieved_at === undefined ? {} : { retrievedAt: archived.retrieved_at }),
+      });
+    }
+  } else {
     for (const wanted of ref.documents) {
       const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run);
       if ("gap" in fetched) {
