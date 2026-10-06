@@ -18,6 +18,7 @@ import {
   renderCsvRow,
   renderJson,
   renderJsonLd,
+  renderJsonLdDocument,
   renderJsonLines,
   renderMarkdown,
   renderRecord,
@@ -285,4 +286,9 @@ describe("bulk renderings", () => {
     strictEqual(renderJsonLines([]), "");
   });
 
+  it("writes JSON-LD as one document, an array of the per-record nodes", () => {
+    const parsed = JSON.parse(renderJsonLdDocument(records)) as unknown[];
+    ok(Array.isArray(parsed));
+    deepStrictEqual(parsed, records.map((record) => JSON.parse(renderJsonLd(record))));
+  });
 });

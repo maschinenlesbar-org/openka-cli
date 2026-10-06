@@ -13,7 +13,8 @@ strips them and `putRecord` refuses them — so the strip is for the other calle
 a library consumer handing a renderer a record it built itself.
 
 For many records, `renderJsonLines` writes JSON Lines (one compact canonical record
-per line) — what `ka export --format jsonl` writes.
+per line) and `renderJsonLdDocument` one JSON-LD document (an array of the node
+objects `renderJsonLd` prints) — what `ka export --format jsonl|jsonld` writes.
 
 `renderAtom` orders its entries newest first (`newestFirst`: the instant each entry
 prints, ties on the id) whatever order it is given, and with `limit` keeps the newest
@@ -29,7 +30,7 @@ JSON, a blank title or id as an invalid feed. An omitted title or id is
 Everything is re-exported from the package root:
 
 ```
-RENDER_FORMATS, RenderFormat, renderFormatProblem, renderJson, renderJsonLd, renderJsonLines, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, DEFAULT_FEED_TITLE, DEFAULT_FEED_ID, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
+RENDER_FORMATS, RenderFormat, renderFormatProblem, renderJson, renderJsonLd, renderJsonLines, renderJsonLdDocument, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, DEFAULT_FEED_TITLE, DEFAULT_FEED_ID, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
 ```
 
 ## Depends on

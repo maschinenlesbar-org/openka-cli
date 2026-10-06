@@ -11,7 +11,7 @@ import {
   csvHeader,
   renderAtom,
   renderCsvRow,
-  renderJsonLd,
+  renderJsonLdDocument,
   renderJsonLines,
 } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
@@ -81,7 +81,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       let text: string;
       if (format === "csv") text = [csvHeader(), ...records.map(renderCsvRow)].join("\n") + "\n";
       else if (format === "jsonl") text = renderJsonLines(records);
-      else text = records.map((record) => renderJsonLd(record).replace(/\n+$/, "")).join("\n") + "\n";
+      else text = renderJsonLdDocument(records);
 
       emit(ctx, text, out);
       if (out !== undefined) ctx.deps.io.err(`${records.length} record(s) exported.`);

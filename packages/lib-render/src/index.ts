@@ -44,6 +44,16 @@ export function renderJsonLines(records: readonly KaRecord[]): string {
   return records.map((record) => canonicalJson(record, 0) + "\n").join("");
 }
 
+/**
+ * Many records as one JSON-LD document: a top-level array of the node objects
+ * `renderJsonLd` prints, each with its own `@context` — a form JSON-LD 1.1 allows.
+ * The objects used to be written back to back, which no JSON parser reads past the
+ * first one.
+ */
+export function renderJsonLdDocument(records: readonly KaRecord[]): string {
+  return canonicalJsonLine(records.map(jsonLdNode));
+}
+
 function jsonLdNode(record: KaRecord): Record<string, unknown> {
   const parliament = parliamentByKey(record.parliament);
   const document: Record<string, unknown> = {
