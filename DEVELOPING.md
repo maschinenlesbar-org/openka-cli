@@ -313,6 +313,18 @@ What the library now computes that a `ka` action used to compute on its own:
   saves the catalog every `CATALOG_CHECKPOINT` refs, stops between refs on an
   `AbortSignal` (`ka sync`'s Ctrl-C), and indexes an unchanged record that has no
   row (`recatalogued` in the report).
+- **Who may write a corpus** — `FileStore.lock(purpose)` (`lib-store`) and
+  `withCorpusLock`: `sync()`, `reindexAll` and `markHumanVerified` hold `<corpus>/lock`
+  while they write, and a second writer gets `CorpusLockedError` (exit 3). Two syncs
+  on one corpus used to lose postings and catalog rows while both reported success.
+  A lock whose process on this host is gone is taken over.
+- **Which date a record has** — the question's (`dates.submitted`), nothing else:
+  the catalog's `year`, `matchesFilters` and the listing use it, a record without it
+  is in no `--year`/`--from`/`--to` window, and `search()`/`selectRecords()` count those
+  as `undated`. The sync window alone still places a ref that carries only an answer
+  date at that date (and `sync()` warns), because a discovery that left such refs out
+  would fetch nothing from a combined-paper Land. Bayern's question date is read from
+  the paper's head (`readAnfrageHead`, `lib-extract`).
 - **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
   prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.
