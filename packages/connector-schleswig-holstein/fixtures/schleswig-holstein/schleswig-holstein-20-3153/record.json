@@ -1,17 +1,11 @@
 {
-  "answered_by": {},
+  "answered_by": {
+    "ministry": "Minister/in für Inneres, Kommunales, Wohnen und Sport"
+  },
   "askers": [
     {
       "name": "Thomas Hölck",
       "party": "SPD"
-    },
-    {
-      "name": "Sozialdemokratische Partei Deutschlands",
-      "party": "SPD"
-    },
-    {
-      "name": "Kommunales Minister/in für Inneres",
-      "party": "Wohnen und Sport"
     }
   ],
   "dates": {
@@ -20,7 +14,6 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [
-      "answered_by.ministry",
       "dates.submitted"
     ],
     "extractor_version": "pkg:0.1.0+extract:6f021d93d3c3",

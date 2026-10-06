@@ -1,12 +1,11 @@
 {
-  "answered_by": {},
+  "answered_by": {
+    "ministry": "Ministerium für Soziales, Gesundheit und Integration"
+  },
   "askers": [
     {
       "name": "Christine Neumann-Martin",
       "party": "CDU"
-    },
-    {
-      "name": "Gesundheit und Integration Ministerium für Soziales"
     }
   ],
   "dates": {
@@ -15,7 +14,6 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [
-      "answered_by.ministry",
       "dates.answered"
     ],
     "extractor_version": "pkg:0.1.0+extract:6f021d93d3c3",

@@ -1,17 +1,11 @@
 {
-  "answered_by": {},
+  "answered_by": {
+    "ministry": "Minister/in für Allgemeine und Berufliche Bildung, Wissenschaft, Forschung und Kultur"
+  },
   "askers": [
     {
       "name": "Annabell Krämer",
       "party": "FDP"
-    },
-    {
-      "name": "Freie Demokratische Partei",
-      "party": "FDP"
-    },
-    {
-      "name": "Wissenschaft Minister/in für Allgemeine und Berufliche Bildung",
-      "party": "Forschung und Kultur"
     }
   ],
   "dates": {
@@ -20,7 +14,6 @@
   "document_type": "kleine_anfrage",
   "extraction": {
     "abstained_fields": [
-      "answered_by.ministry",
       "dates.submitted",
       "qa"
     ],
