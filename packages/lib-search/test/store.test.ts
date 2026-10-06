@@ -211,6 +211,41 @@ describe("rebuilding the index", () => {
   });
 });
 
+// Finding 02#9: a reindex killed part-way left no shards at all, so every keyword
+// search answered "No matches." while the catalog still listed every record.
+describe("a rebuild that does not finish", () => {
+  it("leaves the old index searchable", () => {
+    const store = new MemoryStore();
+    const records = [sampleRecord(), sampleRecord({ id: "berlin-19-10007", reference: "19/10007" })];
+    for (const record of records) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    const before = search(store, "Brückenbauwerke").total;
+    ok(before > 0);
+    const reading = store.getRecord.bind(store);
+    let calls = 0;
+    store.getRecord = (id: string) => {
+      if (++calls === records.length) throw new Error("killed");
+      return reading(id);
+    };
+    throws(() => reindexAll(store), /killed/);
+    store.getRecord = reading;
+    strictEqual(search(store, "Brückenbauwerke").total, before);
+  });
+
+  it("removes the shards no record needs any more once the new ones are written", () => {
+    const store = new MemoryStore();
+    store.saveShard("zz", { onlyhere: [["berlin-19-99999", 1]] });
+    const record = sampleRecord();
+    store.putRecord(record);
+    indexRecord(store, record);
+    reindexAll(store);
+    ok(!store.shardNames().includes("zz"));
+    ok(search(store, "Brückenbauwerke").total > 0);
+  });
+});
+
 describe("the store's roles", () => {
   it("lets a consumer depend on the part it uses", () => {
     // The point of the split: a catalog-and-embeddings consumer compiles against

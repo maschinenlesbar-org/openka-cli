@@ -184,7 +184,10 @@ export function reindexAll(
 }
 
 function rebuild(store: IndexTarget, options: { onUnreadable?: (id: string, error: StoreError) => void }): number {
-  for (const shard of store.shardNames()) store.saveShard(shard, {});
+  // Nothing is removed before the new index is complete in memory: deleting every
+  // shard first meant a rebuild killed part-way left a corpus whose catalog listed
+  // every record while every keyword search answered "No matches.".
+  const previousShards = store.shardNames();
 
   const byShard = new Map<string, IndexShard>();
   const rows: CatalogEntry[] = [];
@@ -216,6 +219,11 @@ function rebuild(store: IndexTarget, options: { onUnreadable?: (id: string, erro
       (data[token] as Posting[]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     }
     store.saveShard(shard, data);
+  }
+  // Each shard is replaced whole and atomically above; only then do the shards no
+  // record needs any more go.
+  for (const shard of previousShards) {
+    if (!byShard.has(shard)) store.saveShard(shard, {});
   }
   // The old catalog is discarded unread: a corrupt one is exactly what a rebuild
   // is for.

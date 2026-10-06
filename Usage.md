@@ -151,7 +151,9 @@ ka reindex                 # rebuild the index from the stored records
 ```
 
 `ka reindex` rebuilds the catalog and the search index without reading the old ones,
-so it repairs a corrupt catalog. A record that cannot be read is named on stderr and
+so it repairs a corrupt catalog. The new index is built in memory and written over the
+old one shard by shard, so a reindex that is killed part-way leaves a searchable index
+behind rather than none; run it again to finish. A record that cannot be read is named on stderr and
 left out of the index, and the command exits 3.
 
 ## `ka-factory`
