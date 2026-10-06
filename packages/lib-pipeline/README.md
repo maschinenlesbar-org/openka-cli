@@ -18,8 +18,21 @@ Everything is re-exported from the package root:
 
 ```
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
-CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow
+CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
+syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem
 ```
+
+**Several sources in one run.** `syncSources({ sources, engineFor, … })` holds the
+corpus lock once and runs the sources side by side (`src/many.ts`). Each gets its own
+engine from `engineFor`, because `sync()` raises an engine's interval to the source's
+floor for good; build them on one `HostPacer` (lib-http) so a host two sources reach is
+paced once. Sources of one parliament share a lane and run one after the other, since
+two runs writing one record id would index against each other's stale copy; an
+aggregator tied to no parliament runs alone, after the lanes (`planLanes`). The window
+applies to every source and is checked once, up front; a list that is empty or names a
+source twice is refused (`sourceListProblem`). A failing source is that source's
+outcome (`{ status: "failed", error }`), not the end of the run; an aborted `signal`
+stops the running ones between refs and marks the rest `skipped`.
 
 `sync()` checks its window first (`normalizeSyncWindow`, `src/window.ts`): calendar
 dates for `since`/`until` (trimmed), `until` not before `since`, `period` in

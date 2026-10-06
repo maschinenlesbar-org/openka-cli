@@ -27,7 +27,27 @@ ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metada
 ka sync --source berlin --metadata-only                 # no downloads; qa abstains
 ka sync --source berlin --force                         # re-extract unchanged inputs
 ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /usr/share/tessdata/deu.traineddata
+ka sync --source berlin --source bund --since 2026-01-01  # side by side, one corpus lock
+ka sync --all --since 2026-09-01                        # every source with its own adapter
+ka sync --source bund --wait                            # queue behind a run holding the corpus
 ```
+
+**Several sources at once.** `--source` is repeatable: the sources run side by side in
+one process, under one corpus lock, each paced on its own — and a host two of them
+reach (the Parlamentsspiegel) is paced once for both, so it sees no more requests than
+one sync would send. Sources of the same parliament still run one after the other, and
+`parlamentsspiegel` runs after the rest. `--all` takes every source with an adapter of
+its own (not the `parlamentsspiegel` aggregator, whose records would overwrite theirs)
+and skips one whose credential is missing, with a note; named with `--source`, that is
+an error as before. The window and `--limit` apply to each source. The summary is one
+block per source; with `--json` an array of reports (`{ "source", "error" }` for a
+source that failed). A failing source does not stop the others; the command exits with
+the first failure's code once all are done.
+
+**Waiting instead of failing.** With `--wait`, a sync that finds the corpus held by
+another run says "Waiting for the corpus…" once, tries again every two seconds and
+starts when it is free — Ctrl-C stops the wait (exit 130). Without it, the second run
+exits 3 as before.
 
 Idempotent: a second run over an unchanged window costs one conditional request and
 stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.

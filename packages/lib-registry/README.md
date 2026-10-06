@@ -20,8 +20,13 @@ point both ways.
 Everything is re-exported from the package root:
 
 ```
-SOURCE_REGISTRY, sourceEntry, sourceKeys, sourceKeyProblem, createSource
+SOURCE_REGISTRY, sourceEntry, sourceKeys, adapterSourceKeys, sourceKeyProblem, createSource
 ```
+
+`adapterSourceKeys()` lists the sources with an adapter of their own, implemented and
+pinned to one parliament — what `ka sync --all` runs. The Parlamentsspiegel aggregator
+is left out: it files records under the ids of the Länder it covers and would overwrite
+their own adapters' records.
 
 `createSource(key)` checks the key first (`sourceKeyProblem`): a blank or unknown
 key throws `OpenKaValidationError` ("Invalid source: Unknown source …", listing every

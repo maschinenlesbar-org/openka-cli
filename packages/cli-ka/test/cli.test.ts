@@ -340,6 +340,74 @@ describe("ka", () => {
     }
   });
 
+  it("syncs several sources in one run, and prints a report per source", async () => {
+    const twoSources = (): ReturnType<typeof scriptedTransport> =>
+      scriptedTransport([
+        { match: "pardok-wp19.xml", body: PARDOK },
+        { match: "robots.txt", status: 404 },
+        { match: ".pdf", body: PDF },
+        { match: "search.dip.bundestag.de", body: '{"numFound":0,"documents":[]}', headers: { "content-type": "application/json" } },
+      ]);
+    const harness = cliHarness({ transport: twoSources().transport, env: { DIP_API_KEY: "test-key" } });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--source", "bund"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m);
+      match(harness.stdout(), /^bund: 0 discovered, 0 stored, 0 unchanged, 0 failed$/m);
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--source", "bund", "--json"], harness.deps), EXIT_OK);
+      const reports = JSON.parse(harness.stdout()) as { source: string; unchanged: number }[];
+      deepStrictEqual(reports.map((report) => report.source), ["berlin", "bund"]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("asks for --source or --all, never both", async () => {
+    const harness = cliHarness();
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /Name a source with --source <key>, or sync every one with --all\./);
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--all", "--source", "berlin"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /--all already names every source/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("skips a source without its credential under --all, and names it", async () => {
+    // Everything but Berlin answers 404 here, so the others fail; what matters is
+    // that the Bundestag, which needs a key, was not even started.
+    const { transport, requests } = scriptedTransport([
+      { match: "pardok-wp19.xml", body: PARDOK },
+      { match: ".pdf", body: PDF },
+      { match: /./, status: 404 },
+    ]);
+    const harness = cliHarness({ transport });
+    try {
+      await run(["--corpus", harness.corpus, "sync", "--all", "--limit", "1"], harness.deps);
+      match(harness.stderr(), /^Note: skipped bund: it needs a credential \(--api-key or DIP_API_KEY\)\.$/m);
+      ok(!requests.some((request) => request.url.includes("dip.bundestag.de")));
+      match(harness.stdout(), /^berlin: 1 discovered, 1 stored/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("waits for the corpus with --wait, where it would exit 3 without", async () => {
+    const harness = cliHarness({ transport: berlinTransport().transport });
+    try {
+      const release = new FileStore(harness.corpus).lock("sync --source bund");
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
+      setTimeout(release, 100);
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--wait"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /^Waiting for the corpus: it is in use by another run \(sync --source bund, pid \d+/m);
+      match(harness.stdout(), /^berlin: \d+ discovered/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     try {

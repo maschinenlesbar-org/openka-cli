@@ -271,6 +271,10 @@ What the library rejects with `OpenKaValidationError`, so far:
   Must be >= since (…).`) where it used to sync nothing. The integer rule itself is
   `intRangeProblem` in `lib-errors`, shared with the search filters and the
   factory's sweep.
+- **A list of sources that cannot be run** — `syncSources()` refuses an empty list or a
+  source named twice (`sourceListProblem`, lib-pipeline) and checks the shared window
+  once, before the lock is taken or a request sent. `ka sync --source berlin --source
+  berlin` is the same usage error (exit 2, `Invalid sources: "berlin" is named twice.`).
 - **Engine options out of bounds** — `new FetchEngine(options)` runs
   `assertEngineOptions` (`lib-http`): `timeoutMs` 0–`MAX_TIMEOUT_MS`, `maxRetries`
   0–`MAX_RETRIES` (10), `maxRedirects` 0–`MAX_REDIRECTS` (10), `minHostIntervalMs`

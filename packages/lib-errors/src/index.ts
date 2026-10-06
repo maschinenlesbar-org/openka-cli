@@ -76,6 +76,8 @@ export class MissingCorpusError extends StoreError {
  */
 export class CorpusLockedError extends StoreError {
   readonly lockFile: string;
+  /** Who holds it, in words: "sync --source berlin, pid 123 on host". */
+  readonly holder: string;
 
   constructor(lockFile: string, holder: string) {
     super(
@@ -83,6 +85,7 @@ export class CorpusLockedError extends StoreError {
         `run is active, delete ${lockFile}.`,
     );
     this.lockFile = lockFile;
+    this.holder = holder;
   }
 }
 

@@ -3,15 +3,24 @@
 
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { SYNC_LIMIT_MIN, sync, type ProgressEvent } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
+import {
+  SYNC_LIMIT_MIN,
+  syncSources,
+  type ProgressEvent,
+  type SourceOutcome,
+  type SyncReport,
+} from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
-import { createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
-import { InterruptedRunError, type CliDeps, type InterruptSignal } from "../io.js";
+import { adapterSourceKeys, createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
+import { FileStore, lockCorpus } from "@maschinenlesbar.org/openka-lib-store";
+import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
+
+type Source = ReturnType<typeof createSource>;
 
 /** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
 const parseSourceKey = problemParser(sourceKeyProblem);
@@ -26,15 +35,21 @@ const SYNC_LIMIT_CAP = 100_000;
 export function registerSync(program: Command, deps: CliDeps): void {
   program
     .command("sync")
-    .description("fetch, extract and store Anfragen from a source")
-    .requiredOption("--source <key>", `source to sync (${sourceKeys().join(", ")})`, parseSourceKey)
+    .description("fetch, extract and store Anfragen from one or more sources")
+    .option(
+      "--source <key>",
+      `source to sync, repeatable: several run side by side under one corpus lock (${sourceKeys().join(", ")})`,
+      collectSourceKey,
+    )
+    .option("--all", "every source with an adapter of its own (not the parlamentsspiegel aggregator)")
+    .option("--wait", "wait while another run holds the corpus, instead of exiting 3")
     .option("--since <date>", "only Anfragen dated on or after this date (YYYY-MM-DD)", parseIsoDate)
     .option("--until <date>", "only Anfragen dated on or before this date (YYYY-MM-DD)", parseIsoDate)
     // The window's rules are the library's (normalizeSyncWindow): these parsers
     // use the same date rule and bounds, so a typo fails before the corpus is
     // touched, and an --until before --since is refused by sync() itself.
     .option("--period <n>", "restrict to one legislative period", parseBoundedInt(...PERIOD_RANGE))
-    .option("--limit <n>", "stop after this many Anfragen", parseBoundedInt(SYNC_LIMIT_MIN, SYNC_LIMIT_CAP))
+    .option("--limit <n>", "stop after this many Anfragen (per source)", parseBoundedInt(SYNC_LIMIT_MIN, SYNC_LIMIT_CAP))
     .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
     .option("--metadata-only", "do not download documents; qa is abstained")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
@@ -46,18 +61,31 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
     .option("--ocr-traineddata <path>", "traineddata file to hash into the provenance record", parseNonEmpty)
-    .option("--json", "print the sync report as JSON")
+    .option("--json", "print the sync report as JSON (an array of reports for several sources or --all)")
     .action(
       action(deps, async (ctx) => {
-        const source = createSource(ctx.opts["source"] as string);
-        const store = ctx.store();
-        // A source's politeness floor is applied by sync() itself, raising the
-        // global --min-host-interval and never lowering it.
-        const engine = ctx.deps.createEngine(toEngineOptions(ctx.global));
+        const io = ctx.deps.io;
+        const named = ctx.opts["source"] as string[] | undefined;
+        const all = ctx.opts["all"] === true;
+        if (named === undefined && !all) throw new UsageError("Name a source with --source <key>, or sync every one with --all.");
+        if (named !== undefined && all) throw new UsageError("--all already names every source; leave out --source.");
 
-        const apiKey =
-          (ctx.opts["apiKey"] as string | undefined) ??
-          (source.apiKeyEnv === undefined ? undefined : ctx.deps.env[source.apiKeyEnv]);
+        const flagKey = ctx.opts["apiKey"] as string | undefined;
+        const keyFor = (source: Source): string | undefined =>
+          source.apiKeyEnv === undefined ? undefined : (flagKey ?? nonBlank(ctx.deps.env[source.apiKeyEnv]));
+        let sources = (named ?? adapterSourceKeys()).map((key) => createSource(key));
+        if (all) {
+          // Named on its own, a source without its credential is an error, as it
+          // always was. Under --all it is one of many, and failing the whole run
+          // for the one source the user never asked for by name would make --all
+          // unusable without a DIP key.
+          for (const source of sources.filter((s) => s.apiKeyEnv !== undefined && keyFor(s) === undefined)) {
+            io.err(`Note: skipped ${source.key}: it needs a credential (--api-key or ${source.apiKeyEnv}).`);
+          }
+          sources = sources.filter((s) => s.apiKeyEnv === undefined || keyFor(s) !== undefined);
+        }
+        const several = all || sources.length > 1;
+        const store = ctx.store();
 
         // The three OCR sub-options describe a model that only runs with --ocr.
         // Accepting them without it ran strict mode and said nothing, so a
@@ -82,13 +110,8 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
-        // The command takes the corpus lock itself — sync() re-enters it — so that
-        // before the first request it knows what kind of volume the corpus is on.
-        const release = store.lock?.(`sync --source ${source.key}`);
-        if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
-
-        const progress = ctx.global.quiet === true ? undefined : new SyncProgress(ctx.deps.io, ctx.deps.now);
-        progress?.start(source.key);
+        const progress = ctx.global.quiet === true ? undefined : new SyncProgress(io, ctx.deps.now);
+        const say = (text: string): void => (progress === undefined ? io.err(text) : progress.line(text));
 
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
         // ends the process. A kill -9 cannot be caught: the next sync over the
@@ -98,85 +121,148 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const stopListening = ctx.deps.onInterrupt?.((signal) => {
           caught = signal;
           controller.abort();
-          (progress === undefined ? ctx.deps.io.err : (text: string) => progress.line(text))(
+          say(
             `${signal === "SIGINT" ? "Interrupted" : "Terminated"} — finishing the current Anfrage and saving the ` +
               "catalog. Signal again to stop at once.",
           );
         });
-        let report: Awaited<ReturnType<typeof sync>>;
+
+        let outcomes: SourceOutcome[];
         try {
-          report = await sync({
-            source,
-            store,
-            engine,
-            perceiver,
-            now: ctx.deps.now,
-            signal: controller.signal,
-            ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
-            ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
-            ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
-            ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
-            ...(apiKey === undefined ? {} : { apiKey }),
-            ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
-            ...(ctx.opts["force"] === true ? { force: true } : {}),
-            ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
-            // Progress is stderr, so --json (which shapes stdout) keeps it.
-            ...(progress === undefined
-              ? {}
-              : {
-                  onDiscovered: (count: number) => progress.discovered(source.key, count),
-                  onProgress: (event: ProgressEvent) => progress.update(source.key, event),
-                }),
-          });
+          // The command takes the corpus lock itself — syncSources() re-enters it —
+          // so that it can wait for it (--wait) and, before the first request, knows
+          // what kind of volume the corpus is on.
+          const purpose = `sync --source ${sources.map((source) => source.key).join(" --source ")}`;
+          let release: () => void;
+          try {
+            release = await lockCorpus(store, purpose, {
+              wait: ctx.opts["wait"] === true,
+              signal: controller.signal,
+              onWaiting: (held) => io.err(`Waiting for the corpus: it is in use by another run (${sanitizeForTerminal(held.holder)}).`),
+            });
+          } catch (err) {
+            if (caught !== undefined) throw new InterruptedRunError(caught, "stopped waiting for the corpus; nothing was synced.");
+            throw err;
+          }
+          try {
+            if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
+            // One pacing book for every source's engine: two sources reaching one
+            // host are paced together, so running them side by side never asks a
+            // host for more than one source would. Each engine is its own, since a
+            // source's politeness floor raises its engine's interval for good.
+            const pacer = new HostPacer();
+            outcomes = await syncSources({
+              sources,
+              store,
+              engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+              apiKeyFor: keyFor,
+              perceiver,
+              now: ctx.deps.now,
+              signal: controller.signal,
+              ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
+              ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
+              ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
+              ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
+              ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
+              ...(ctx.opts["force"] === true ? { force: true } : {}),
+              ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+              // Progress is stderr, so --json (which shapes stdout) keeps it.
+              ...(progress === undefined
+                ? {}
+                : {
+                    onStart: (source: string) => progress.start(source),
+                    onDiscovered: (source: string, count: number) => progress.discovered(source, count),
+                    onProgress: (source: string, event: ProgressEvent) => progress.update(source, event),
+                    onDone: (outcome: SourceOutcome) => progress.finish(outcome.source),
+                  }),
+            });
+          } finally {
+            release();
+          }
         } finally {
-          progress?.finish(source.key);
           progress?.close();
           stopListening?.();
-          release?.();
         }
 
+        const failed = outcomes.filter((outcome) => outcome.status === "failed");
+        const done = outcomes.flatMap((outcome) => (outcome.status === "done" ? [outcome.report] : []));
+        // A single source keeps the shape it always had: its report, and the error
+        // it threw as the command's own.
+        if (!several && failed[0] !== undefined) throw failed[0].error;
+
+        const interrupted = done.filter((report) => report.interrupted);
         const stopped =
-          report.interrupted && caught !== undefined
+          caught !== undefined && (interrupted.length > 0 || outcomes.some((outcome) => outcome.status === "skipped"))
             ? new InterruptedRunError(
                 caught,
-                `${source.key}: stopped after ${report.stored + report.unchanged + report.failed} of ` +
-                  `${report.discovered} Anfragen; what was stored is catalogued. Run the same sync again to continue.`,
+                interrupted
+                  .map((report) => `${report.source}: stopped after ${report.stored + report.unchanged + report.failed} of ${report.discovered} Anfragen`)
+                  .concat(outcomes.filter((outcome) => outcome.status === "skipped").map((outcome) => `${outcome.source}: not started`))
+                  .join("; ") + "; what was stored is catalogued. Run the same sync again to continue.",
               )
             : undefined;
 
         if (ctx.opts["json"] === true) {
-          printJson(ctx, report);
-          if (stopped !== undefined) throw stopped;
-          return;
+          printJson(ctx, several ? outcomes.map(outcomeJson) : done[0]);
+        } else {
+          for (const report of done) printReport(io, report, several ? `${report.source}: ` : "");
         }
-
-        const io = ctx.deps.io;
-        if (report.upstreamUnchanged) {
-          io.out(`${source.key}: upstream reports no change since the last sync — nothing to do.`);
-          return;
+        for (const outcome of failed.slice(1)) {
+          io.err(`error: ${outcome.source}: ${truncate(errorMessage(outcome.error), 200)}`);
         }
-        io.out(
-          `${source.key}: ${report.discovered} discovered, ${report.stored} stored, ` +
-            `${report.unchanged} unchanged, ${report.failed} failed`,
-        );
-        if (report.needsReview > 0) {
-          io.out(`${report.needsReview} of the stored records have abstained fields — see \`ka review\`.`);
-        }
-        if (report.recatalogued > 0) {
-          io.out(
-            `${report.recatalogued} unchanged record(s) were on disk but missing from the catalog ` +
-              "(left by an interrupted run) and are searchable again.",
-          );
-        }
-        for (const warning of report.warnings) io.err(`warning: ${truncate(warning, 200)}`);
-        for (const error of report.errors.slice(0, 10)) io.err(`error: ${truncate(error, 200)}`);
-        if (report.errors.length > 10) io.err(`… and ${report.errors.length - 10} more errors`);
         if (stopped !== undefined) throw stopped;
-        if (report.errors.length > 0 && report.stored === 0) {
-          throw new OpenKaError(`${source.key}: sync produced no records`);
+        if (failed[0] !== undefined) {
+          if (several) io.err(`error: ${failed[0].source} failed:`);
+          throw failed[0].error;
         }
+        const empty = done.filter((report) => report.errors.length > 0 && report.stored === 0).map((report) => report.source);
+        if (empty.length > 0) throw new OpenKaError(`${empty.join(", ")}: sync produced no records`);
       }),
     );
+}
+
+/** commander accumulator for a repeatable `--source`: each a key the registry knows. */
+function collectSourceKey(value: string, previous: string[] = []): string[] {
+  return previous.concat([parseSourceKey(value)]);
+}
+
+function nonBlank(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === "" ? undefined : value;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** One source's outcome in `--json` output for several sources. */
+function outcomeJson(outcome: SourceOutcome): unknown {
+  if (outcome.status === "done") return outcome.report;
+  if (outcome.status === "skipped") return { source: outcome.source, skipped: true };
+  return { source: outcome.source, error: errorMessage(outcome.error) };
+}
+
+/** The text summary of one report; `prefix` names the source when several ran. */
+function printReport(io: CliIO, report: SyncReport, prefix: string): void {
+  if (report.upstreamUnchanged) {
+    io.out(`${report.source}: upstream reports no change since the last sync — nothing to do.`);
+    return;
+  }
+  io.out(
+    `${report.source}: ${report.discovered} discovered, ${report.stored} stored, ` +
+      `${report.unchanged} unchanged, ${report.failed} failed`,
+  );
+  if (report.needsReview > 0) {
+    io.out(`${prefix}${report.needsReview} of the stored records have abstained fields — see \`ka review\`.`);
+  }
+  if (report.recatalogued > 0) {
+    io.out(
+      `${prefix}${report.recatalogued} unchanged record(s) were on disk but missing from the catalog ` +
+        "(left by an interrupted run) and are searchable again.",
+    );
+  }
+  for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, 200)}`);
+  for (const error of report.errors.slice(0, 10)) io.err(`error: ${prefix}${truncate(error, 200)}`);
+  if (report.errors.length > 10) io.err(`… and ${report.errors.length - 10} more errors`);
 }
 
 /**

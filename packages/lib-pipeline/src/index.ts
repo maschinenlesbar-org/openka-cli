@@ -562,3 +562,4 @@ export function isoInstant(date: Date): string {
 }
 export { sourceStatus, type SourceStatusRow } from "./status.js";
 export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";
+export { planLanes, sourceListProblem, syncSources, type SourceOutcome, type SyncSourcesOptions } from "./many.js";

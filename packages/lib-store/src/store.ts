@@ -2,6 +2,7 @@
 // the pipeline, search and the CLI can be driven against an in-memory store in
 // tests without touching a filesystem — the same trick `Transport` plays for HTTP.
 
+import { CorpusLockedError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { IndexShard } from "./fts.js";
 
@@ -100,7 +101,7 @@ export interface CatalogStore {
    * one-off caller and the wrong shape for a sync: indexing a record at a time
    * re-read and rewrote the whole catalog per record, quadratic in the corpus.
    * The pipeline wraps its record loop in this; nested batches flush once, at the
-   * outermost.
+   * outermost, and concurrent ones each at their own end.
    */
   batchCatalog<T>(work: () => Promise<T>): Promise<T>;
 }
@@ -163,6 +164,61 @@ export interface Store
     LockableStore {
   /** Absolute path of the corpus root, for messages and `ka open`. */
   readonly root: string;
+}
+
+export interface LockCorpusOptions {
+  /**
+   * While another run holds the lock, wait for it instead of throwing
+   * `CorpusLockedError` — what a queue of syncs wants. Checked every `pollMs`.
+   */
+  wait?: boolean;
+  /** How often a waiting caller tries again (default `LOCK_POLL_MS`). */
+  pollMs?: number;
+  /** Stop waiting: the `CorpusLockedError` is thrown then. */
+  signal?: AbortSignal;
+  /** Called once, when the first attempt finds the lock held and waiting begins. */
+  onWaiting?: (held: CorpusLockedError) => void;
+  /** Injectable for tests; the default sleeps with a timer that `signal` cuts short. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+/** How often `lockCorpus({ wait: true })` tries the lock again. */
+export const LOCK_POLL_MS = 2000;
+
+/**
+ * Take the store's write lock and return its release, waiting while another run
+ * holds it when `wait` is set. Without `wait` it is `store.lock`: a held lock
+ * throws `CorpusLockedError`. A store without a lock returns a release that does
+ * nothing. Two syncs against one corpus used to need a shell loop polling `pgrep`
+ * to queue the second one behind the first.
+ */
+export async function lockCorpus(store: LockableStore, purpose: string, options: LockCorpusOptions = {}): Promise<() => void> {
+  const noop = (): void => undefined;
+  if (store.lock === undefined) return noop;
+  const sleep = options.sleep ?? abortableSleep;
+  const aborted = (): boolean => options.signal?.aborted === true;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return store.lock(purpose);
+    } catch (err) {
+      if (!(err instanceof CorpusLockedError) || options.wait !== true || aborted()) throw err;
+      if (attempt === 0) options.onWaiting?.(err);
+      await sleep(options.pollMs ?? LOCK_POLL_MS, options.signal);
+      if (aborted()) throw err;
+    }
+  }
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+    function done(): void {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+  });
 }
 
 /** Run `work` holding the store's write lock, when it has one, and release it after. */

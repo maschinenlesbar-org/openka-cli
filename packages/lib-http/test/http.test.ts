@@ -9,6 +9,7 @@ import { MAX_TIMEOUT_MS, nodeHttpTransport } from "../src/http.js";
 import {
   DEFAULT_USER_AGENT,
   FetchEngine,
+  HostPacer,
   MAX_HOST_INTERVAL_MS,
   MAX_REDIRECTS,
   MAX_RETRIES,
@@ -442,5 +443,66 @@ describe("engine options", () => {
     const engine = new FetchEngine({ maxRetries: 0, maxRedirects: 0, timeoutMs: 0, minHostIntervalMs: 0, maxResponseBytes: Number.MAX_SAFE_INTEGER });
     strictEqual(engine.userAgent, DEFAULT_USER_AGENT);
     strictEqual(new FetchEngine({ maxRetries: MAX_RETRIES, maxRedirects: MAX_REDIRECTS, timeoutMs: MAX_TIMEOUT_MS, minHostIntervalMs: MAX_HOST_INTERVAL_MS }).userAgent, DEFAULT_USER_AGENT);
+  });
+});
+
+describe("pacing shared between engines (issue #3)", () => {
+  /** A clock whose sleeps advance it, and a log of when each host was asked. */
+  function pacedWorld(): { now: () => number; sleep: (ms: number) => Promise<void>; asked: [string, number][]; transport: Parameters<typeof testEngine>[0] } {
+    let clock = 0;
+    const asked: [string, number][] = [];
+    const { transport } = scriptedTransport([{ match: "example.invalid", body: "x" }]);
+    return {
+      now: () => clock,
+      sleep: async (ms) => {
+        // Real timers interleave concurrent sleepers; yielding first lets the other
+        // engine's request queue up before this one's clock moves.
+        await new Promise((resolve) => setImmediate(resolve));
+        clock += ms;
+      },
+      asked,
+      transport: async (request) => {
+        asked.push([new URL(request.url).host, clock]);
+        return transport(request);
+      },
+    };
+  }
+
+  it("never asks one host twice within the interval, whichever engine asks", async () => {
+    const world = pacedWorld();
+    const pacer = new HostPacer();
+    const engine = (ms: number): FetchEngine =>
+      new FetchEngine({ transport: world.transport, minHostIntervalMs: ms, now: world.now, sleep: world.sleep, pacer });
+    const a = engine(500);
+    const b = engine(500);
+    await Promise.all([
+      (async () => {
+        for (const path of ["a1", "a2", "a3"]) await a.get(`https://shared.example.invalid/${path}`);
+      })(),
+      (async () => {
+        for (const path of ["b1", "b2", "b3"]) await b.get(`https://shared.example.invalid/${path}`);
+      })(),
+    ]);
+    const times = world.asked.map(([, at]) => at);
+    strictEqual(times.length, 6);
+    for (let i = 1; i < times.length; i++) ok((times[i] ?? 0) - (times[i - 1] ?? 0) >= 500, `gap ${i}: ${times.join(", ")}`);
+  });
+
+  it("paces only a shared host together: other hosts keep their own pace", async () => {
+    const world = pacedWorld();
+    const pacer = new HostPacer();
+    const a = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep, pacer });
+    const b = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep, pacer });
+    await Promise.all([a.get("https://one.example.invalid/x"), b.get("https://two.example.invalid/x")]);
+    deepStrictEqual(world.asked.map(([, at]) => at), [0, 0]);
+  });
+
+  it("keeps engines without a shared pacer independent, as before", async () => {
+    const world = pacedWorld();
+    const a = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep });
+    const b = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep });
+    await a.get("https://shared.example.invalid/a");
+    await b.get("https://shared.example.invalid/b");
+    deepStrictEqual(world.asked.map(([, at]) => at), [0, 0]);
   });
 });

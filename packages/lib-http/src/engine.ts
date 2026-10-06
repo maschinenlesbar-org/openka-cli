@@ -97,6 +97,49 @@ export interface EngineOptions {
   /** Injectable clock and sleep, so retry/rate-limit behaviour is testable. */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * When each host was last asked, shared with other engines. Unset, the engine
+   * keeps its own. Engines that share one never send two requests to one host
+   * closer together than the interval of the engine sending the second — what lets
+   * `ka sync` run several sources at once without doubling the load on a host they
+   * both reach, such as the Parlamentsspiegel.
+   */
+  pacer?: HostPacer;
+}
+
+/**
+ * The per-host pacing book: when each host was last asked, and a queue per host so
+ * that requests to one host are spaced out one after another even when several
+ * callers (engines, or concurrent requests of one engine) want it at once.
+ */
+export class HostPacer {
+  private readonly lastRequestAt = new Map<string, number>();
+  private readonly queues = new Map<string, Promise<void>>();
+
+  /**
+   * Wait for `host`'s turn: after every earlier caller, and at least `intervalMs`
+   * after the last request to it. Records the request either way, so an engine
+   * with no interval still counts for one that has one.
+   */
+  async wait(host: string, intervalMs: number, clock: { now: () => number; sleep: (ms: number) => Promise<void> }): Promise<void> {
+    const previous = this.queues.get(host) ?? Promise.resolve();
+    let done!: () => void;
+    const mine = new Promise<void>((resolve) => (done = resolve));
+    const tail = previous.then(() => mine);
+    this.queues.set(host, tail);
+    await previous;
+    try {
+      const last = this.lastRequestAt.get(host);
+      if (intervalMs > 0 && last !== undefined) {
+        const wait = last + intervalMs - clock.now();
+        if (wait > 0) await clock.sleep(wait);
+      }
+      this.lastRequestAt.set(host, clock.now());
+    } finally {
+      done();
+      if (this.queues.get(host) === tail) this.queues.delete(host);
+    }
+  }
 }
 
 /** Reject a base URL that is not http(s), before any request is built. */
@@ -155,7 +198,7 @@ export class FetchEngine {
   private readonly transport: Transport;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
-  private readonly lastRequestAt = new Map<string, number>();
+  private readonly pacer: HostPacer;
   /** Per-host floors raised during a run, above the engine-wide minimum. */
   private readonly hostIntervals = new Map<string, number>();
 
@@ -172,6 +215,7 @@ export class FetchEngine {
     this.transport = options.transport ?? nodeHttpTransport;
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
+    this.pacer = options.pacer ?? new HostPacer();
     if (this.baseUrl !== undefined) assertHttpScheme(this.baseUrl);
   }
 
@@ -408,14 +452,7 @@ export class FetchEngine {
   private async throttle(url: string): Promise<void> {
     const host = new URL(url).host;
     const interval = Math.max(this.minHostIntervalMs, this.hostIntervals.get(host) ?? 0);
-    if (interval <= 0) return;
-    const last = this.lastRequestAt.get(host);
-    const now = this.now();
-    if (last !== undefined) {
-      const wait = last + interval - now;
-      if (wait > 0) await this.sleep(wait);
-    }
-    this.lastRequestAt.set(host, this.now());
+    await this.pacer.wait(host, interval, { now: this.now, sleep: this.sleep });
   }
 }
 

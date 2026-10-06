@@ -14,6 +14,7 @@
 // byte-identical for the same inputs regardless of the machine that wrote it.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { CorpusLockedError, MissingCorpusError, StoreError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
@@ -391,8 +392,10 @@ export class FileStore implements Store {
   /** Rows this process has written or deleted since it last read the catalog. */
   private readonly touched = new Set<string>();
   private readonly removed = new Set<string>();
-  /** Open `batchCatalog` scopes; writes persist only when this is back at zero. */
+  /** Open `batchCatalog` scopes; a write outside them persists only when this is back at zero. */
   private deferring = 0;
+  /** Set inside a `batchCatalog` scope, so a nested one knows it is not the outermost. */
+  private readonly batchScope = new AsyncLocalStorage<true>();
 
   private loadCatalog(): Map<string, CatalogEntry> {
     if (this.catalogCache === undefined) {
@@ -455,13 +458,21 @@ export class FileStore implements Store {
     this.flushUnlessDeferred();
   }
 
+  /**
+   * Nested scopes — one call inside another's `work` — flush once, at the
+   * outermost. Concurrent ones, two syncs of one `ka sync --source a --source b`,
+   * flush each at its own end: counting them together meant the count was rarely
+   * back at zero while both ran, and a run killed then lost every catalog row since
+   * it started, where the checkpoints promise at most one batch.
+   */
   async batchCatalog<T>(work: () => Promise<T>): Promise<T> {
+    if (this.batchScope.getStore() === true) return work();
     this.deferring++;
     try {
-      return await work();
+      return await this.batchScope.run(true, work);
     } finally {
       this.deferring--;
-      if (this.deferring === 0 && (this.touched.size > 0 || this.removed.size > 0)) this.flushCatalog();
+      if (this.touched.size > 0 || this.removed.size > 0) this.flushCatalog();
     }
   }
 

@@ -29,6 +29,13 @@ other record file that is not a record id is still a `StoreError`. After `lock()
 `writesAppleDouble` says whether this is such a volume — the lock file's own `._lock`
 companion is the probe.
 
+**Waiting for the lock.** `lockCorpus(store, purpose, { wait: true })` polls every
+`LOCK_POLL_MS` while another run holds the corpus, says so once (`onWaiting`, with the
+holder from `CorpusLockedError.holder`) and stops on an aborted `signal`; without `wait`
+it is `store.lock`. `ka sync --wait` uses it in place of a shell loop polling `pgrep`.
+Catalog batches (`batchCatalog`) nest — the outermost flushes — and concurrent ones,
+the syncs of one multi-source run, each flush at their own end.
+
 `new FileStore(root)` opens a corpus or creates it on the first write — what a
 writer wants. A reader wants `FileStore.open(root)`, which requires the corpus to be
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
@@ -67,7 +74,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
+FileStore, isSafeKey, isPlatformFile, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
 ```
 
 ## Depends on

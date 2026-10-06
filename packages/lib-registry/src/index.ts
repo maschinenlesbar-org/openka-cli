@@ -77,6 +77,19 @@ export function sourceKeys(): string[] {
 }
 
 /**
+ * Every source with an adapter of its own — implemented and pinned to one
+ * parliament — in registry order: what `ka sync --all` runs. The Parlamentsspiegel
+ * aggregator is not among them. It files records under the same ids as the Länder
+ * it covers, so running it next to their own adapters would overwrite their
+ * records with its metadata-and-links ones; it is named on its own when wanted.
+ */
+export function adapterSourceKeys(): string[] {
+  return SOURCE_REGISTRY.filter(
+    (entry) => entry.status === "implemented" && entry.parliament !== undefined && entry.factory !== undefined,
+  ).map((entry) => entry.key);
+}
+
+/**
  * Why `key` names no registered source, or `undefined` when it does. Keys are
  * matched exactly: "Bund" and " bund" are unknown, and the reason lists every key
  * there is. A blank key is blank, as everywhere else.

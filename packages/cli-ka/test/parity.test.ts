@@ -8,7 +8,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { CORPUS_ENV, FileStore, archivedDocument, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
-import { sourceStatus, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { sourceStatus, sync, syncSources } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { SOURCE_REGISTRY, createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import { FetchEngine, MAX_HOST_INTERVAL_MS, MAX_REDIRECTS, MAX_RETRIES, MIN_RESPONSE_BYTES, type Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { fixturesOf, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
@@ -1019,6 +1019,24 @@ describe("the sync window and budget (finding 5)", () => {
     const result = await parity({
       argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--metadata-only", "--since", "2024-06-01", "--until", "2024-01-01"],
       lib: syncLib({ since: "2024-06-01", until: "2024-01-01" }),
+    });
+    bothRefused(result, "until", "Must be >= since (2024-06-01).");
+  });
+
+  it("refuses a source named twice, on both sides, before any request", async () => {
+    const result = await parity({
+      argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--source", "berlin", "--metadata-only"],
+      lib: ({ store, engine }) =>
+        syncSources({ sources: [createSource("berlin"), createSource("berlin")], store, engineFor: () => engine, metadataOnly: true }),
+    });
+    bothRefused(result, "sources", '"berlin" is named twice.');
+  });
+
+  it("refuses a bad window for several sources once, on both sides, before any request", async () => {
+    const result = await parity({
+      argv: (corpus) => ["--corpus", corpus, "sync", "--source", "berlin", "--source", "saarland", "--since", "2024-06-01", "--until", "2024-01-01"],
+      lib: ({ store, engine }) =>
+        syncSources({ sources: [createSource("berlin"), createSource("saarland")], store, engineFor: () => engine, since: "2024-06-01", until: "2024-01-01" }),
     });
     bothRefused(result, "until", "Must be >= since (2024-06-01).");
   });

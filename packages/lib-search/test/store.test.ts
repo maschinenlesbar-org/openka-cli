@@ -1,6 +1,6 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
-import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenles
 import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
-import { catalogGaps, corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { catalogGaps, corpusStats, indexableFields, indexRecord, lockCorpus, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
 import {
   DEFAULT_SEARCH_LIMIT,
@@ -1015,6 +1015,74 @@ describe("platform files in the corpus", () => {
       strictEqual(fat.writesAppleDouble, false, "unknown before the lock");
       fat.lock("test")();
       strictEqual(fat.writesAppleDouble, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("waiting for the corpus lock (issue #3)", () => {
+  it("waits while another run holds the lock, and takes it once it is free", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-wait-"));
+    try {
+      const holder = new FileStore(dir).lock("sync --source berlin");
+      const waiting: string[] = [];
+      let polls = 0;
+      const release = await lockCorpus(new FileStore(dir), "sync --source bund", {
+        wait: true,
+        onWaiting: (held) => waiting.push(held.holder),
+        sleep: async () => {
+          if (++polls === 3) holder();
+        },
+      });
+      strictEqual(polls, 3);
+      deepStrictEqual(waiting.length, 1, "says so once, not on every poll");
+      match(waiting[0] ?? "", /^sync --source berlin, pid \d+/);
+      ok(readFileSync(join(dir, "lock"), "utf8").includes("sync --source bund"));
+      release();
+      ok(!existsSync(join(dir, "lock")));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws CorpusLockedError at once without wait, and when the wait is aborted", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-wait-"));
+    try {
+      const holder = new FileStore(dir).lock("sync");
+      await rejects(lockCorpus(new FileStore(dir), "sync"), CorpusLockedError);
+      const controller = new AbortController();
+      await rejects(
+        lockCorpus(new FileStore(dir), "sync", { wait: true, signal: controller.signal, sleep: async () => controller.abort() }),
+        CorpusLockedError,
+      );
+      holder();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("flushes each concurrent catalog batch at its own end, and nested ones once", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-batches-"));
+    try {
+      const store = new FileStore(dir);
+      const onDisk = (): string[] => new FileStore(dir).catalog().map((row) => row.id);
+      const row = (id: string) => toCatalogEntry(sampleRecord({ id }), 1);
+      let releaseSlow!: () => void;
+      const slowGate = new Promise<void>((resolve) => (releaseSlow = resolve));
+      const slow = store.batchCatalog(async () => {
+        store.putCatalogEntry(row("berlin-19-1"));
+        await slowGate;
+      });
+      await store.batchCatalog(async () => {
+        await store.batchCatalog(async () => store.putCatalogEntry(row("bund-21-1")));
+        deepStrictEqual(onDisk(), [], "a nested batch does not flush");
+      });
+      // The fast batch ended while the slow one is still open: its row is on disk.
+      ok(onDisk().includes("bund-21-1"), onDisk().join(", "));
+      releaseSlow();
+      await slow;
+      deepStrictEqual(onDisk(), ["berlin-19-1", "bund-21-1"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

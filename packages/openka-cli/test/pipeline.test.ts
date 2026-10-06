@@ -10,8 +10,10 @@ import {
   SYNC_LIMIT_MIN,
   isoInstant,
   normalizeSyncWindow,
+  planLanes,
   sourceStatus,
   sync,
+  syncSources,
   syncLimitProblem,
   syncPeriodProblem,
 } from "@maschinenlesbar.org/openka-lib-pipeline";
@@ -28,7 +30,7 @@ import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.o
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { FileStore, catalogGaps, indexRecord, markHumanVerified, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // Real documents come from the connector that recorded them, and the PARDOK export
@@ -879,5 +881,129 @@ describe("the sync window", () => {
     });
     await sync({ source, store: new MemoryStore(), engine: testEngine(async () => ({ status: 200, headers: {}, body: PDF })), since: " 2024-01-01", until: "2024-12-31 " });
     deepStrictEqual([seen?.since, seen?.until], ["2024-01-01", "2024-12-31"]);
+  });
+});
+
+describe("several sources in one run (issue #3)", () => {
+  /** A source of another parliament (or of none, an aggregator), so it may run beside the Berlin stub. */
+  class OtherSource implements Source {
+    readonly tier = "structured" as const;
+    readonly label = "stub";
+    readonly homepage = "https://example.invalid";
+    readonly notes = "test double";
+    minHostIntervalMs?: number;
+    readonly started: Promise<void>;
+    private markStarted!: () => void;
+    constructor(
+      readonly key: string,
+      readonly parliament: "saarland" | undefined,
+      private readonly fail?: Error,
+    ) {
+      this.started = new Promise((resolve) => (this.markStarted = resolve));
+    }
+    async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+      this.markStarted();
+      if (this.fail !== undefined) throw this.fail;
+      const result = await new StubSource().discover(options);
+      return {
+        ...result,
+        refs: result.refs.map((ref) => ({ ...ref, parliament: "saarland" as const, reference: "17/1", legislative_period: 17 })),
+      };
+    }
+  }
+
+  it("puts sources of one parliament in one lane, and an aggregator after all lanes", () => {
+    const plan = planLanes([
+      { key: "bund", parliament: "bund" },
+      { key: "berlin", parliament: "berlin" },
+      { key: "parlamentsspiegel", parliament: undefined },
+      { key: "berlin-again", parliament: "berlin" },
+    ] as const);
+    deepStrictEqual(
+      { concurrent: plan.concurrent.map((lane) => lane.map((source) => source.key)), after: plan.after.map((source) => source.key) },
+      { concurrent: [["bund"], ["berlin", "berlin-again"]], after: ["parlamentsspiegel"] },
+    );
+  });
+
+  it("runs sources of different parliaments side by side, under one lock", { timeout: 5000 }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-many-"));
+    try {
+      const store = new FileStore(root);
+      const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+      // Berlin's discovery waits for Saarland's to start: run one after the other,
+      // this would never finish.
+      const saarland = new OtherSource("saarland", "saarland");
+      const berlin = new (class extends StubSource {
+        override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+          await saarland.started;
+          return super.discover(options);
+        }
+      })();
+      const started: string[] = [];
+      const outcomes = await syncSources({
+        sources: [berlin, saarland],
+        store,
+        engineFor: () => testEngine(transport),
+        onStart: (source) => started.push(source),
+      });
+      deepStrictEqual(outcomes.map((outcome) => [outcome.source, outcome.status]), [["berlin", "done"], ["saarland", "done"]]);
+      deepStrictEqual(store.catalog().map((row) => row.id), ["berlin-19-10006", "saarland-17-1"]);
+      ok(!existsSync(join(root, "lock")), "the lock is released");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps going when one source fails, and runs an aggregator after the rest", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const started: string[] = [];
+    const broken = new OtherSource("saarland", "saarland", new UsageError("no such period"));
+    const aggregator = new OtherSource("aggregator", undefined);
+    const outcomes = await syncSources({
+      sources: [aggregator, broken, new StubSource()],
+      store,
+      engineFor: () => testEngine(transport),
+      onStart: (source) => started.push(source),
+    });
+    strictEqual(started.at(-1), "aggregator");
+    deepStrictEqual(outcomes.map((outcome) => [outcome.source, outcome.status]), [
+      ["aggregator", "done"],
+      ["saarland", "failed"],
+      ["berlin", "done"],
+    ]);
+    const failed = outcomes[1];
+    ok(failed?.status === "failed" && failed.error instanceof UsageError);
+  });
+
+  it("gives each source its own engine, so one source's politeness floor slows no other", async () => {
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const slow = new OtherSource("saarland", "saarland");
+    slow.minHostIntervalMs = 4000;
+    const engines = new Map<string, ReturnType<typeof testEngine>>();
+    await syncSources({
+      sources: [new StubSource(), slow],
+      store: new MemoryStore(),
+      engineFor: (source) => {
+        const engine = testEngine(transport);
+        engines.set(source.key, engine);
+        return engine;
+      },
+    });
+    strictEqual(engines.size, 2);
+    ok(engines.get("berlin") !== engines.get("saarland"));
+  });
+
+  it("skips the sources whose turn had not come when the signal is aborted", async () => {
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const controller = new AbortController();
+    const outcomes = await syncSources({
+      sources: [new StubSource(), new OtherSource("aggregator", undefined)],
+      store: new MemoryStore(),
+      engineFor: () => testEngine(transport),
+      signal: controller.signal,
+      onDone: () => controller.abort(),
+    });
+    deepStrictEqual(outcomes.map((outcome) => outcome.status), ["done", "skipped"]);
   });
 });
