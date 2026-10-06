@@ -6,7 +6,7 @@ import { CommanderError, type Command } from "commander";
 import { AbstainError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { buildProgram, defaultDeps } from "./program.js";
 import { sanitizeForTerminal } from "./text.js";
-import type { CliDeps } from "./io.js";
+import { InterruptedRunError, type CliDeps } from "./io.js";
 
 /**
  * Exit codes, documented so they are scriptable:
@@ -15,6 +15,7 @@ import type { CliDeps } from "./io.js";
  *   2  a usage error (commander's parse failures are remapped to this)
  *   3  the corpus is missing or unreadable
  *   4  the requested record or resource does not exist upstream (HTTP 404)
+ *   130 / 143  `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog
  *
  * Every message printed here goes through `sanitizeForTerminal`: an error text
  * routinely quotes upstream data — a URL, a Content-Type, a record id — and an
@@ -68,6 +69,10 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     if (err instanceof StoreError) {
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_STORE;
+    }
+    if (err instanceof InterruptedRunError) {
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
+      return err.exitCode;
     }
     if (err instanceof AbstainError || err instanceof OpenKaError) {
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);

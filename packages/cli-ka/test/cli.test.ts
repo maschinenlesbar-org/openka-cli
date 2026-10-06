@@ -236,6 +236,56 @@ describe("ka", () => {
     harness.cleanup();
   });
 
+  it("stops a sync on Ctrl-C after the Anfrage in hand, saves the catalog and exits 130", async () => {
+    const scripted = berlinTransport();
+    let interrupt: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
+    let listening = false;
+    const harness = cliHarness({
+      transport: async (request) => {
+        const response = await scripted.transport(request);
+        // The signal arrives while the first document is being fetched.
+        if (request.url.endsWith(".pdf")) interrupt?.("SIGINT");
+        return response;
+      },
+    });
+    harness.deps.onInterrupt = (handler) => {
+      interrupt = handler;
+      listening = true;
+      return () => {
+        listening = false;
+      };
+    };
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), 130);
+      strictEqual(listening, false, "the listener is removed when the sync returns");
+      match(harness.stderr(), /Interrupted — finishing the current Anfrage/);
+      match(harness.stderr(), /stopped after 1 of \d+ Anfragen; what was stored is catalogued/);
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "stats", "--json"], harness.deps), EXIT_OK);
+      strictEqual((JSON.parse(harness.stdout()) as { records: number }).records, 1);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("names record files the catalog lacks in stats and verify", async () => {
+    const harness = await seeded();
+    try {
+      rmSync(join(harness.corpus, "index", "catalog.json"));
+      strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /record file\(s\) are not in the catalog.*`ka reindex` adds them/);
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /not in the catalog/);
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+      strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
+      doesNotMatch(harness.stderr(), /not in the catalog/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("exports CSV and writes a feed to a file", async () => {
     const harness = await seeded();
     try {

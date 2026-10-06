@@ -32,6 +32,19 @@ ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /u
 Idempotent: a second run over an unchanged window costs one conditional request and
 stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.
 
+**Interrupting a sync is safe.** Ctrl-C (or SIGTERM) finishes the Anfrage in hand,
+saves the catalog and exits 130 (143); a second signal stops at once. The catalog is
+also saved every 25 Anfragen, so even a `kill -9` loses at most that many catalog rows
+— and running the same sync again puts them back: a stored record that is unchanged
+but missing from the catalog is indexed again and reported ("… were on disk but
+missing from the catalog"). `ka stats` and `ka verify` name record files the catalog
+lacks.
+
+**A corpus synced before this release** may hold records that an interrupted run left
+out of the catalog for good: they open with `ka get`, but search, stats, export and
+feed do not see them, and re-runs called them "unchanged". `ka stats` now lists them;
+`ka reindex` (or a re-sync of the same window) brings them back.
+
 **Dates mean when the Anfrage was asked.** `--since`/`--until` here, and `--year`
 and `--from`/`--to` on `search` and `export`, all filter on the question's date, not
 the answer's — a question asked in June is often answered in August, and the other
@@ -161,3 +174,4 @@ otherwise.
 | 2 | a usage error (a rejected option value, a malformed record id, an unknown command) |
 | 3 | the corpus is missing or unreadable (a `--corpus` that does not exist included) |
 | 4 | the upstream returned 404 |
+| 130 / 143 | `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog |

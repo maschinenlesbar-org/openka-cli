@@ -124,4 +124,5 @@ the two workspace-specific keys.
 
 ## Exit codes
 
-`0` success · `1` error · `2` usage error · `3` corpus problem · `4` not found.
+`0` success · `1` error · `2` usage error · `3` corpus problem · `4` not found ·
+`130`/`143` `ka sync` interrupted (Ctrl-C / SIGTERM) after saving its catalog.

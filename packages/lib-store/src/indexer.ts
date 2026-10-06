@@ -66,7 +66,14 @@ function yearOf(date: string | undefined): number | undefined {
 /** The three roles indexing touches: the catalog, the shards and the records. */
 export type IndexTarget = CatalogStore & IndexStore & RecordStore;
 
-/** Add or replace a record's postings and catalog row. */
+/**
+ * Add or replace a record's postings and catalog row.
+ *
+ * Idempotent per shard: a posting this record already has is replaced, not added
+ * twice. That matters after an interrupted sync, which wrote a record's postings
+ * but never its catalog row — `unindexRecord` finds nothing to remove for a record
+ * the catalog does not know, and re-indexing it used to double every posting.
+ */
 export function indexRecord(store: IndexTarget, record: KaRecord): void {
   unindexRecord(store, record.id);
   const counts = termFrequencies(indexableFields(record));
@@ -80,7 +87,7 @@ export function indexRecord(store: IndexTarget, record: KaRecord): void {
   for (const [shard, tokens] of [...byShard].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const data = store.loadShard(shard);
     for (const [token, tf] of tokens) {
-      const postings: Posting[] = data[token] ?? [];
+      const postings: Posting[] = (data[token] ?? []).filter(([docId]) => docId !== record.id);
       postings.push([record.id, tf]);
       postings.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
       data[token] = postings;
@@ -117,6 +124,29 @@ export function unindexRecord(store: IndexTarget, id: string): void {
     if (changed) store.saveShard(shard, data);
   }
   store.removeCatalogEntry(id);
+}
+
+/** Where the catalog and the record files disagree — see `catalogGaps`. */
+export interface CatalogGaps {
+  /** Record files with no catalog row: on disk, invisible to search, stats and export. */
+  uncatalogued: string[];
+  /** Catalog rows with no record file: listed and counted, but nothing to read. */
+  missingFiles: string[];
+}
+
+/**
+ * Compare the catalog with the record files, both directions. An interrupted sync
+ * (before 2026-10) or a record file deleted by hand leaves them apart, and neither
+ * side can see it from where it stands: search reads only the catalog, `ka verify
+ * --all` only the files. `ka reindex` closes both gaps.
+ */
+export function catalogGaps(store: Pick<IndexTarget, "catalog" | "recordIds">): CatalogGaps {
+  const files = new Set(store.recordIds());
+  const rows = new Set(store.catalog().map((entry) => entry.id));
+  return {
+    uncatalogued: [...files].filter((id) => !rows.has(id)).sort(),
+    missingFiles: [...rows].filter((id) => !files.has(id)).sort(),
+  };
 }
 
 /**

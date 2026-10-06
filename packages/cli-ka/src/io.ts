@@ -5,6 +5,7 @@
 
 import { writeFileSync } from "node:fs";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 
@@ -28,6 +29,46 @@ export interface CliDeps {
   env: NodeJS.ProcessEnv;
   /** The clock. Injected so `retrieved_at` and feed timestamps are testable. */
   now(): Date;
+  /**
+   * Call `handler` on the first Ctrl-C or SIGTERM, and return a function that
+   * stops listening. Only `ka sync` asks, so that an interrupt finishes the
+   * Anfrage in hand and saves the catalog; a second signal is not caught and ends
+   * the process as usual. Optional: a test harness without it cannot interrupt.
+   */
+  onInterrupt?(handler: (signal: InterruptSignal) => void): () => void;
+}
+
+/** The signals `ka sync` stops early on. */
+export type InterruptSignal = "SIGINT" | "SIGTERM";
+
+/**
+ * A run that stopped early because it was asked to. `run()` exits with the shell's
+ * code for the signal: 130 for SIGINT, 143 for SIGTERM.
+ */
+export class InterruptedRunError extends OpenKaError {
+  readonly exitCode: number;
+  constructor(signal: InterruptSignal, message: string) {
+    super(message);
+    this.name = "InterruptedRunError";
+    this.exitCode = signal === "SIGINT" ? 130 : 143;
+  }
+}
+
+function listenForInterrupts(handler: (signal: InterruptSignal) => void): () => void {
+  const signals: InterruptSignal[] = ["SIGINT", "SIGTERM"];
+  const listeners = signals.map((signal) => {
+    const listener = (): void => {
+      // The first signal is ours; the next one gets Node's default and ends the run.
+      stop();
+      handler(signal);
+    };
+    process.once(signal, listener);
+    return [signal, listener] as const;
+  });
+  const stop = (): void => {
+    for (const [signal, listener] of listeners) process.removeListener(signal, listener);
+  };
+  return stop;
 }
 
 /** The two process streams, as far as `handleOutputErrors` needs them. */
@@ -76,4 +117,5 @@ export const defaultDeps: CliDeps = {
   createEngine: (options) => new FetchEngine(options),
   env: process.env,
   now: () => new Date(),
+  onInterrupt: listenForInterrupts,
 };

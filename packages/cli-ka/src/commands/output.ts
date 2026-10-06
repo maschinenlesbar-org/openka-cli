@@ -3,7 +3,7 @@
 import type { Command } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
-import { corpusStats } from "@maschinenlesbar.org/openka-lib-store";
+import { corpusStats, type CatalogGaps } from "@maschinenlesbar.org/openka-lib-store";
 import { LIMIT_MIN, selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
 import {
   DEFAULT_FEED_ID,
@@ -61,6 +61,26 @@ function selection(ctx: ActionContext, limit?: number): Selection {
     );
   }
   return selected;
+}
+
+/** The ids to name in a note: the first five, and how many more. */
+function someIds(ids: readonly string[]): string {
+  const more = ids.length > 5 ? `, and ${ids.length - 5} more` : "";
+  return ids.slice(0, 5).join(", ") + more;
+}
+
+/**
+ * Say on stderr where the catalog and the record files disagree. Search, stats,
+ * export and feed read only the catalog, so a record file it lacks is invisible
+ * to all four — what an interrupted sync used to leave behind for good.
+ */
+export function noteCatalogGaps(ctx: ActionContext, gaps: CatalogGaps): void {
+  if (gaps.uncatalogued.length > 0) {
+    ctx.deps.io.err(
+      `Note: ${gaps.uncatalogued.length} record file(s) are not in the catalog, so search, stats and export ` +
+        `do not see them: ${someIds(gaps.uncatalogued)}. \`ka reindex\` adds them.`,
+    );
+  }
 }
 
 export function registerOutput(program: Command, deps: CliDeps): void {
@@ -131,14 +151,16 @@ export function registerOutput(program: Command, deps: CliDeps): void {
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {
-        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(ctx.existingStore()) };
+        const store = ctx.existingStore();
+        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(store) };
         if (ctx.opts["json"] === true) {
           printJson(ctx, summary);
           return;
         }
         const io = ctx.deps.io;
         io.out(`${summary.records} record(s) in ${summary.corpus}`);
-        if (summary.records === 0) {
+        noteCatalogGaps(ctx, { uncatalogued: summary.uncatalogued, missingFiles: [] });
+        if (summary.records === 0 && summary.uncatalogued.length === 0) {
           io.out("Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
           return;
         }

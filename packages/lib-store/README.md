@@ -29,7 +29,11 @@ result is reproducible and unit-testable without a filesystem.
 
 Indexing is incremental — adding a record loads only the shards its own tokens live
 in, and removing one uses the catalog row to find the same shards again, so a
-deletion never scans all 256.
+deletion never scans all 256. `indexRecord` replaces a posting the record already
+has rather than adding a second one, so indexing a record whose catalog row was lost
+is safe. `catalogGaps(store)` compares the catalog with the record files in both
+directions: record files the catalog lacks (invisible to search, stats and export)
+and catalog rows whose file is gone.
 
 ## What is in here
 
@@ -44,7 +48,7 @@ deletion never scans all 256.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, EmbeddingSet
+FileStore, isSafeKey, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, EmbeddingSet
 ```
 
 ## Depends on

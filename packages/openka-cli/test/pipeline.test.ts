@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CATALOG_CHECKPOINT,
   SYNC_LIMIT_MIN,
   isoInstant,
   normalizeSyncWindow,
@@ -23,7 +24,9 @@ import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connect
 import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
-import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, catalogGaps, indexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // Real documents come from the connector that recorded them, and the PARDOK export
 // from the package that parses it: one copy of each, borrowed explicitly.
@@ -67,6 +70,24 @@ class StubSource implements Source {
         },
       ],
     };
+  }
+}
+
+/** `count` refs that all point at the same fixture PDF, for runs longer than one ref. */
+class ManySource extends StubSource {
+  constructor(private readonly count: number) {
+    super();
+  }
+
+  override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    const one = (await super.discover(options)).refs[0];
+    ok(one !== undefined);
+    const refs = Array.from({ length: this.count }, (_, i) => ({
+      ...one,
+      key: `V-${i + 1}`,
+      reference: `19/${10006 + i}`,
+    }));
+    return { warnings: [], refs };
   }
 }
 
@@ -289,11 +310,72 @@ describe("sync pipeline", () => {
     strictEqual(store.getRecord("berlin-19-10006")?.qa.length, 6);
   });
 
-  it("indexes the whole run inside one catalog batch", async () => {
+  it("indexes a short run inside one catalog batch", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
     await sync({ source: new StubSource(), store, engine: testEngine(transport) });
     strictEqual(store.batches, 1);
+  });
+
+  it("saves the catalog every CATALOG_CHECKPOINT refs, so a killed run loses few rows", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const report = await sync({ source: new ManySource(CATALOG_CHECKPOINT + 2), store, engine: testEngine(transport) });
+    strictEqual(report.stored, CATALOG_CHECKPOINT + 2);
+    strictEqual(store.batches, 2);
+  });
+
+  // Findings 02#1 and 05#3 of the 2026-10-05 review: a run killed before its
+  // catalog was saved left records on disk with no catalog row, and every later
+  // run called them "unchanged" — invisible to search, stats and export for good.
+  it("catalogues an unchanged record that an interrupted run left out of the catalog", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-interrupted-"));
+    try {
+      const store = new FileStore(root);
+      const { transport } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"v1"' } }]);
+      const options = { source: new StubSource(), store, engine: testEngine(transport), now: () => new Date("2026-01-02T03:04:05Z") };
+      await sync(options);
+      const shards = store.shardNames().map((shard) => JSON.stringify(store.loadShard(shard)));
+      // What a kill before the flush left: the record and its postings, no catalog
+      // row, no source state.
+      rmSync(join(root, "index", "catalog.json"));
+      rmSync(join(root, "state"), { recursive: true });
+      const fresh = new FileStore(root);
+      deepStrictEqual(catalogGaps(fresh), { uncatalogued: ["berlin-19-10006"], missingFiles: [] });
+
+      const rerun = await sync({ ...options, store: fresh });
+      strictEqual(rerun.unchanged, 1);
+      strictEqual(rerun.recatalogued, 1);
+      ok(fresh.catalogEntry("berlin-19-10006") !== undefined);
+      deepStrictEqual(catalogGaps(fresh), { uncatalogued: [], missingFiles: [] });
+      // Indexed again, not twice: every posting is where it was, once.
+      deepStrictEqual(fresh.shardNames().map((shard) => JSON.stringify(fresh.loadShard(shard))), shards);
+
+      const third = await sync({ ...options, store: new FileStore(root) });
+      strictEqual(third.recatalogued, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("stops between refs when its signal is aborted, and keeps what it stored", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const controller = new AbortController();
+    const report = await sync({
+      source: new ManySource(3),
+      store,
+      engine: testEngine(transport),
+      signal: controller.signal,
+      onProgress: (event) => {
+        if (event.index === 1) controller.abort();
+      },
+    });
+    strictEqual(report.interrupted, true);
+    strictEqual(report.stored, 1);
+    strictEqual(store.catalog().length, 1);
+    strictEqual(store.getSourceState("berlin").last_success, undefined);
+    ok(store.getSourceState("berlin").last_sync !== undefined);
   });
 
   it("is idempotent: a second run over unchanged inputs stores nothing", async () => {

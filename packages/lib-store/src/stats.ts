@@ -1,6 +1,7 @@
 // What is in a corpus, counted from its catalog — the numbers `ka stats` prints.
 
-import type { CatalogStore } from "./store.js";
+import type { CatalogStore, RecordStore } from "./store.js";
+import { catalogGaps } from "./indexer.js";
 
 export interface ParliamentStats {
   records: number;
@@ -18,12 +19,21 @@ export interface CorpusStats {
   by_parliament: Record<string, ParliamentStats>;
   /** Records per extraction tier, keys sorted. */
   by_tier: Record<string, number>;
+  /**
+   * Record files the catalog has no row for, sorted — on disk but not counted
+   * above, and invisible to search and export. `catalogGaps` explains; `ka
+   * reindex` closes the gap.
+   */
+  uncatalogued: string[];
 }
 
 const byKey = <T>([a]: [string, T], [b]: [string, T]): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Count the corpus from its catalog; no record is read. */
-export function corpusStats(store: CatalogStore): CorpusStats {
+/**
+ * Count the corpus from its catalog; no record is read. The record files are
+ * listed (not read) to name those the catalog lacks.
+ */
+export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">): CorpusStats {
   const catalog = store.catalog();
   const byParliament = new Map<string, ParliamentStats>();
   const byTier = new Map<string, number>();
@@ -41,5 +51,6 @@ export function corpusStats(store: CatalogStore): CorpusStats {
     needs_review: catalog.length - complete,
     by_parliament: Object.fromEntries([...byParliament].sort(byKey)),
     by_tier: Object.fromEntries([...byTier].sort(byKey)),
+    uncatalogued: catalogGaps(store).uncatalogued,
   };
 }

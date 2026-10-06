@@ -7,7 +7,7 @@ import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import type { CliDeps } from "../io.js";
+import { InterruptedRunError, type CliDeps, type InterruptSignal } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { truncate } from "../text.js";
 
@@ -80,33 +80,62 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
-        const report = await sync({
-          source,
-          store,
-          engine,
-          perceiver,
-          now: ctx.deps.now,
-          ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
-          ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
-          ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
-          ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
-          ...(apiKey === undefined ? {} : { apiKey }),
-          ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
-          ...(ctx.opts["force"] === true ? { force: true } : {}),
-          ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
-          ...(ctx.global.quiet === true || ctx.opts["json"] === true
-            ? {}
-            : {
-                onProgress: (event) => {
-                  if (event.action === "failed") {
-                    ctx.deps.io.err(`  ! ${truncate(event.id, 40)}: ${truncate(event.detail ?? "failed", 100)}`);
-                  }
-                },
-              }),
+        // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
+        // ends the process. A kill -9 cannot be caught: the next sync over the
+        // window, or `ka reindex`, catalogues what that run stored.
+        const controller = new AbortController();
+        let caught: InterruptSignal | undefined;
+        const stopListening = ctx.deps.onInterrupt?.((signal) => {
+          caught = signal;
+          controller.abort();
+          ctx.deps.io.err(
+            `${signal === "SIGINT" ? "Interrupted" : "Terminated"} — finishing the current Anfrage and saving the ` +
+              "catalog. Signal again to stop at once.",
+          );
         });
+        let report: Awaited<ReturnType<typeof sync>>;
+        try {
+          report = await sync({
+            source,
+            store,
+            engine,
+            perceiver,
+            now: ctx.deps.now,
+            signal: controller.signal,
+            ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
+            ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
+            ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
+            ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
+            ...(apiKey === undefined ? {} : { apiKey }),
+            ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
+            ...(ctx.opts["force"] === true ? { force: true } : {}),
+            ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+            ...(ctx.global.quiet === true || ctx.opts["json"] === true
+              ? {}
+              : {
+                  onProgress: (event) => {
+                    if (event.action === "failed") {
+                      ctx.deps.io.err(`  ! ${truncate(event.id, 40)}: ${truncate(event.detail ?? "failed", 100)}`);
+                    }
+                  },
+                }),
+          });
+        } finally {
+          stopListening?.();
+        }
+
+        const stopped =
+          report.interrupted && caught !== undefined
+            ? new InterruptedRunError(
+                caught,
+                `${source.key}: stopped after ${report.stored + report.unchanged + report.failed} of ` +
+                  `${report.discovered} Anfragen; what was stored is catalogued. Run the same sync again to continue.`,
+              )
+            : undefined;
 
         if (ctx.opts["json"] === true) {
           printJson(ctx, report);
+          if (stopped !== undefined) throw stopped;
           return;
         }
 
@@ -122,9 +151,16 @@ export function registerSync(program: Command, deps: CliDeps): void {
         if (report.needsReview > 0) {
           io.out(`${report.needsReview} of the stored records have abstained fields — see \`ka review\`.`);
         }
+        if (report.recatalogued > 0) {
+          io.out(
+            `${report.recatalogued} unchanged record(s) were on disk but missing from the catalog ` +
+              "(left by an interrupted run) and are searchable again.",
+          );
+        }
         for (const warning of report.warnings) io.err(`warning: ${truncate(warning, 200)}`);
         for (const error of report.errors.slice(0, 10)) io.err(`error: ${truncate(error, 200)}`);
         if (report.errors.length > 10) io.err(`… and ${report.errors.length - 10} more errors`);
+        if (stopped !== undefined) throw stopped;
         if (report.errors.length > 0 && report.stored === 0) {
           throw new OpenKaError(`${source.key}: sync produced no records`);
         }

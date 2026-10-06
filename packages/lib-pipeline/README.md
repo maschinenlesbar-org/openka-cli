@@ -18,7 +18,7 @@ Everything is re-exported from the package root:
 
 ```
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
-SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow
+CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow
 ```
 
 `sync()` checks its window first (`normalizeSyncWindow`, `src/window.ts`): calendar
@@ -33,6 +33,17 @@ it, for every host the source reaches, and it stays raised on that engine.
 
 `sourceStatus(store, registry)` (`src/status.ts`) is the table `ka sources list`
 prints: each registry entry with its record count and last sync state.
+
+## An interrupted run
+
+The catalog is saved every `CATALOG_CHECKPOINT` (25) refs, not once at the end, so a
+run killed outright loses the catalog rows of at most that many stored records.
+`signal` (an `AbortSignal`) stops a run between two refs: the ref in hand is
+finished, the catalog saved, and the report says `interrupted: true`; the source's
+`last_success` is left as it was. A record that is unchanged but has no catalog row —
+what an interrupted run left behind, before the checkpoints — is indexed again and
+counted in `recatalogued`, so the next sync over the window repairs it; before, every
+later run called it "unchanged" and it stayed invisible to search, stats and export.
 
 ## robots.txt
 

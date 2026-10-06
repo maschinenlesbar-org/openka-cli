@@ -42,7 +42,22 @@ export interface SyncOptions {
   onProgress?: (event: ProgressEvent) => void;
   /** Injected clock — the only place the pipeline reads time (`retrieved_at`). */
   now?: () => Date;
+  /**
+   * Stop early: checked before each ref, so the ref in hand is finished, the
+   * catalog is saved and the report says `interrupted`. `ka sync` aborts it on the
+   * first Ctrl-C or SIGTERM.
+   */
+  signal?: AbortSignal;
 }
+
+/**
+ * How many refs one catalog batch covers. The catalog is persisted at the end of
+ * each, so a run killed outright (SIGKILL, a power cut) loses the catalog rows of
+ * at most this many stored records — and the next sync over the window, or `ka
+ * reindex`, puts those back. One batch for the whole run lost every row of a long
+ * sync to a Ctrl-C, while its records and postings stayed on disk.
+ */
+export const CATALOG_CHECKPOINT = 25;
 
 export interface ProgressEvent {
   index: number;
@@ -65,6 +80,13 @@ export interface SyncReport {
   errors: string[];
   /** True when the upstream said nothing changed and no work was done. */
   upstreamUnchanged: boolean;
+  /**
+   * Unchanged records that were on disk but missing from the catalog — what an
+   * interrupted run left behind — and were indexed again. Counted in `unchanged`.
+   */
+  recatalogued: number;
+  /** True when `signal` stopped the run before every ref was handled. */
+  interrupted: boolean;
 }
 
 /**
@@ -93,6 +115,8 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
     warnings: [],
     errors: [],
     upstreamUnchanged: false,
+    recatalogued: 0,
+    interrupted: false,
   };
 
   const startedAt = isoInstant(now());
@@ -135,43 +159,52 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
     notedOrigins: new Set(),
   };
 
-  // One catalog write for the whole run rather than one per record: the catalog
-  // grows with the corpus, and rewriting it per record made a sync quadratic in
-  // catalog bytes. The batch also flushes when the loop throws, so an interrupted
-  // run keeps the rows it indexed.
+  // One catalog write per `CATALOG_CHECKPOINT` refs rather than one per record:
+  // the catalog grows with the corpus, and rewriting it per record made a sync
+  // quadratic in catalog bytes. Each batch also flushes when the loop throws.
+  const refs = discovered.refs;
   let index = 0;
-  await store.batchCatalog(async () => {
-    for (const ref of discovered.refs) {
-      index++;
-      try {
-        const outcome = await syncRef(ref, options, now, httpCache, run);
-        if (outcome.action === "stored") {
-          report.stored++;
-          if (outcome.record !== undefined && outcome.record.extraction.abstained_fields.length > 0) {
-            report.needsReview++;
-          }
-        } else {
-          report.unchanged++;
+  const handle = async (ref: DocRef): Promise<void> => {
+    index++;
+    try {
+      const outcome = await syncRef(ref, options, now, httpCache, run);
+      if (outcome.recatalogued === true) report.recatalogued++;
+      if (outcome.action === "stored") {
+        report.stored++;
+        if (outcome.record !== undefined && outcome.record.extraction.abstained_fields.length > 0) {
+          report.needsReview++;
         }
-        report.bytesFetched += outcome.bytesFetched;
-        options.onProgress?.({ index, total: discovered.refs.length, id: outcome.id, action: outcome.action });
-      } catch (err) {
-        report.failed++;
-        const message = err instanceof Error ? err.message : String(err);
-        report.errors.push(`${ref.reference}: ${message}`);
-        options.onProgress?.({
-          index,
-          total: discovered.refs.length,
-          id: ref.reference,
-          action: "failed",
-          detail: message,
-        });
+      } else {
+        report.unchanged++;
       }
+      report.bytesFetched += outcome.bytesFetched;
+      options.onProgress?.({ index, total: refs.length, id: outcome.id, action: outcome.action });
+    } catch (err) {
+      report.failed++;
+      const message = err instanceof Error ? err.message : String(err);
+      report.errors.push(`${ref.reference}: ${message}`);
+      options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message });
     }
-  });
+  };
+  for (let start = 0; start < refs.length && !report.interrupted; start += CATALOG_CHECKPOINT) {
+    await store.batchCatalog(async () => {
+      for (const ref of refs.slice(start, start + CATALOG_CHECKPOINT)) {
+        if (options.signal?.aborted === true) {
+          report.interrupted = true;
+          return;
+        }
+        await handle(ref);
+      }
+    });
+  }
 
+  // A run stopped early still records the validators of what it stored: every one
+  // of them belongs to bytes that are in the blob store. It does not count as a
+  // success, since the window was not covered.
   const nextState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
-  if (report.errors.length === 0) {
+  if (report.interrupted) {
+    // Neither a success nor a degraded source: last_success and last_error stay.
+  } else if (report.errors.length === 0) {
     nextState.last_success = startedAt;
     delete nextState.last_error;
   } else {
@@ -194,6 +227,8 @@ interface RefOutcome {
   action: "stored" | "unchanged";
   bytesFetched: number;
   record?: KaRecord;
+  /** An unchanged record that had no catalog row and was indexed again. */
+  recatalogued?: boolean;
 }
 
 async function syncRef(
@@ -299,6 +334,13 @@ async function syncRef(
   // Idempotence: the inputs are the document bytes and the extractor version, so a
   // record whose stored provenance already matches both needs no work.
   if (!options.force && existing !== undefined && isUpToDate(existing, documents, metadata)) {
+    // Unchanged, but not necessarily findable: a run interrupted before its catalog
+    // was saved left the record on disk with no catalog row, and every later run
+    // returned here — "unchanged", invisible to search, stats and export for good.
+    if (store.catalogEntry(existing.id) === undefined) {
+      indexRecord(store, existing);
+      return { id: existing.id, action: "unchanged", bytesFetched, recatalogued: true };
+    }
     return { id: existing.id, action: "unchanged", bytesFetched };
   }
 

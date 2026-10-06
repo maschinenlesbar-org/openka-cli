@@ -9,7 +9,7 @@ import { FileStore, RECORD_ID_REASON, archivedDocument, assertRecordId, document
 import { MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
-import { corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { catalogGaps, corpusStats, indexableFields, indexRecord, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
 import {
   DEFAULT_SEARCH_LIMIT,
@@ -610,8 +610,33 @@ describe("corpus statistics", () => {
       needs_review: 1,
       by_parliament: { bayern: { records: 1, abstained: 0 }, berlin: { records: 2, abstained: 1 } },
       by_tier: { text_layer: 3 },
+      uncatalogued: [],
     });
-    deepStrictEqual(corpusStats(new MemoryStore()), { records: 0, parse_complete: 0, needs_review: 0, by_parliament: {}, by_tier: {} });
+    deepStrictEqual(corpusStats(new MemoryStore()), { records: 0, parse_complete: 0, needs_review: 0, by_parliament: {}, by_tier: {}, uncatalogued: [] });
+  });
+
+  it("names record files the catalog has no row for, without counting them", () => {
+    const store = new MemoryStore();
+    const stray = sampleRecord({ id: "berlin-19-33333", reference: "19/33333" });
+    store.putRecord(sampleRecord());
+    indexRecord(store, sampleRecord());
+    store.putRecord(stray);
+    strictEqual(corpusStats(store).records, 1);
+    deepStrictEqual(corpusStats(store).uncatalogued, ["berlin-19-33333"]);
+    deepStrictEqual(catalogGaps(store), { uncatalogued: ["berlin-19-33333"], missingFiles: [] });
+    store.deleteRecord(sampleRecord().id);
+    deepStrictEqual(catalogGaps(store), { uncatalogued: ["berlin-19-33333"], missingFiles: [sampleRecord().id] });
+  });
+
+  it("indexes a record whose catalog row was lost without doubling its postings", () => {
+    const store = new MemoryStore();
+    const record = sampleRecord();
+    store.putRecord(record);
+    indexRecord(store, record);
+    const shards = store.shardNames().map((shard) => JSON.stringify(store.loadShard(shard)));
+    store.removeCatalogEntry(record.id);
+    indexRecord(store, record);
+    deepStrictEqual(store.shardNames().map((shard) => JSON.stringify(store.loadShard(shard))), shards);
   });
 });
 

@@ -4,7 +4,8 @@
 import type { Command } from "commander";
 import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { DEFAULT_VERIFY_SAMPLE, assertVerified, verifyCorpus } from "@maschinenlesbar.org/openka-lib-verify";
-import { reindexAll } from "@maschinenlesbar.org/openka-lib-store";
+import { catalogGaps, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
+import { noteCatalogGaps } from "./output.js";
 import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
@@ -56,6 +57,8 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           }
           ctx.deps.io.out(`${report.reproduced}/${report.checked} record(s) reproduced byte-identically.`);
         }
+        // `verify` reads the record files, search the catalog: say where they differ.
+        noteCatalogGaps(ctx, catalogGaps(store));
         assertVerified(report);
       }),
     );

@@ -305,6 +305,14 @@ What the library now computes that a `ka` action used to compute on its own:
   is refused; a blank environment variable counts as unset. The CLI used to trim the
   environment variables but not the flag, so `"corpus "` named two directories
   depending on how it was passed.
+- **Whether the catalog and the records agree** — `catalogGaps(store)` (`lib-store`)
+  names record files without a catalog row and rows without a file; `corpusStats`
+  carries the first as `uncatalogued`, and `ka stats`/`ka verify` print a note. A
+  sync killed before its catalog was saved used to leave its records in the first
+  group for good, since every later run called them "unchanged"; `sync()` now
+  saves the catalog every `CATALOG_CHECKPOINT` refs, stops between refs on an
+  `AbortSignal` (`ka sync`'s Ctrl-C), and indexes an unchanged record that has no
+  row (`recatalogued` in the report).
 - **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
   prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.
