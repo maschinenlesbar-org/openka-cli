@@ -678,6 +678,34 @@ describe("metadata rules", () => {
 
   it("splits a PARDOK Urheber field into askers", () => {
     deepStrictEqual(parseUrheber("Otto, Andreas (Grüne)").askers, [{ name: "Andreas Otto", party: "Grüne" }]);
+    // Findings 01#3, 01#4, 01#12, 05#1, 05#2 of the 2026-10-05 review.
+    deepStrictEqual(parseUrheber("Tobias Keller AfD").askers, [{ name: "Tobias Keller", party: "AfD" }]);
+    deepStrictEqual(parseUrheber("Juliane Nagel Die Linke").askers, [{ name: "Juliane Nagel", party: "Die Linke" }]);
+    // "Linke" alone is a surname as often as a party: left whole.
+    deepStrictEqual(parseUrheber("Anna Petra Linke").askers, [{ name: "Anna Petra Linke" }]);
+    deepStrictEqual(parseUrheber("Hoffmann, Nadine, BÜNDNIS 90/DIE GRÜNEN").askers, [
+      { name: "Nadine Hoffmann", party: "BÜNDNIS 90/DIE GRÜNEN" },
+    ]);
+    deepStrictEqual(parseUrheber("Müller, Hans, Prof. Dr., CDU").askers, [{ name: "Prof. Dr. Hans Müller", party: "CDU" }]);
+    deepStrictEqual(parseUrheber("Neumann-Martin, Christine CDU").askers, [{ name: "Christine Neumann-Martin", party: "CDU" }]);
+    deepStrictEqual(parseUrheber("BÜNDNIS 90/DIE GRÜNEN").askers, []);
+    for (const office of [
+      "Staatsministerium",
+      "Staatsministerium für Wirtschaft, Landesentwicklung und Energie",
+      "Sächsisches Staatsministerium für Kultus",
+      "Bundesministerium der Finanzen",
+      "Innenministerium",
+      "Kultusministerium Baden-Württemberg",
+      "Bayerische Staatsregierung",
+      "Senat der Freien und Hansestadt Hamburg",
+    ]) {
+      deepStrictEqual(parseUrheber(`Wagner, Frank (CDU); ${office}`), {
+        askers: [{ name: "Frank Wagner", party: "CDU" }],
+        bodies: [office],
+      }, office);
+    }
+    // A surname that only starts like an office is still a person.
+    deepStrictEqual(parseUrheber("Senat, Anna (SPD)").askers, [{ name: "Anna Senat", party: "SPD" }]);
     deepStrictEqual(parseUrheber("Goldner, Antonia-Katharina, Dr., CDU; CDU").askers, [
       { name: "Dr. Antonia-Katharina Goldner", party: "CDU" },
     ]);

@@ -150,3 +150,50 @@ describe("the memory store used by these tests", () => {
     strictEqual(store.recordIds().length, 0);
   });
 });
+
+// Recorded from the live portal on 2026-10-05 (review result 05) and trimmed to the
+// rows that showed the bugs: Hessen's Greens lost their party into their name,
+// Baden-Württemberg's "Staatsministerium" became an asker, Sachsen's askers kept
+// their party inside the name, and Bayern dropped an asker with a "(FH)" degree.
+describe("askers and answering bodies as the Länder print them", () => {
+  const refsOf = (payload: string) =>
+    blocksWithClass(readFixtureText("payloads", payload), "ps-vorgang", /<hr\s*\/?>/).map((block) => parseVorgangBlock(block, []));
+
+  it("reads Hessen's trailing BÜNDNIS 90/DIE GRÜNEN as the party (finding 05#1)", () => {
+    const refs = refsOf("parlamentsspiegel-hessen.html");
+    deepStrictEqual(refs.map((ref) => ref?.askers), [
+      [{ name: "Maximilian Müger", party: "fraktionslos" }],
+      [
+        { name: "Dr. Stefan Naas", party: "Freie Demokraten" },
+        { name: "Marion Schardt-Sauer", party: "Freie Demokraten" },
+      ],
+      [
+        { name: "Sascha Meier", party: "BÜNDNIS 90/DIE GRÜNEN" },
+        { name: "Lara Klaes", party: "BÜNDNIS 90/DIE GRÜNEN" },
+      ],
+    ]);
+  });
+
+  it("files Baden-Württemberg's Staatsministerium as the answering body, not an asker (finding 05#2)", () => {
+    const refs = refsOf("parlamentsspiegel-baden-wuerttemberg.html");
+    deepStrictEqual(refs.map((ref) => [ref?.reference, ref?.askers, ref?.answered_by]), [
+      ["18/447", [{ name: "Christian Schäfer", party: "AfD" }], { ministry: "Staatsministerium" }],
+      ["18/430", [{ name: "Emil Sänze", party: "AfD" }], { ministry: "Staatsministerium" }],
+    ]);
+  });
+
+  it("splits Sachsen's 'Given Surname Party' form on a known party (finding 01#3)", () => {
+    deepStrictEqual(refsOf("parlamentsspiegel-sachsen.html").map((ref) => ref?.askers), [
+      [{ name: "Juliane Nagel", party: "Die Linke" }],
+      [{ name: "Juliane Nagel", party: "Die Linke" }],
+    ]);
+  });
+
+  it("keeps Bayern's asker with a '(FH)' degree", () => {
+    const winhart = refsOf("parlamentsspiegel-bayern.html").find((ref) => ref?.reference === "19/13262");
+    deepStrictEqual(winhart?.askers, [
+      { name: "Dipl.-Betriebswirt (FH) Andreas Winhart", party: "AfD" },
+      { name: "Franz Bergmüller", party: "AfD" },
+    ]);
+  });
+});

@@ -55,6 +55,11 @@ npm test -w @maschinenlesbar.org/openka-lib-parlamentsspiegel
 
 **Recorded upstream payloads**, so tests never touch a live parliament:
 
+- `fixtures/payloads/parlamentsspiegel-baden-wuerttemberg.html`, `…-bayern.html`,
+  `…-hessen.html` — rows of the live portal recorded on 2026-10-05 (exploratory review,
+  result 05) and trimmed to the ones that showed the Urheber bugs: "Staatsministerium"
+  as an asker, BÜNDNIS 90/DIE GRÜNEN inside a name, an asker with a "(FH)" degree
+  dropped
 - `fixtures/payloads/parlamentsspiegel-niedersachsen.html`
 - `fixtures/payloads/parlamentsspiegel-nrw.html`
 - `fixtures/payloads/parlamentsspiegel-results.html`

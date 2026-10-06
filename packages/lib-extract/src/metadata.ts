@@ -137,11 +137,37 @@ export interface ParsedAsker {
  * second half. An office is not a person and does not go in `askers`.
  */
 // The lookahead matters: without it "Ministerowitsch, Anna (CDU)" is an office.
+//
+// Baden-Württemberg's rows name the answering body "Staatsministerium" alone, and it
+// was read as a person — an invented asker beside the real one, and no ministry
+// (live, 2026-10-05). The Länder's other spellings went the same way: a compound
+// ending in "-ministerium" (Innen-, Kultus-, Finanzministerium), the Bund's
+// ministries, a Staatsregierung, Hamburg's "Senat der Freien und Hansestadt".
 const OFFICE =
-  /^(Ministerium|Ministerin|Minister|Senatsverwaltung|Senatorin|Senator|Staatssekretärin|Staatssekretär|Staatskanzlei|Landesregierung|Regierungspräsidium|Regierungspräsidentin|Regierungspräsident|Präsidentin|Präsident|Bürgermeisterin|Bürgermeister)(?![\p{L}])/u;
+  /^(?:\p{L}*[Mm]inister(?:ium|in)?|Senatsverwaltung|Senatorin|Senator|Staatssekretärin|Staatssekretär|Staatskanzlei|Landesregierung|Staatsregierung|Bundesregierung|Regierungspräsidium|Regierungspräsidentin|Regierungspräsident|Präsidentin|Präsident|Bürgermeisterin|Bürgermeister)(?![\p{L}])|^Senat(?=\s|$)/u;
 
-/** A Land's ministry spelled out with its Land in front, as Niedersachsen writes it. */
-const LAND_OFFICE = /^\p{Lu}[\p{L}-]+(es|e|er)\s+(Ministerium|Staatskanzlei|Landesamt)/u;
+/**
+ * A Land's ministry spelled out with its Land in front, as Niedersachsen writes it —
+ * "Sächsisches Staatsministerium für Kultus", "Bayerische Staatsregierung" too.
+ */
+const LAND_OFFICE =
+  /^\p{Lu}[\p{L}-]+(es|e|er)\s+(Ministerium|Staatsministerium|Staatsregierung|Landesregierung|Staatskanzlei|Landesamt|Senat)/u;
+
+/**
+ * Party names as the portals print them after a name. A closed list on purpose:
+ * Sachsen's rows read "Juliane Nagel Die Linke" and "Tobias Keller AfD" — given name
+ * first, the party appended with nothing in between — and only a known party can
+ * be told apart from a surname there. "Linke" alone is a surname as often as a
+ * party, so only "Die Linke"/"DIE LINKE" count. Hessen's trailing form "Klaes, Lara,
+ * BÜNDNIS 90/DIE GRÜNEN" needs it too: the "90" kept that party out of the
+ * capitalised-party rule, and it ended up inside the name.
+ */
+const KNOWN_PARTY =
+  /^(?:AfD|CDU|CSU|SPD|FDP|BSW|SSW|Freie Demokraten|FREIE WÄHLER|Freie Wähler|BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen|GRÜNE|Grüne|DIE LINKE|Die Linke|fraktionslos|parteilos)$/u;
+
+/** A trailing party in the given-name-first form, with what precedes it. */
+const TRAILING_PARTY =
+  /^(.+?)\s+(AfD|CDU|CSU|SPD|FDP|BSW|SSW|Freie Demokraten|FREIE WÄHLER|Freie Wähler|BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen|GRÜNE|DIE LINKE|Die Linke|fraktionslos|parteilos)$/u;
 
 /**
  * What stands in the party slot for a member of no Fraktion. It is written in lower
@@ -181,18 +207,36 @@ export function parseUrheber(value: string): ParsedUrheber {
       // the Fraktion spelled out beside its abbreviation, as Schleswig-Holstein
       // repeats it: "Sozialdemokratische Partei Deutschlands (SPD)". The name decides.
       if (!name.includes(",") && !isPersonName(name)) continue;
+    } else if (!entry.includes(",") && TRAILING_PARTY.test(entry)) {
+      // "Juliane Nagel Die Linke": the person, then a known party. Only split when
+      // what is left reads as a person written given name first; otherwise the
+      // entry is left whole, as before.
+      const match = TRAILING_PARTY.exec(entry) as RegExpExecArray;
+      const person = (match[1] as string).trim();
+      if (isPersonName(person)) {
+        name = person;
+        party = match[2] as string;
+      }
     } else {
       // `Surname, Given, Dr., CDU` — a trailing comma-separated party.
       const parts = entry.split(",").map((part) => part.trim());
       if (parts.length >= 3) {
         const last = parts[parts.length - 1] as string;
         if (
-          (/^[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß.\-/ ]{1,28}$/.test(last) || NO_FRAKTION.test(last)) &&
-          !/^(Dr|Prof)\.?$/.test(last)
+          (/^[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß.\-/ ]{1,28}$/.test(last) || NO_FRAKTION.test(last) || KNOWN_PARTY.test(last)) &&
+          !isTitle(last)
         ) {
           party = last;
           parts.pop();
         }
+      }
+      // `Surname, Given Party` — the party appended to the given name without a
+      // comma of its own. Split only on a known party, as above.
+      const last = parts[parts.length - 1] as string;
+      const appended = parts.length === 2 && party === undefined ? TRAILING_PARTY.exec(last) : null;
+      if (appended !== null && /^\p{Lu}/u.test(appended[1] as string)) {
+        party = appended[2] as string;
+        parts[parts.length - 1] = (appended[1] as string).trim();
       }
       name = parts.join(", ");
     }
@@ -201,6 +245,7 @@ export function parseUrheber(value: string): ParsedUrheber {
     if (party === undefined && /^[A-ZÄÖÜ][A-ZÄÖÜ0-9/.\- ]{1,12}$/.test(name) && !name.includes(",")) {
       continue;
     }
+    if (party === undefined && KNOWN_PARTY.test(name)) continue;
     const normalised = normaliseName(name);
     if (normalised === "") continue;
     const asker: ParsedAsker = { name: normalised };
@@ -237,8 +282,21 @@ function isPersonName(name: string): boolean {
   );
 }
 
-/** Academic and parliamentary titles, which German records print after the name. */
-const TITLE = /^(?:Dr\.?(?:\s*h\.?\s*c\.?)?|Prof\.?|Dipl\.?-?\s*\w*\.?|MdB|MdL|MdA)$/i;
+/**
+ * Academic and parliamentary titles, which German records print after the name.
+ * "(FH)" completes a Diplom: Bayern's rows print "Dipl.-Betriebswirt (FH) Andreas
+ * Winhart (AfD)", which failed the person test and was dropped from the askers.
+ */
+const TITLE = /^(?:Dr\.?(?:\s*h\.?\s*c\.?)?|Prof\.?|Dipl\.?-?\s*[\p{L}]*\.?|\(FH\)|MdB|MdL|MdA)$/iu;
+
+/**
+ * One title or several in one comma-separated part: "Prof. Dr." in "Müller, Hans,
+ * Prof. Dr., CDU" is two, and read as a given name it made "Hans Prof. Dr. Müller".
+ */
+function isTitle(part: string): boolean {
+  const words = part.trim().split(/\s+/);
+  return words.length > 0 && words.every((word) => TITLE.test(word));
+}
 
 /**
  * `Otto, Andreas` -> `Andreas Otto`, and `Goldner, Antonia-Katharina, Dr.` ->
@@ -252,7 +310,7 @@ function normaliseName(name: string): string {
   const titles: string[] = [];
   const given: string[] = [];
   for (const part of parts.slice(1)) {
-    (TITLE.test(part) ? titles : given).push(part);
+    (isTitle(part) ? titles : given).push(part);
   }
   return [...titles, ...given, surname].join(" ").replace(/\s+/g, " ").trim();
 }
