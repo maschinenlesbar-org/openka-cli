@@ -350,11 +350,24 @@ function parseFollowUps(tail: string): { url?: string; date?: string; ministry?:
     // yielded "auf Kleine Anfrage. Ministerium für …", and Sachsen's "Antw SMI
     // 12.08.2025 Drs 8/3351" — no " - Drucksache" — yielded nothing at all.
     const urheberRegion = regionWithClass(segment, "ps-urheber");
-    const ministry = urheberRegion === undefined ? "" : (spanTexts(urheberRegion).pop() ?? "").trim();
+    const ministry = urheberRegion === undefined ? "" : undecorated((spanTexts(urheberRegion).pop() ?? "").trim());
     if (ministry !== "") out.ministry = ministry;
     return out;
   }
   return undefined;
+}
+
+/**
+ * The ministry as it is named, without what the portal appends to it. Thüringen's
+ * rows read "Ministerium für Umwelt, Energie, Naturschutz und Forsten (8. Wp),
+ * TMUENF" — the Wahlperiode and the ministry's acronym — so no two Länder's
+ * ministries could be grouped or searched by name. Only that exact tail is cut; an
+ * acronym standing alone (NRW's "MUNV", Sachsen's "SMI") is all the row says and is
+ * kept as it is.
+ */
+export function undecorated(ministry: string): string {
+  const decorated = /^(.+?)\s*\(\d{1,2}\.\s*Wp\.?\)\s*(?:,\s*[A-ZÄÖÜ]{2,12})?$/u.exec(ministry);
+  return decorated === null ? ministry : (decorated[1] as string).trim();
 }
 
 /** The last German date in a result row: the row ends with the document's date. */

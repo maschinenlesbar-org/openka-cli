@@ -1,7 +1,7 @@
 import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { blocksWithClass } from "@maschinenlesbar.org/openka-lib-source";
-import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender } from "../src/index.js";
+import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
 import { MemoryStore, scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixtures(import.meta.url);
@@ -65,6 +65,13 @@ describe("Parlamentsspiegel source", () => {
     for (const ministry of ministryOf("parlamentsspiegel-thueringen.html")) {
       match(ministry ?? "", /^Ministerium für /);
     }
+    // Finding 01#11: without the "(8. Wp), TMUENF" the portal appends.
+    deepStrictEqual(ministryOf("parlamentsspiegel-thueringen.html").sort(), [
+      "Ministerium für Inneres, Kommunales und Landesentwicklung",
+      "Ministerium für Umwelt, Energie, Naturschutz und Forsten",
+    ]);
+    strictEqual(undecorated("Ministerium für Bildung (7. Wp.), TMBJS"), "Ministerium für Bildung");
+    strictEqual(undecorated("MUNV"), "MUNV");
     // Unchanged where the old reading already worked.
     deepStrictEqual(ministryOf("parlamentsspiegel-saarland.html"), ["Landesregierung", "Landesregierung"]);
     deepStrictEqual(ministryOf("parlamentsspiegel-nrw.html"), ["MUNV", "MUNV", "MUNV"]);

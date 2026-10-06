@@ -33,7 +33,7 @@ one borrows it with `fixturesOf(...)`.
 Everything is re-exported from the package root:
 
 ```
-PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, toGermanDate, documentRole, parseVorgangBlock
+PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, toGermanDate, documentRole, parseVorgangBlock, undecorated
 ```
 
 ## Depends on
