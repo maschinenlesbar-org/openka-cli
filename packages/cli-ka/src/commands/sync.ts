@@ -3,7 +3,7 @@
 
 import type { Command } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { SYNC_LIMIT_MIN, sync, type ProgressEvent } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
@@ -11,6 +11,7 @@ import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type InterruptSignal } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { sanitizeForTerminal, truncate } from "../text.js";
+import { SyncProgress } from "../progress.js";
 
 /** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
 const parseSourceKey = problemParser(sourceKeyProblem);
@@ -86,6 +87,9 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const release = store.lock?.(`sync --source ${source.key}`);
         if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
 
+        const progress = ctx.global.quiet === true ? undefined : new SyncProgress(ctx.deps.io, ctx.deps.now);
+        progress?.start(source.key);
+
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
         // ends the process. A kill -9 cannot be caught: the next sync over the
         // window, or `ka reindex`, catalogues what that run stored.
@@ -94,7 +98,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const stopListening = ctx.deps.onInterrupt?.((signal) => {
           caught = signal;
           controller.abort();
-          ctx.deps.io.err(
+          (progress === undefined ? ctx.deps.io.err : (text: string) => progress.line(text))(
             `${signal === "SIGINT" ? "Interrupted" : "Terminated"} — finishing the current Anfrage and saving the ` +
               "catalog. Signal again to stop at once.",
           );
@@ -116,17 +120,17 @@ export function registerSync(program: Command, deps: CliDeps): void {
             ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
             ...(ctx.opts["force"] === true ? { force: true } : {}),
             ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
-            ...(ctx.global.quiet === true || ctx.opts["json"] === true
+            // Progress is stderr, so --json (which shapes stdout) keeps it.
+            ...(progress === undefined
               ? {}
               : {
-                  onProgress: (event) => {
-                    if (event.action === "failed") {
-                      ctx.deps.io.err(`  ! ${truncate(event.id, 40)}: ${truncate(event.detail ?? "failed", 100)}`);
-                    }
-                  },
+                  onDiscovered: (count: number) => progress.discovered(source.key, count),
+                  onProgress: (event: ProgressEvent) => progress.update(source.key, event),
                 }),
           });
         } finally {
+          progress?.finish(source.key);
+          progress?.close();
           stopListening?.();
           release?.();
         }

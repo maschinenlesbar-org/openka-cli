@@ -497,6 +497,19 @@ describe("sync pipeline", () => {
     ok(store.getSourceState("berlin").last_sync !== undefined);
   });
 
+  it("reports the discovered count before the first record, for a progress display", async () => {
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const seen: string[] = [];
+    await sync({
+      source: new ManySource(3),
+      store: new MemoryStore(),
+      engine: testEngine(transport),
+      onDiscovered: (count) => seen.push(`discovered ${count}`),
+      onProgress: (event) => seen.push(`${event.index}/${event.total}`),
+    });
+    deepStrictEqual(seen, ["discovered 3", "1/3", "2/3", "3/3"]);
+  });
+
   it("is idempotent: a second run over unchanged inputs stores nothing", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"v1"' } }]);

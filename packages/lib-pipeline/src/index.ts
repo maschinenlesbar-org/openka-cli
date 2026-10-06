@@ -38,6 +38,12 @@ export interface SyncOptions {
    * never silent: the report warns once per host.
    */
   ignoreRobots?: boolean;
+  /**
+   * Called once discovery is done, with the number of Anfragen the run will
+   * handle — the total a progress display counts towards. Not called when
+   * discovery fails.
+   */
+  onDiscovered?: (count: number) => void;
   /** Called after each record, for progress output. */
   onProgress?: (event: ProgressEvent) => void;
   /** Injected clock — the only place the pipeline reads time (`retrieved_at`). */
@@ -168,6 +174,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
     }
   }
   report.upstreamUnchanged = discovered.unchanged === true;
+  options.onDiscovered?.(discovered.refs.length);
 
   // Conditional-request state travels through the run and is persisted once at
   // the end, so an interrupted sync cannot leave a validator recorded for bytes

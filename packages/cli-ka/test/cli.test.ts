@@ -321,6 +321,25 @@ describe("ka", () => {
     }
   });
 
+  it("reports sync progress on stderr, also with --json, and not with --quiet", async () => {
+    for (const [argv, expected] of [
+      [["sync", "--source", "berlin"], true],
+      [["sync", "--source", "berlin", "--json"], true],
+      [["--quiet", "sync", "--source", "berlin"], false],
+    ] as const) {
+      const harness = cliHarness({ transport: berlinTransport().transport });
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK);
+        const progress = /^berlin: \d+ Anfragen discovered$[\s\S]*^berlin: (\d+)\/\1 · 0 failed$/m;
+        if (expected) match(harness.stderr(), progress, argv.join(" "));
+        else strictEqual(harness.stderr(), "", argv.join(" "));
+        if ((argv as readonly string[]).includes("--json")) JSON.parse(harness.stdout());
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+
   it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     try {

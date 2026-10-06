@@ -15,7 +15,7 @@ are authoritative; this is the narrative version.
 | `--min-host-interval <ms>` | minimum delay between two requests to one host (0–60000) |
 | `--max-redirects <n>` | redirects to follow (0–10); `0` surfaces a 3xx as an error |
 | `--compact` | compact JSON output |
-| `--quiet` | suppress progress on stderr |
+| `--quiet` | suppress progress on stderr (`ka sync`'s progress line) |
 
 ## `ka sync`
 
@@ -31,6 +31,13 @@ ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /u
 
 Idempotent: a second run over an unchanged window costs one conditional request and
 stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.
+
+**Progress goes to stderr while it runs.** After discovery, `berlin: 2471 Anfragen
+discovered`, then `berlin: 1220/2471 · 0 failed · 4.1/min · ~5h 05m left`, and a
+`! <reference>: <reason>` line for every Anfrage that failed. On a terminal the line is
+redrawn in place; written to a file or a pipe it is a plain line every 25 Anfragen or
+30 seconds, so a log shows how far the run got. `--json` shapes stdout only and keeps
+it; `--quiet` silences it.
 
 **One writer at a time.** `sync`, `reindex` and `review --mark-verified` hold the
 corpus's `lock` file while they write; a second writer exits 3 with "The corpus is in

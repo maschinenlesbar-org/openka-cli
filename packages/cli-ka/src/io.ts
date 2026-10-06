@@ -13,6 +13,13 @@ export interface CliIO {
   out(text: string): void;
   err(text: string): void;
   /**
+   * Whether stderr is a terminal, where `ka sync` redraws its progress line in
+   * place; anywhere else (a log file, a pipe) it prints plain lines.
+   */
+  errIsTerminal?: boolean;
+  /** Write to stderr without a newline — only for redrawing a progress line on a terminal. */
+  errPartial?(text: string): void;
+  /**
    * Write a file. Without `overwrite` the file must not exist yet: an exclusive
    * create, which also never follows a symlink at the path.
    */
@@ -113,6 +120,8 @@ function readerGone(err: NodeJS.ErrnoException): boolean {
 export const defaultIO: CliIO = {
   out: (text) => process.stdout.write(text + "\n"),
   err: (text) => process.stderr.write(text + "\n"),
+  errIsTerminal: process.stderr.isTTY === true,
+  errPartial: (text) => process.stderr.write(text),
   writeFile: (path, data, options) => writeFileSync(path, data, { flag: options?.overwrite === true ? "w" : "wx" }),
 };
 

@@ -45,6 +45,13 @@ what an interrupted run left behind, before the checkpoints — is indexed again
 counted in `recatalogued`, so the next sync over the window repairs it; before, every
 later run called it "unchanged" and it stayed invisible to search, stats and export.
 
+## Progress
+
+`onDiscovered(count)` is called once discovery is done, with the number of refs the
+run will handle, and `onProgress(event)` after each ref with its `index` of `total`
+and what happened to it. `ka sync` builds its progress line from the two; it used to
+have no total until the first record and printed nothing but failures.
+
 ## A person's mark
 
 A record a person marked `human_verified` keeps the mark when it is re-extracted

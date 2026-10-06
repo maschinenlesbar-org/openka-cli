@@ -30,6 +30,7 @@ use them.
 - **`src/commands/query.ts`** — The read side: `search`, `get`, `show` and `open`.
 - **`src/commands/sync.ts`** — `ka sync` — the ingest command.
 - **`src/io.ts`** — I/O seam for the CLI.
+- **`src/progress.ts`** — `ka sync`'s progress line: redrawn on a terminal, throttled plain lines in a log.
 - **`src/program.ts`** — Assembles the `ka` command tree from injectable deps.
 - **`src/run.ts`** — Parse argv, run the command, return an exit code.
 - **`src/shared.ts`** — Shared CLI helpers: option parsers, global-option resolution, and the few rendering paths every command group uses.
