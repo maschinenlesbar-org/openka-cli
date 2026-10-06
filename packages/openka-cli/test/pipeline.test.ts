@@ -12,6 +12,7 @@ import {
   normalizeSyncWindow,
   DRY_RUN_SAMPLE,
   ESTIMATE_MIN_KNOWN,
+  countSources,
   planLanes,
   planSync,
   sourceStatus,
@@ -83,14 +84,14 @@ class StubSource implements Source {
 
 /** `count` refs that all point at the same fixture PDF, for runs longer than one ref. */
 class ManySource extends StubSource {
-  constructor(private readonly count: number) {
+  constructor(private readonly refCount: number) {
     super();
   }
 
   override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const one = (await super.discover(options)).refs[0];
     ok(one !== undefined);
-    const refs = Array.from({ length: this.count }, (_, i) => ({
+    const refs = Array.from({ length: this.refCount }, (_, i) => ({
       ...one,
       key: `V-${i + 1}`,
       reference: `19/${10006 + i}`,
@@ -1014,13 +1015,13 @@ describe("several sources in one run (issue #3)", () => {
 describe("a dry run (issue #6)", () => {
   /** `count` refs, each with its own document URL, so there is something to sample. */
   class SpreadSource extends StubSource {
-    constructor(private readonly count: number) {
+    constructor(private readonly refCount: number) {
       super();
     }
     override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
       const one = (await super.discover(options)).refs[0];
       ok(one !== undefined);
-      const refs = Array.from({ length: this.count }, (_, i) => ({
+      const refs = Array.from({ length: this.refCount }, (_, i) => ({
         ...one,
         key: `V-${i + 1}`,
         reference: `19/${10006 + i}`,
@@ -1090,3 +1091,53 @@ describe("a dry run (issue #6)", () => {
     deepStrictEqual(requests, []);
   });
 });
+
+describe("counting the upstream beside the corpus (issue #5)", () => {
+  const counting = (key: string, parliament: "berlin" | "bund" | undefined, count: Source["count"]): Source => ({
+    key,
+    ...(parliament === undefined ? {} : { parliament }),
+    tier: "structured",
+    label: key,
+    homepage: "https://example.invalid",
+    notes: "",
+    discover: async () => ({ refs: [], warnings: [] }),
+    ...(count === undefined ? {} : { count }),
+  });
+
+  it("puts each upstream count beside the corpus's records, per period, and notes what it could not count", async () => {
+    const store = new MemoryStore();
+    for (const [id, parliament, period] of [["berlin-19-1", "berlin", 19], ["berlin-18-1", "berlin", 18], ["bund-21-1", "bund", 21]] as const) {
+      store.putCatalogEntry(toCatalogEntryFor(id, parliament, period));
+    }
+    const asked: (number | undefined)[] = [];
+    const rows = await countSources({
+      sources: [
+        counting("berlin", "berlin", async (options) => (asked.push(options.period), { total: 100, basis: "Parlamentsspiegel" })),
+        counting("bund", "bund", async () => {
+          throw new UsageError("needs a key");
+        }),
+        counting("discover-only", "berlin", undefined),
+        counting("aggregator", undefined, async () => ({ total: 1, basis: "Parlamentsspiegel" })),
+      ],
+      store,
+      engineFor: () => testEngine(scriptedTransport([]).transport),
+      period: 19,
+    });
+    deepStrictEqual(asked, [19]);
+    deepStrictEqual(
+      rows.map(({ error: _error, ...row }) => row),
+      [
+        { source: "berlin", parliament: "berlin", in_corpus: 1, upstream: 100, basis: "Parlamentsspiegel", missing: 99 },
+        { source: "bund", parliament: "bund", in_corpus: 0, note: "needs a key" },
+        { source: "discover-only", parliament: "berlin", in_corpus: 1, note: "cannot count its upstream without discovering it; `ka sync --dry-run` does that" },
+        // An aggregator counts the Länder: Berlin's record of period 19, not the Bundestag's.
+        { source: "aggregator", parliament: undefined, in_corpus: 1, upstream: 1, basis: "Parlamentsspiegel", missing: 0 },
+      ],
+    );
+    ok(rows[1]?.error instanceof UsageError, "the error is kept for a caller that rethrows it");
+  });
+});
+
+function toCatalogEntryFor(id: string, parliament: string, period: number) {
+  return { id, parliament, reference: `${period}/1`, legislative_period: period, title: "t", parties: [], review_status: "ok", tier: "structured", abstained: 0, terms: 1 };
+}

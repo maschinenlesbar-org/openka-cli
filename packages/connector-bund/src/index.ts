@@ -17,7 +17,7 @@
 import { ParseError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { AnsweredBy, Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { periodFromReference } from "@maschinenlesbar.org/openka-lib-extract";
-import type { DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source } from "@maschinenlesbar.org/openka-lib-source";
+import type { CountOptions, DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source, UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { applyWindow } from "@maschinenlesbar.org/openka-lib-source";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 
@@ -36,6 +36,16 @@ interface DipListResult {
   cursor?: string;
 }
 
+/** A missing credential is the operator's to supply, not a degraded source: a usage error. */
+function requireKey(apiKey: string | undefined): asserts apiKey is string {
+  if (apiKey === undefined || apiKey.trim() === "") {
+    throw new UsageError(
+      `The Bundestag DIP API needs a key. Pass --api-key, or set ${DIP_API_KEY_ENV}. ` +
+        "The Bundestag publishes a public key on https://dip.bundestag.de/über-dip/hilfe/api.",
+    );
+  }
+}
+
 export class BundDipSource implements Source {
   readonly key = "bund";
   readonly parliament = "bund" as const;
@@ -48,14 +58,33 @@ export class BundDipSource implements Source {
     "Needs an API key (--api-key / DIP_API_KEY).";
   readonly apiKeyEnv = DIP_API_KEY_ENV;
 
-  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
-    if (options.apiKey === undefined || options.apiKey.trim() === "") {
-      // A missing credential is the operator's to supply, not a degraded source.
-      throw new UsageError(
-        `The Bundestag DIP API needs a key. Pass --api-key, or set ${DIP_API_KEY_ENV}. ` +
-          "The Bundestag publishes a public key on https://dip.bundestag.de/über-dip/hilfe/api.",
-      );
+  /**
+   * DIP's own count: `numFound` of the Kleine-Anfrage Vorgänge, for one Wahlperiode
+   * or all — one request, no document. DIP holds Vorgänge from the 8th Wahlperiode
+   * on, so the oldest Kleine Anfragen are in no count it gives.
+   */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    requireKey(options.apiKey);
+    const params: Record<string, string | number> = { "f.vorgangstyp": "Kleine Anfrage", format: "json" };
+    if (options.period !== undefined) params["f.wahlperiode"] = options.period;
+    const response = await options.engine.get(`${DIP_BASE_URL}/api/v1/vorgang`, {
+      params,
+      headers: { authorization: `ApiKey ${options.apiKey}`, accept: "application/json" },
+    });
+    let body: DipListResult;
+    try {
+      body = JSON.parse(response.body.toString("utf8")) as DipListResult;
+    } catch (err) {
+      throw new ParseError("DIP returned a body that is not JSON (/api/v1/vorgang)", { cause: err });
     }
+    if (typeof body.numFound !== "number" || !Number.isSafeInteger(body.numFound) || body.numFound < 0) {
+      throw new ParseError("DIP returned no numFound for /api/v1/vorgang");
+    }
+    return { total: body.numFound, basis: "DIP numFound" };
+  }
+
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    requireKey(options.apiKey);
     const warnings: string[] = [];
     const params: Record<string, string | number> = {
       "f.vorgangstyp": "Kleine Anfrage",

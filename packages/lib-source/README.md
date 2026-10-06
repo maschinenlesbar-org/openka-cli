@@ -28,8 +28,15 @@ actually use; it is not validating and does not pretend to be.
 Everything is re-exported from the package root:
 
 ```
-DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements
+DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements
 ```
+
+**Counting the upstream.** A `Source` may implement `count({ engine, period?, apiKey? })`:
+how many Anfragen its upstream holds, from a request or two and no discovery, with the
+`basis` the number comes from. It is optional — a source that could only count by
+discovering everything leaves it out — and a `period` the upstream cannot count by is a
+`UsageError`, never the count of something else. `FallbackSource` counts with its primary
+when the primary can, else with its fallback. `ka sources count` is built on it.
 
 ## robots.txt
 

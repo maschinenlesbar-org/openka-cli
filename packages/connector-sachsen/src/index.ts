@@ -18,7 +18,7 @@
 // the resolved document URL is not, so these records can carry `url_stable: true`.
 
 import { OpenKaApiError } from "@maschinenlesbar.org/openka-lib-errors";
-import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source, type CountOptions, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 
@@ -85,6 +85,11 @@ export class SachsenSource implements Source {
     "and a URL the Landtag published rather than one assembled from a pattern.";
 
   private readonly aggregator = new ParlamentsspiegelSource("sachsen");
+
+  /** The aggregator's count: discovery runs through it, so that is what a sync would see. */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return this.aggregator.count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const discovered = await this.aggregator.discover(options);

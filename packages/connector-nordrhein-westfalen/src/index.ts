@@ -27,7 +27,7 @@
 // and let the answer follow directly, which the shared `antwort_folgt` rules read.
 
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source, type CountOptions, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 
@@ -75,6 +75,11 @@ export class NordrheinWestfalenSource implements Source {
     "link markup. The archive is robots-disallowed for the 11th–15th Wahlperiode.";
 
   private readonly aggregator = new ParlamentsspiegelSource("nordrhein-westfalen");
+
+  /** The aggregator's count: discovery runs through it, so that is what a sync would see. */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return this.aggregator.count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     if (options.period !== undefined && (ROBOTS_DISALLOWED_PERIODS as readonly number[]).includes(options.period)) {

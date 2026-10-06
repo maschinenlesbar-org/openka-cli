@@ -445,6 +445,29 @@ describe("ka", () => {
     }
   });
 
+  it("counts each upstream beside the corpus with sources count", async () => {
+    const countPage = '<b>69.935</b> <span>Vorgänge</span>';
+    const { transport, requests } = scriptedTransport([
+      { match: "parlamentsspiegel.de/suche", body: countPage },
+      { match: "/api/v1/vorgang", body: '{"numFound":41900}' },
+    ]);
+    const harness = cliHarness({ transport, env: { DIP_API_KEY: "test-key" } });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sources", "count", "--source", "bund", "--source", "berlin"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^SOURCE +UPSTREAM +IN CORPUS +MISSING +BASIS$/m);
+      match(harness.stdout(), /^bund +41,900 +0 +41,900 +DIP numFound$/m);
+      match(harness.stdout(), /^berlin +69,935 +0 +69,935 +Parlamentsspiegel$/m);
+      match(harness.stdout(), /^total +111,835 +0 +111,835$/m);
+      strictEqual(requests.length, 2, "one request per source, no download");
+
+      // Named alone, a count the upstream cannot give is the command's own error.
+      strictEqual(await run(["--corpus", harness.corpus, "sources", "count", "--source", "berlin", "--period", "19"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /cannot count by Wahlperiode/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     try {

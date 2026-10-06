@@ -24,6 +24,19 @@ Two known traps are pinned by tests:
   Thüringen's "Antwort auf Kleine Anfrage. Ministerium für …" yielded a manufactured
   name.
 
+**Counting.** Both adapters implement `count()`: one search with the filters discovery
+uses, the smallest page the form offers (`size=5`, `page=0`), and the total the page
+prints — `<b>69.935</b> <span>Vorgänge</span>`, read by `parseResultCount`
+(`fixtures/payloads/parlamentsspiegel-count.html`, recorded 2026-10-06). A page without
+it is an error rather than zero. The portal has no Wahlperiode filter, so a `period` is
+refused. The Länder whose discovery runs through the portal count through it too, and
+Berlin does, instead of downloading its 50+ MB feed per Wahlperiode.
+
+**The portal's `page` parameter counts from 0.** `page=0` is the first page; discovery
+still starts at `page=1`, so it skips the newest page of every search (found 2026-10-06
+while building `count()`). A fix changes which records a sync discovers and is a change
+of its own.
+
 The recorded result rows live here rather than with the Länder because a
 Parlamentsspiegel search result is the aggregator's document. A connector that needs
 one borrows it with `fixturesOf(...)`.
@@ -33,7 +46,7 @@ one borrows it with `fixturesOf(...)`.
 Everything is re-exported from the package root:
 
 ```
-PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, toGermanDate, documentRole, parseVorgangBlock, undecorated
+PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, parseResultCount, toGermanDate, documentRole, parseVorgangBlock, undecorated
 ```
 
 ## Depends on

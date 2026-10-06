@@ -22,13 +22,22 @@
 //     Export 1.0` — is parsed by `pardok.ts`, and any Land that publishes that
 //     export becomes a real structured source with no new parser. Berlin already does.
 
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { parliamentByKey, PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
 import type { AnsweredBy, DocumentType, SourceDocumentRole } from "@maschinenlesbar.org/openka-lib-models";
 import { parseGermanDate, parseUrheber } from "@maschinenlesbar.org/openka-lib-extract";
 import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "@maschinenlesbar.org/openka-lib-source";
 import { parseReference, periodNumber } from "@maschinenlesbar.org/openka-lib-models";
-import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import {
+  applyWindow,
+  type CountOptions,
+  type DiscoverOptions,
+  type DiscoverResult,
+  type DocRef,
+  type DocRefDocument,
+  type Source,
+  type UpstreamCount,
+} from "@maschinenlesbar.org/openka-lib-source";
 
 export const PARLAMENTSSPIEGEL_BASE = "https://www.parlamentsspiegel.de";
 
@@ -105,6 +114,45 @@ herkunft: string | undefined,
 }
 
 /**
+ * The result count a search page prints: `<b>69.935</b> <span>Vorgänge</span>`,
+ * German thousands separators and all. Undefined when the page carries none.
+ */
+export function parseResultCount(html: string): number | undefined {
+  const match = /<b>\s*([\d.]+)\s*<\/b>\s*<span>\s*Vorgänge\s*<\/span>/.exec(html);
+  if (match === null) return undefined;
+  const total = Number((match[1] as string).replace(/\./g, ""));
+  return Number.isSafeInteger(total) ? total : undefined;
+}
+
+/**
+ * Count the Kleine Anfragen the portal holds, for one Land or for all: one search
+ * request with the filters discovery uses, the smallest page the form offers, and
+ * the total the page prints. The portal has no Wahlperiode filter, so a `period`
+ * is refused rather than answered with the count of every period.
+ */
+async function countFromPortal(options: CountOptions, herkunft: string | undefined): Promise<UpstreamCount> {
+  if (options.period !== undefined) {
+    throw new UsageError("the Parlamentsspiegel cannot count by Wahlperiode; leave out --period for this source");
+  }
+  const params: Record<string, string | number> = {
+    qyVTyp: "Anfrage",
+    fqDTyp: KLEINE_ANFRAGE_FILTER,
+    type: "vorgang",
+    als: 0,
+    size: 5,
+    page: 0,
+  };
+  if (herkunft !== undefined) params["qyHerk"] = herkunft;
+  const response = await options.engine.get(`${PARLAMENTSSPIEGEL_BASE}/suche`, { params, headers: { accept: "text/html" } });
+  const html = response.body.toString("utf8");
+  const total = parseResultCount(html);
+  // No count is not zero: it is a page whose markup moved, or one this reader was
+  // never shown. Reading it as an empty upstream would be the wrong answer.
+  if (total === undefined) throw new OpenKaError("the Parlamentsspiegel printed no result count — its markup may have changed");
+  return { total, basis: "Parlamentsspiegel" };
+}
+
+/**
  * The portal as one Land's source.
  *
  * Split from the all-Länder adapter, which used to be the same class in a second
@@ -146,6 +194,10 @@ export class ParlamentsspiegelSource implements Source {
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     return discoverFromPortal(options, this.herkunft);
   }
+
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return countFromPortal(options, this.herkunft);
+  }
 }
 
 /**
@@ -167,6 +219,10 @@ export class ParlamentsspiegelAllLaender implements Source {
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     return discoverFromPortal(options, undefined);
+  }
+
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return countFromPortal(options, undefined);
   }
 }
 

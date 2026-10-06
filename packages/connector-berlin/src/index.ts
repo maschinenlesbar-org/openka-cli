@@ -16,7 +16,8 @@
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { SourceState } from "@maschinenlesbar.org/openka-lib-store";
 import { parsePardokExport } from "@maschinenlesbar.org/openka-lib-pardok";
-import { applyWindow, type DiscoverOptions, type DiscoverResult, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { applyWindow, type CountOptions, type DiscoverOptions, type DiscoverResult, type DocRef, type Source, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
+import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 
 export const BERLIN_OPENDATA_BASE = "https://www.parlament-berlin.de/opendata";
@@ -40,6 +41,15 @@ export class BerlinSource implements Source {
     "One XML file per Wahlperiode, rebuilt daily, in the Parlamentsspiegel Export 1.0 format; " +
     "the whole period is one 50+ MB download, so ETag/If-Modified-Since is what keeps a daily " +
     "sync cheap. Question and answer share one PDF. Berlin calls the instrument a Schriftliche Anfrage.";
+
+  /**
+   * Counted through the Parlamentsspiegel, which Berlin delivers to: one request,
+   * where counting from the feed would mean its 50+ MB download per Wahlperiode.
+   * The portal counts every period at once and cannot narrow to one.
+   */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return new ParlamentsspiegelSource(this.parliament).count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const period = options.period ?? BERLIN_LATEST_PERIOD;

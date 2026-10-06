@@ -20,8 +20,16 @@ Everything is re-exported from the package root:
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
 CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
 syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
-planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN
+planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN,
+countSources, CountSourcesOptions, SourceCountRow
 ```
+
+**Upstream beside the corpus.** `countSources({ sources, store, engineFor, period? })`
+(`src/count.ts`) asks each source's `count()`, one after the other, and sets the
+corpus's records for that parliament (all Länder for an aggregator; the same period
+when one is given) beside it, with what is missing. A source that cannot count, or not
+as asked, gets a `note` (and its `error`, for a caller that rethrows) instead of a
+number. `ka sources count` prints it.
 
 **A plan instead of a run.** `planSync({ source, store, engine, …window })`
 (`src/plan.ts`) runs discovery only — bypassing the feed's validators, since a 304 says

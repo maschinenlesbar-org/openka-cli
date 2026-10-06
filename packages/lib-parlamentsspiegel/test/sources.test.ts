@@ -1,7 +1,8 @@
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { blocksWithClass } from "@maschinenlesbar.org/openka-lib-source";
-import { ParlamentsspiegelSource, documentRole, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
+import { ParlamentsspiegelSource, documentRole, parseResultCount, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MemoryStore, scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixtures(import.meta.url);
@@ -217,5 +218,34 @@ describe("a Bayern row", () => {
       ok(ref?.dates.answered !== undefined);
     }
     deepStrictEqual(refs.find((ref) => ref?.reference === "19/13269")?.dates, { answered: "2026-09-14" });
+  });
+});
+
+describe("counting the portal (issue #5)", () => {
+  const countPage = readFixtureText("payloads", "parlamentsspiegel-count.html");
+
+  it("reads the result count a search page prints, thousands separators and all", () => {
+    strictEqual(parseResultCount(countPage), 69935);
+    strictEqual(parseResultCount("<p>nothing here</p>"), undefined);
+  });
+
+  it("asks one smallest first page with the filters discovery uses, for one Land or all", async () => {
+    const { transport, requests } = scriptedTransport([{ match: "/suche", body: countPage }]);
+    deepStrictEqual(await new ParlamentsspiegelSource("berlin").count({ engine: testEngine(transport) }), { total: 69935, basis: "Parlamentsspiegel" });
+    await new ParlamentsspiegelAllLaender().count({ engine: testEngine(transport) });
+    strictEqual(requests.length, 2);
+    const [land, all] = requests.map((request) => new URL(request.url).searchParams);
+    deepStrictEqual(
+      [land?.get("qyHerk"), land?.get("fqDTyp"), land?.get("qyVTyp"), land?.get("page"), land?.get("size")],
+      ["BLN", "KlAnfr", "Anfrage", "0", "5"],
+    );
+    strictEqual(all?.get("qyHerk"), null);
+  });
+
+  it("refuses a Wahlperiode it cannot filter by, and a page without a count", async () => {
+    const { transport, requests } = scriptedTransport([{ match: "/suche", body: "<html><body>redesigned</body></html>" }]);
+    await rejects(new ParlamentsspiegelSource("berlin").count({ engine: testEngine(transport), period: 19 }), UsageError);
+    strictEqual(requests.length, 0, "refused before asking");
+    await rejects(new ParlamentsspiegelSource("berlin").count({ engine: testEngine(transport) }), /printed no result count/);
   });
 });

@@ -205,11 +205,21 @@ An existing file is not replaced unless `--force` is given.
 ```bash
 ka sources list            # every parliament, its adapter status, its last sync
 ka sources show berlin     # what is specific about one source
+ka sources count           # how many Anfragen each upstream holds, beside the corpus
+ka sources count --source bund --period 21
 ka stats                   # how much of the corpus is parse-complete
 ka stats --disk            # …and what blobs, records and index take on disk, per source
 ka schema                  # the JSON Schema of a record
 ka reindex                 # rebuild the index from the stored records
 ```
+
+`ka sources count` answers "how complete is my corpus?" with one request per source and no
+download: the Bundestag's from DIP (`numFound` of its Kleine-Anfrage Vorgänge, which start
+with the 8th Wahlperiode; needs the DIP key), every Land's from the Parlamentsspiegel's
+result count — also Berlin's, whose own feed is a 50+ MB download per Wahlperiode. The
+BASIS column says which. `--period` narrows DIP's count and the corpus side; the
+Parlamentsspiegel cannot count by period, so such a row gets a note (named alone with
+`--source`, it is a usage error). The `total` row adds up the parliaments counted.
 
 `ka reindex` rebuilds the catalog and the search index without reading the old ones,
 so it repairs a corrupt catalog. The new index is built in memory and written over the

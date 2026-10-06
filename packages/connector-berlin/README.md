@@ -32,6 +32,7 @@ BERLIN_OPENDATA_BASE, BERLIN_PERIODS, BERLIN_LATEST_PERIOD, berlinFeedUrl, Berli
 
 - `lib-errors` — the shared error hierarchy
 - `lib-pardok` — the `Parlamentsspiegel Export 1.0` reader
+- `lib-parlamentsspiegel` — the shared aggregator adapter, for `count()`: one request instead of the feed
 - `lib-source` — the `Source` protocol and the scraping helpers
 - `lib-store` — the corpus seam
 

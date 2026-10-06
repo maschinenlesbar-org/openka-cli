@@ -7,7 +7,7 @@
 // one Landtag from turning into a rewrite.
 
 import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
-import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { NO_RULES, isAllowed, parseRobots, type RobotsRules } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
   AnsweredBy,
@@ -137,6 +137,28 @@ export interface Source {
   /** Rule sets to use for segmentation; the shared default when omitted. */
   readonly ruleSets?: readonly SegmentationRules[];
   discover(options: DiscoverOptions): Promise<DiscoverResult>;
+  /**
+   * How many Anfragen the upstream holds, asked with a request or two and no
+   * discovery — what `ka sources count` sets beside the corpus. Optional: a source
+   * that could only count by discovering everything leaves it out. A `period` the
+   * upstream cannot count by is a `UsageError`, not a number for something else.
+   */
+  count?(options: CountOptions): Promise<UpstreamCount>;
+}
+
+export interface CountOptions {
+  engine: FetchEngine;
+  /** Count only this legislative period. */
+  period?: number;
+  /** Credential for a source that needs one, already resolved from flag or env. */
+  apiKey?: string;
+}
+
+export interface UpstreamCount {
+  /** Anfragen the upstream says it holds. */
+  total: number;
+  /** Where the number comes from, for the reader: "DIP numFound", "Parlamentsspiegel". */
+  basis: string;
 }
 
 /**
@@ -269,6 +291,18 @@ export class FallbackSource implements Source {
   }
   get ruleSets(): readonly SegmentationRules[] | undefined {
     return this.primary.ruleSets;
+  }
+
+  /**
+   * The primary's count when it can give one, else the fallback's — and the basis
+   * says which, as the warnings do for discovery.
+   */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    const counter = this.primary.count !== undefined ? this.primary : this.fallback;
+    if (counter.count === undefined) {
+      throw new OpenKaError(`${this.primary.key} cannot count its upstream without discovering it`);
+    }
+    return counter.count(options);
   }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {

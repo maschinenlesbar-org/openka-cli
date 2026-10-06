@@ -36,6 +36,8 @@ import {
   type DiscoverResult,
   type Source,
   type SourceEntry,
+  type CountOptions,
+  type UpstreamCount,
 } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 
@@ -68,6 +70,11 @@ export class SachsenAnhaltSource implements Source {
     "itself if the Landtag changes its mind.";
 
   private readonly aggregator = new ParlamentsspiegelSource(PARLIAMENT);
+
+  /** The aggregator's count: discovery runs through it, so that is what a sync would see. */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return this.aggregator.count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const gate = await robotsGate(options.engine, {

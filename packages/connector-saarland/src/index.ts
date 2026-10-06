@@ -14,7 +14,7 @@
 // The rewrite below is the template from the wrapper's own markup, so it is the
 // Landtag's statement of where the file is, not a guess.
 
-import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type Source, type CountOptions, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 
@@ -44,6 +44,11 @@ export class SaarlandSource implements Source {
     "the reason they looked like scans.";
 
   private readonly aggregator = new ParlamentsspiegelSource("saarland");
+
+  /** The aggregator's count: discovery runs through it, so that is what a sync would see. */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return this.aggregator.count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const discovered = await this.aggregator.discover(options);

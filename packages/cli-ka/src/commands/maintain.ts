@@ -7,12 +7,14 @@ import { DEFAULT_VERIFY_SAMPLE, assertVerified, verifyCorpus } from "@maschinenl
 import { catalogGaps, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { noteCatalogGaps } from "./output.js";
 import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
-import { sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
+import { countSources, sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
-import { SOURCE_REGISTRY, sourceEntry } from "@maschinenlesbar.org/openka-lib-registry";
+import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@maschinenlesbar.org/openka-lib-registry";
+import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
+import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
-import { action, parseBoundedInt, parseParliament, parseRecordId, printJson } from "../shared.js";
-import { pad, truncate } from "../text.js";
+import { action, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
+import { formatCount, pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
 
@@ -172,6 +174,60 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     );
 
   sources
+    .command("count")
+    .description("how many Anfragen each upstream holds, beside how many the corpus has — a request or two per source, no download")
+    .option("--source <key>", "count only this source (repeatable; default: every parliament)", collectSourceKey)
+    .option("--period <n>", "count one legislative period (DIP can; the Parlamentsspiegel cannot)", parseBoundedInt(...PERIOD_RANGE))
+    .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
+    .option("--json", "print as JSON")
+    .action(
+      action(deps, async (ctx) => {
+        const keys =
+          (ctx.opts["source"] as string[] | undefined) ??
+          SOURCE_REGISTRY.filter((entry) => entry.parliament !== undefined && entry.factory !== undefined).map((entry) => entry.key);
+        const sourcesToCount = keys.map((key) => createSource(key));
+        const flagKey = ctx.opts["apiKey"] as string | undefined;
+        const pacer = new HostPacer();
+        if (ctx.global.quiet !== true && ctx.opts["json"] !== true) {
+          ctx.deps.io.err(`Asking ${sourcesToCount.length} upstream(s) for their count…`);
+        }
+        const rows = await countSources({
+          sources: sourcesToCount,
+          store: ctx.store(),
+          engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+          apiKeyFor: (source) =>
+            source.apiKeyEnv === undefined ? undefined : (flagKey ?? nonBlankEnv(ctx.deps.env[source.apiKeyEnv])),
+          ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
+        });
+        // Named on its own, a source that could not be counted is the command's
+        // error; in the table of all of them it is a note on its row.
+        const only = rows.length === 1 ? rows[0] : undefined;
+        if (only !== undefined && only.upstream === undefined) {
+          throw only.error ?? new OpenKaError(`${only.source}: ${only.note ?? "no count"}`);
+        }
+        if (ctx.opts["json"] === true) {
+          printJson(ctx, rows.map(({ error: _error, ...row }) => row));
+          return;
+        }
+        const io = ctx.deps.io;
+        const num = (n: number | undefined): string => (n === undefined ? "—" : formatCount(n));
+        const line = (source: string, upstream: string, inCorpus: string, missing: string, basis: string): string =>
+          `${pad(source, 24)} ${upstream.padStart(9)} ${inCorpus.padStart(10)} ${missing.padStart(9)}  ${basis}`.trimEnd();
+        io.out(line("SOURCE", "UPSTREAM", "IN CORPUS", "MISSING", "BASIS"));
+        for (const row of rows) {
+          io.out(line(row.source, num(row.upstream), num(row.in_corpus), num(row.missing), row.basis ?? ""));
+        }
+        const counted = rows.filter((row) => row.upstream !== undefined && row.parliament !== undefined);
+        if (counted.length > 1) {
+          const sum = (pick: (row: (typeof counted)[number]) => number): number => counted.reduce((total, row) => total + pick(row), 0);
+          io.out(line("total", num(sum((row) => row.upstream ?? 0)), num(sum((row) => row.in_corpus)), num(sum((row) => row.missing ?? 0)), ""));
+        }
+        for (const row of rows.filter((row) => row.note !== undefined)) io.err(`note: ${row.source}: ${truncate(row.note ?? "", 200)}`);
+        if (rows.every((row) => row.upstream === undefined)) throw new OpenKaError("no upstream could be counted");
+      }),
+    );
+
+  sources
     .command("show")
     .description("what one source does and what is specific about it")
     .argument("<key>", "source key")
@@ -195,4 +251,13 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         }
       }),
     );
+}
+
+/** commander accumulator for a repeatable `--source`: each a key the registry knows. */
+function collectSourceKey(value: string, previous: string[] = []): string[] {
+  return previous.concat([problemParser(sourceKeyProblem)(value)]);
+}
+
+function nonBlankEnv(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === "" ? undefined : value;
 }

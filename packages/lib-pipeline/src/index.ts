@@ -564,3 +564,4 @@ export { sourceStatus, type SourceStatusRow } from "./status.js";
 export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";
 export { planLanes, sourceListProblem, syncSources, type SourceOutcome, type SyncSourcesOptions } from "./many.js";
 export { DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN, planSync, type SizeEstimate, type SyncPlan, type SyncPlanOptions } from "./plan.js";
+export { countSources, type CountSourcesOptions, type SourceCountRow } from "./count.js";

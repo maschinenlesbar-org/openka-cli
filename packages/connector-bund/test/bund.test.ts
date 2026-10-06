@@ -104,3 +104,22 @@ describe("Bundestag DIP source", () => {
     strictEqual(result.refs[0]?.reference, "21/7563");
   });
 });
+
+describe("counting DIP (issue #5)", () => {
+  it("asks DIP's numFound of the Kleine-Anfrage Vorgänge, for one Wahlperiode or all", async () => {
+    const { transport, requests } = scriptedTransport([{ match: "/api/v1/vorgang", body: '{"numFound":39124,"documents":[]}' }]);
+    const source = new BundDipSource();
+    deepStrictEqual(await source.count({ engine: testEngine(transport), apiKey: "k" }), { total: 39124, basis: "DIP numFound" });
+    await source.count({ engine: testEngine(transport), apiKey: "k", period: 21 });
+    const [all, one] = requests.map((request) => new URL(request.url).searchParams);
+    deepStrictEqual([all?.get("f.vorgangstyp"), all?.get("f.wahlperiode")], ["Kleine Anfrage", null]);
+    strictEqual(one?.get("f.wahlperiode"), "21");
+    strictEqual(requests[0]?.headers?.["authorization"], "ApiKey k");
+  });
+
+  it("needs its key, and refuses an answer without numFound", async () => {
+    const { transport } = scriptedTransport([{ match: "/api/v1/vorgang", body: '{"documents":[]}' }]);
+    await rejects(new BundDipSource().count({ engine: testEngine(transport) }), /needs a key/);
+    await rejects(new BundDipSource().count({ engine: testEngine(transport), apiKey: "k" }), /no numFound/);
+  });
+});

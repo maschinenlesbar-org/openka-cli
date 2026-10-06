@@ -123,3 +123,14 @@ describe("FallbackSource", () => {
     ok(composed.notes.includes("Falls back to aggregator label"));
   });
 });
+
+describe("FallbackSource counting (issue #5)", () => {
+  it("counts with the primary when it can, else with the fallback, and says which", async () => {
+    const counting = (basis: string): Source => ({ ...source(basis, async () => ({ refs: [], warnings: [] })), count: async () => ({ total: 7, basis }) });
+    const silent = source("parldok", async () => ({ refs: [], warnings: [] }));
+    const engine = {} as DiscoverOptions["engine"];
+    deepStrictEqual(await new FallbackSource(counting("own"), counting("aggregator")).count({ engine }), { total: 7, basis: "own" });
+    deepStrictEqual(await new FallbackSource(silent, counting("aggregator")).count({ engine }), { total: 7, basis: "aggregator" });
+    await rejects(new FallbackSource(silent, silent).count({ engine }), /cannot count its upstream/);
+  });
+});

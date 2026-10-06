@@ -14,7 +14,7 @@
 // with server-computed cache hashes, and NILAS's STARWEB entry point is not
 // reachable from outside. DEVELOPING.md records what was tried.
 
-import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type DocRefDocument, type Source, type CountOptions, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { parseReference } from "@maschinenlesbar.org/openka-lib-models";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
@@ -130,6 +130,11 @@ export class NiedersachsenSource implements Source {
     "than inferred from a result row.";
 
   private readonly aggregator = new ParlamentsspiegelSource("niedersachsen");
+
+  /** The aggregator's count: discovery runs through it, so that is what a sync would see. */
+  async count(options: CountOptions): Promise<UpstreamCount> {
+    return this.aggregator.count(options);
+  }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const discovered = await this.aggregator.discover(options);
