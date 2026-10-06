@@ -20,7 +20,11 @@ export interface SearchFilters {
    * review queue (`reviewQueue`) is narrower: it leaves out `human_verified`.
    */
   onlyAbstained?: boolean;
-  /** ISO dates bounding `dates.submitted` (falling back to `answered`). */
+  /**
+   * ISO dates bounding `dates.submitted`, the date the Anfrage was asked. A record
+   * whose question date is unknown is outside every such window (and every
+   * `year`); `SearchResult.undated` counts the ones that matched otherwise.
+   */
   from?: string;
   to?: string;
 }
@@ -41,6 +45,12 @@ export interface SearchHit {
 export interface SearchResult {
   total: number;
   hits: SearchHit[];
+  /**
+   * Records that passed every other filter but have no question date, so `year`,
+   * `from` or `to` left them out — combined papers, dated only by their answer.
+   * Zero when no date filter was given.
+   */
+  undated: number;
   /**
    * Hits on this page whose record file is gone: the catalog still lists them,
    * so they are counted and shown, but `get`/`show` have nothing to read. `ka
@@ -65,11 +75,24 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
     const wanted = filters.party.map((party) => party.trim().toLowerCase());
     if (!entry.parties.some((party) => wanted.includes(party))) return false;
   }
-  // Consistent with the discovery window: a record is dated by when it was asked.
-  const date = entry.submitted ?? entry.answered;
+  // A record is dated by when it was asked. Without that date it is in no window:
+  // falling back to the answer's date placed SH 20/2905, asked in February, in May.
+  const date = entry.submitted;
   if (filters.from !== undefined && (date === undefined || date < filters.from)) return false;
   if (filters.to !== undefined && (date === undefined || date > filters.to)) return false;
   return true;
+}
+
+/**
+ * True when a row failed the filters only for lacking a question date: it passes
+ * every other filter, a date filter (`year`, `from`, `to`) was given, and it has no
+ * `submitted`. What `SearchResult.undated` counts.
+ */
+export function undatedMatch(entry: CatalogEntry, filters: SearchFilters): boolean {
+  const dated = filters.year?.length || filters.from !== undefined || filters.to !== undefined;
+  if (!dated || entry.submitted !== undefined) return false;
+  const { year: _year, from: _from, to: _to, ...rest } = filters;
+  return matchesFilters(entry, rest);
 }
 
 /**
@@ -91,18 +114,18 @@ export function search(store: Store, query: string, searchOptions: SearchOptions
   const offset = options.offset ?? 0;
 
   let ranked: SearchHit[];
+  let undated = 0;
   if (parsed.required.length === 0) {
     // Nothing to rank by, so the catalog is the candidate set. A query that is
     // only exclusions (`-sanierung`) still has to remove what it excludes —
     // answering it with nothing would read as "no such records exist", which is
     // the opposite of what was asked.
     const excluded = excludedIds(store, parsed);
-    ranked = store
-      .catalog()
-      .filter((entry) => !excluded.has(entry.id) && matchesFilters(entry, options))
-      .map((entry) => ({ entry, score: 0 }));
+    const candidates = store.catalog().filter((entry) => !excluded.has(entry.id));
+    undated = candidates.filter((entry) => undatedMatch(entry, options)).length;
+    ranked = candidates.filter((entry) => matchesFilters(entry, options)).map((entry) => ({ entry, score: 0 }));
   } else {
-    ranked = rank(store, parsed, options);
+    ({ hits: ranked, undated } = rank(store, parsed, options));
   }
 
   const page = ranked.slice(offset, offset + limit);
@@ -113,10 +136,10 @@ export function search(store: Store, query: string, searchOptions: SearchOptions
       if (snippet !== undefined) hit.snippet = snippet;
     }
   }
-  return { total: ranked.length, hits: page, missing };
+  return { total: ranked.length, hits: page, undated, missing };
 }
 
-function rank(store: Store, parsed: ParsedQuery, filters: SearchFilters): SearchHit[] {
+function rank(store: Store, parsed: ParsedQuery, filters: SearchFilters): { hits: SearchHit[]; undated: number } {
   const total = store.catalog().length;
   const scores = new Map<string, number>();
   const matchedTerms = new Map<string, number>();
@@ -132,19 +155,24 @@ function rank(store: Store, parsed: ParsedQuery, filters: SearchFilters): Search
   const excluded = excludedIds(store, parsed);
 
   const hits: SearchHit[] = [];
+  let undated = 0;
   for (const [id, score] of scores) {
     // AND semantics: every required term has to have matched this document.
     if (matchedTerms.get(id) !== parsed.required.length) continue;
     if (excluded.has(id)) continue;
     const entry = store.catalogEntry(id);
-    if (entry === undefined || !matchesFilters(entry, filters)) continue;
+    if (entry === undefined) continue;
+    if (!matchesFilters(entry, filters)) {
+      if (undatedMatch(entry, filters) && (parsed.phrases.length === 0 || confirmPhrases(store, id, parsed.phrases))) undated++;
+      continue;
+    }
     if (parsed.phrases.length > 0 && !confirmPhrases(store, id, parsed.phrases)) continue;
     hits.push({ entry, score });
   }
 
   // Ties break on id so that two runs over the same corpus print the same order.
   hits.sort((a, b) => b.score - a.score || (a.entry.id < b.entry.id ? -1 : a.entry.id > b.entry.id ? 1 : 0));
-  return hits;
+  return { hits, undated };
 }
 
 /** Every document id carrying one of the query's `-term`s. */
@@ -216,6 +244,8 @@ export interface SelectOptions extends SearchFilters {
 export interface Selection {
   /** The selected records, in `search()` order. */
   records: StoredRecord[];
+  /** Records left out only for lacking a question date — `SearchResult.undated`. */
+  undated: number;
   /** Catalog rows that matched but whose record file is gone, by id. */
   missing: string[];
 }
@@ -240,7 +270,7 @@ export function selectRecords(store: Store, query = "", options: SelectOptions =
     if (record === undefined) missing.push(hit.entry.id);
     else records.push(record);
   }
-  return { records, missing };
+  return { records, missing, undated: result.undated };
 }
 
 /** How many rows `reviewQueue` returns when no limit is given. */

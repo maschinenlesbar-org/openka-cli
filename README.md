@@ -128,13 +128,18 @@ rather than quietly returning nothing — run `ka sources list`, or
 robots.txt verdict per host, is in the workspace's `.reviews/` folder.
 
 Coverage is honest, not complete. Across 96 records from eight parliaments, 68
-extract completely and 89 yield at least one question/answer pair; the rest abstain and land
+extract completely (measured before the October 2026 rules, which also name an unknown question
+date, answer date or asker as a hole) and 89 yield at least one question/answer pair; the rest abstain and land
 in `ka review` rather than in the corpus as half-read records. A record's documents
 are all read, not just one — a Land that publishes the question and the answer as
 separate papers would otherwise yield every answer and no question.
 
 A record is dated by **when the Anfrage was asked**, not when it was answered — so
-`--since`/`--until`, `--year` and `--from`/`--to` all mean the question's date.
+`--since`/`--until`, `--year` and `--from`/`--to` all mean the question's date. A record
+whose question date is unknown (a combined paper carries only its answer's) is in no
+`--year`/`--from`/`--to` window, `ka search` says how many were left out, and the hole is
+in `abstained_fields`. A sync window, which has to decide what to fetch, places such a
+record at its answer date and says so.
 
 ### Credentials
 

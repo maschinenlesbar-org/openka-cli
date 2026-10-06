@@ -197,3 +197,18 @@ describe("askers and answering bodies as the Länder print them", () => {
     ]);
   });
 });
+
+// Finding 01#2: Bayern's row date is the paper's, months after the question.
+describe("a Bayern row", () => {
+  it("is the combined paper, dated as the answer", () => {
+    const refs = blocksWithClass(readFixtureText("payloads", "parlamentsspiegel-bayern.html"), "ps-vorgang", /<hr\s*\/?>/).map((block) =>
+      parseVorgangBlock(block, []),
+    );
+    for (const ref of refs) {
+      deepStrictEqual(ref?.documents.map((document) => document.role), ["combined_pdf"]);
+      strictEqual(ref?.dates.submitted, undefined);
+      ok(ref?.dates.answered !== undefined);
+    }
+    deepStrictEqual(refs.find((ref) => ref?.reference === "19/13269")?.dates, { answered: "2026-09-14" });
+  });
+});

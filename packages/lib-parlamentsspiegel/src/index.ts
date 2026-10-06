@@ -204,6 +204,20 @@ export function documentRole(rowSummary: string, fundstelle: string): SourceDocu
   return "question_pdf";
 }
 
+/**
+ * Bayern publishes a Schriftliche Anfrage as one Drucksache holding the question
+ * list and the government's answer, filed under "Schriftliche Anfragen", and only
+ * once it is answered; the portal lists that one paper with no follow-up and no
+ * marker in the Fundstelle. Read as a question paper, its date — the paper's, two
+ * or three months after the question (golden 19/6524: 10.06.2025 for a question of
+ * 31.03.2025; live 19/13354: 28.09.2026 for 26.06.2026) — was stored as the date the
+ * Anfrage was asked. As the combined paper it is, the row's date is the answer's,
+ * and the question's date comes from the paper's head (`readAnfrageHead`).
+ */
+function combinedByLand(parliament: ParliamentKey, role: SourceDocumentRole): SourceDocumentRole {
+  return parliament === "bayern" && role === "question_pdf" ? "combined_pdf" : role;
+}
+
 /** The "N weitere Dokumente" header that every row with follow-ups carries. */
 const FOLGE_MARKER = /<p[^>]*\sclass="(?:[^"]*\s)?ps-folge-dok(?:\s[^"]*)?"[^>]*>/;
 
@@ -253,7 +267,7 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
 
   const fundstelleRegion = regionWithClass(head, "ps-fundstelle");
   const fundstelle = fundstelleRegion === undefined ? "" : visibleTextOf(fundstelleRegion);
-  const role = documentRole(summary, fundstelle);
+  const role = combinedByLand(parliament.key, documentRole(summary, fundstelle));
 
   const documents: DocRefDocument[] = [];
   if (url !== undefined && /^https?:/i.test(url)) {

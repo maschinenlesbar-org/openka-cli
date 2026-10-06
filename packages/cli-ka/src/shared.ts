@@ -265,10 +265,23 @@ export function addCorpusFilters(command: Command): Command {
   return command
     .option("--parliament <key>", `restrict to a parliament (repeatable; ${ParliamentKeys.length} known, see \`ka sources list\`)`, collectParliament)
     .option("--party <name>", "restrict to Anfragen asked by this party (repeatable)", collect)
-    .option("--year <yyyy>", "restrict to a year (repeatable)", collectInt(...YEAR_RANGE))
+    .option("--year <yyyy>", "restrict to the year the Anfrage was asked (repeatable)", collectInt(...YEAR_RANGE))
     .option("--period <n>", "restrict to a legislative period (repeatable)", collectInt(...PERIOD_RANGE))
-    .option("--from <date>", "asked on or after this date (the answer's date where the question's is unknown)", parseIsoDate)
-    .option("--to <date>", "asked on or before this date (the answer's date where the question's is unknown)", parseIsoDate);
+    .option("--from <date>", "asked on or after this date (a record whose question date is unknown is left out)", parseIsoDate)
+    .option("--to <date>", "asked on or before this date (a record whose question date is unknown is left out)", parseIsoDate);
+}
+
+/**
+ * Say on stderr how many records a date filter left out only for lacking a
+ * question date. They used to be placed at the answer's date instead, which put a
+ * February question in May; leaving them out silently would hide them.
+ */
+export function noteUndated(ctx: ActionContext, undated: number): void {
+  if (undated === 0) return;
+  ctx.deps.io.err(
+    `Note: ${undated} record(s) matched the other filters but have no question date, so --year/--from/--to ` +
+      "left them out (combined papers are dated only by their answer; `ka review` lists the hole).",
+  );
 }
 
 /**

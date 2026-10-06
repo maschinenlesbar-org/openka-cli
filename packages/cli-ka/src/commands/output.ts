@@ -23,6 +23,7 @@ import {
   choiceOption,
   corpusFiltersFrom,
   emit,
+  noteUndated,
   outTarget,
   parseBoundedInt,
   parseNonEmpty,
@@ -52,6 +53,7 @@ function selection(ctx: ActionContext, limit?: number): Selection {
     ...corpusFiltersFrom(ctx.opts),
     ...(limit === undefined ? {} : { limit }),
   });
+  noteUndated(ctx, selected.undated);
   if (selected.missing.length > 0) {
     const shown = selected.missing.slice(0, 5).join(", ");
     const more = selected.missing.length > 5 ? `, and ${selected.missing.length - 5} more` : "";

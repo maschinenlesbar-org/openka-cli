@@ -157,6 +157,16 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
 
   report.warnings.push(...discovered.warnings);
   report.discovered = discovered.refs.length;
+  if (options.since !== undefined || options.until !== undefined) {
+    const placed = discovered.refs.filter((ref) => ref.dates.submitted === undefined && ref.dates.answered !== undefined).length;
+    if (placed > 0) {
+      report.warnings.push(
+        `${placed} of ${discovered.refs.length} Anfragen carry no question date in the source (combined papers), so the ` +
+          "window was applied to their answer date: one asked inside it and answered after --until is not included. " +
+          "The corpus's own --from/--to and --year use the question's date only.",
+      );
+    }
+  }
   report.upstreamUnchanged = discovered.unchanged === true;
 
   // Conditional-request state travels through the run and is persisted once at

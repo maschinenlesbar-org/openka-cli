@@ -37,8 +37,10 @@ export function toCatalogEntry(record: KaRecord, terms: number): CatalogEntry {
         .filter((party): party is string => party !== undefined && party !== ""),
     ),
   ].sort();
-  // Dated by when it was asked — see `applyWindow` for why that, not the answer.
-  const year = yearOf(record.dates.submitted) ?? yearOf(record.dates.answered);
+  // Dated by when it was asked — see `applyWindow` for why that, not the answer. A
+  // record whose question date is unknown has no year: placing it at its answer's
+  // year put a February question in May's window (finding 01#2).
+  const year = yearOf(record.dates.submitted);
   const entry: CatalogEntry = {
     id: record.id,
     parliament: record.parliament,

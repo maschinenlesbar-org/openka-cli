@@ -9,7 +9,7 @@
 
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
-import { matchesFilters, type SearchFilters, type SearchHit, type SearchResult } from "./search.js";
+import { matchesFilters, undatedMatch, type SearchFilters, type SearchHit, type SearchResult } from "./search.js";
 import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters } from "./filters.js";
 
 /** Cosine similarity of two equal-length vectors. */
@@ -64,14 +64,19 @@ export function searchLike(
   const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
   const minScore = options.minScore ?? 0;
   const hits: SearchHit[] = [];
+  let undated = 0;
   for (const [candidate, vector] of Object.entries(set.vectors)) {
     if (candidate === id) continue;
     const entry = store.catalogEntry(candidate);
-    if (entry === undefined || !matchesFilters(entry, options)) continue;
+    if (entry === undefined) continue;
     const score = cosine(query, vector);
+    if (!matchesFilters(entry, options)) {
+      if (score >= minScore && undatedMatch(entry, options)) undated++;
+      continue;
+    }
     if (score < minScore) continue;
     hits.push({ entry, score });
   }
   hits.sort((a, b) => b.score - a.score || (a.entry.id < b.entry.id ? -1 : 1));
-  return { total: hits.length, hits: hits.slice(0, limit) };
+  return { total: hits.length, hits: hits.slice(0, limit), undated };
 }

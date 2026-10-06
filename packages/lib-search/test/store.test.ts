@@ -517,6 +517,27 @@ describe("indexing and search", () => {
     strictEqual(matchesFilters(entry, { parliament: ["bund"] }), false);
     strictEqual(matchesFilters(entry, { onlyAbstained: true }), false);
   });
+
+  // Finding 01#2: SH 20/2905, asked in February and answered in May, was found by a
+  // May window and not by February's — dated by its answer where the question's
+  // date was unknown.
+  it("dates a record only by its question, and counts the ones that have none", () => {
+    const store = new MemoryStore();
+    const combined = sampleRecord({ id: "schleswig-holstein-20-2905", parliament: "schleswig-holstein", reference: "20/2905", legislative_period: 20, dates: { answered: "2025-05-14" } });
+    const asked = sampleRecord({ id: "berlin-19-2", reference: "19/2", dates: { submitted: "2025-05-02", answered: "2025-05-20" } });
+    for (const record of [combined, asked]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    strictEqual(store.catalogEntry(combined.id)?.year, undefined);
+    const may = search(store, "", { from: "2025-05-01", to: "2025-05-31" });
+    deepStrictEqual(may.hits.map((hit) => hit.entry.id), ["berlin-19-2"]);
+    strictEqual(may.undated, 1);
+    strictEqual(search(store, "", { year: [2025], parliament: ["schleswig-holstein"] }).undated, 1);
+    strictEqual(search(store, "", { parliament: ["schleswig-holstein"] }).undated, 0, "no date filter, nothing left out");
+    strictEqual(search(store, "Brückenbauwerke", { year: [2025] }).undated, 1, "the ranked path counts them too");
+    strictEqual(selectRecords(store, "", { year: [2025] }).undated, 1);
+  });
 });
 
 describe("semantic search", () => {

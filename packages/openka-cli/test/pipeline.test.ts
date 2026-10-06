@@ -432,6 +432,24 @@ describe("sync pipeline", () => {
     strictEqual((await sync({ source: feed, store, engine, now: () => new Date("2026-07-02T00:00:00Z") })).unchanged, 1);
   });
 
+  it("says when a window was applied to answer dates because the source gave no question date", async () => {
+    const combinedOnly: Source = {
+      ...new StubSource(),
+      key: "berlin",
+      discover: async (options) => {
+        const refs = (await new StubSource().discover(options)).refs.map((ref) => ({ ...ref, dates: { answered: "2021-11-12" } }));
+        return { warnings: [], refs };
+      },
+    };
+    const report = await sync({
+      source: combinedOnly,
+      store: new MemoryStore(),
+      engine: testEngine(scriptedTransport([{ match: ".pdf", body: PDF }]).transport),
+      since: "2021-11-01",
+    });
+    ok(report.warnings.some((warning) => /1 of 1 Anfragen carry no question date .* applied to their answer date/.test(warning)), report.warnings.join("\n"));
+  });
+
   it("refuses a second sync on a corpus another sync is writing", async () => {
     const root = mkdtempSync(join(tmpdir(), "openka-concurrent-"));
     try {

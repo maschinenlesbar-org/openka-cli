@@ -57,6 +57,15 @@ the answer's — a question asked in June is often answered in August, and the o
 reading makes a window exclude exactly what it was meant to include. An `--until`
 before `--since` is a usage error (exit 2), not an empty sync.
 
+Where the question's date is unknown — a combined paper (Schleswig-Holstein,
+Mecklenburg-Vorpommern, Baden-Württemberg, Bayern's portal rows) prints only the
+answer's — `search`/`export`/`feed` leave the record out of every `--year`/`--from`/
+`--to` window and say on stderr how many they left out; it used to be placed at its
+answer's date, so a February question showed up in May. A sync window cannot leave
+those refs out without fetching nothing from such a Land, so it places them at the
+answer date and warns: widen `--until` to catch a question answered after it. Bayern's
+papers name the question's date in their head ("vom …"), and the extractor reads it.
+
 ## `ka search`
 
 ```bash

@@ -171,6 +171,13 @@ export function withDiscoveryState(
  * date, it is what every upstream filters on, and using the answer's date instead
  * makes a window silently exclude the records it was meant to include — a question
  * asked in June is often answered in August.
+ *
+ * A ref that carries only the answer's date — a combined paper's row — is placed
+ * at that date. That is a stand-in, not the question's date: such a ref answered
+ * after `until` is left out although its question may fall inside. Widening the
+ * window catches those, while including every one of them would fetch every paper
+ * answered since `since`. `sync()` says how many refs were placed this way, and the
+ * corpus's own date filters (`--from`/`--to`, `--year`) use only the question's date.
  */
 export function applyWindow(refs: DocRef[], options: DiscoverOptions): DocRef[] {
   const filtered = refs.filter((ref) => {

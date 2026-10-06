@@ -20,6 +20,7 @@ import {
   parseBoundedInt,
   parseNonEmpty,
   parseRecordId,
+  noteUndated,
   printJson,
   problemParser,
 } from "../shared.js";
@@ -143,6 +144,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         }
         // The total is the library's, counted before the page is cut.
         const similar = searchLike(store, ctx.opts["like"] as string, { ...filters, limit });
+        noteUndated(ctx, similar.undated);
         if (ctx.opts["json"] === true) {
           printJson(ctx, similar);
           return;
@@ -164,6 +166,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         offset: (ctx.opts["offset"] as number | undefined) ?? 0,
         snippet: ctx.opts["snippet"] === true,
       });
+      noteUndated(ctx, result.undated);
       if (ctx.opts["json"] === true) {
         printJson(ctx, result);
         return;

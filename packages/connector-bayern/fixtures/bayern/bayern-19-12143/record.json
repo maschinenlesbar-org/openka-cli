@@ -11,13 +11,13 @@
     }
   ],
   "dates": {
-    "submitted": "2026-06-29"
+    "answered": "2026-06-29",
+    "submitted": "2026-04-06"
   },
   "document_type": "schriftliche_anfrage",
   "extraction": {
     "abstained_fields": [
       "answered_by.ministry",
-      "dates.answered",
       "qa[0].answer",
       "qa[12].answer",
       "qa[16].answer",
@@ -203,7 +203,7 @@
   "source_documents": [
     {
       "retrieved_at": "2026-09-27T21:47:26Z",
-      "role": "question_pdf",
+      "role": "combined_pdf",
       "sha256": "4d8bf122d0b51c00a8fb9a2ef570e1ee58a2ad9859a456052e99891dd4a9ba25",
       "url": "https://www.bayern.landtag.de/www/ElanTextAblage_WP19/Drucksachen/Schriftliche Anfragen/19_0012143.pdf",
       "url_stable": true
