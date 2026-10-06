@@ -898,6 +898,16 @@ describe("a closed output pipe", () => {
     deepStrictEqual(streams.exits, []);
   });
 
+  it("treats ENOTCONN (stdout a socket whose reader has gone) like EPIPE on both streams", () => {
+    const streams = fakeStreams();
+    handleOutputErrors(streams as never, streams.exit);
+    const enotconn = Object.assign(new Error("write ENOTCONN"), { code: "ENOTCONN" });
+    streams.stderr.emit("error", enotconn);
+    deepStrictEqual(streams.exits, []);
+    streams.stdout.emit("error", enotconn);
+    deepStrictEqual(streams.exits, [0]);
+  });
+
   it("exits 1 on any other output error", () => {
     const streams = fakeStreams();
     handleOutputErrors(streams as never, streams.exit);
