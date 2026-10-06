@@ -29,7 +29,10 @@ because a root pack carries every package's sources, tests and fixture PDFs (it 
 published once by mistake, and unpublished; a test in `cli-ka-factory` keeps the flag
 set). `npm version patch` there moves a version nobody
 ships and leaves the tag pointing at the wrong number. Use
-`npm version --workspace @maschinenlesbar.org/openka-cli patch`, and pack with
+`npm version --workspace @maschinenlesbar.org/openka-cli patch --no-git-tag-version`
+(then commit "X.Y.Z" and tag `vX.Y.Z` by hand), and check the root `package.json` is
+still `0.1.0` before committing: npm 11.19 without `--no-git-tag-version` also bumped
+the root and committed and tagged it as "0.1.1" during the 0.3.1 release. Pack with
 `npm run pack` so the prepack/postpack pair runs. `release.yml` and `publish.yml`
 read the version from `packages/openka-cli/package.json` for the same reason, and a
 test in `cli-ka-factory` fails if a workflow goes back to reading the root's. The
