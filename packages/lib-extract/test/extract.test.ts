@@ -634,7 +634,12 @@ describe("metadata rules", () => {
   it("does not weld a reference together across a line break", () => {
     // `\s` spanned newlines, so two unrelated lines of a PDF text layer read as
     // one Drucksachennummer — a fabricated identity is worse than no reference.
-    strictEqual(findReference("Drucksache 19/10\n006 vom heute"), "19/10");
+    // Nor read the first line's half as a reference: 19/10 is another, existing
+    // paper (finding 01#10). A list number or a date on the next line is no
+    // continuation.
+    strictEqual(findReference("Drucksache 19/10\n006 vom heute"), undefined);
+    strictEqual(findReference("Drucksache 19/10006\n1. Wie viele Brücken"), "19/10006");
+    strictEqual(findReference("Drucksache 19/10006\n12.03.2024"), "19/10006");
   });
 
   it("only reads a number that carries its label", () => {

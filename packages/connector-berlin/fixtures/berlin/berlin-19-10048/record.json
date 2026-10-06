@@ -15,7 +15,7 @@
   "document_type": "schriftliche_anfrage",
   "extraction": {
     "abstained_fields": [],
-    "extractor_version": "pkg:0.1.0+extract:7df216a767ab",
+    "extractor_version": "pkg:0.1.0+extract:86f1ab0c47c5",
     "input_sha256": "bd782de185f1ca442cd0ad454975685a6abd009e4195b0906579ef1c0fdd8a45",
     "model_artifacts": [],
     "parse_complete": true,

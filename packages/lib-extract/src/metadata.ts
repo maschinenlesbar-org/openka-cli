@@ -86,8 +86,17 @@ const REFERENCE_LABEL = String.raw`(?:(?:[A-Za-zÄÖÜäöü]{1,4}-)?(?:Drucksac
  */
 export function findReference(text: string): string | undefined {
   const match = new RegExp(REFERENCE_LABEL + REFERENCE_BODY, "i").exec(text);
-  return match === null ? undefined : normaliseReference(match);
+  if (match === null) return undefined;
+  // Not welding across the line break is half of it: "19/10" with "006" starting
+  // the next line is not Drucksache 19/10, an existing and different paper, either.
+  // Digits that open the next line and are not a list number ("1.", "2)") or a
+  // date ("12.03.") may be the rest of the number, so the reading abstains.
+  if (WRAPPED_CONTINUATION.test(text.slice(match.index + match[0].length))) return undefined;
+  return normaliseReference(match);
 }
+
+/** The next line opening with digits that are not a list number or a date. */
+const WRAPPED_CONTINUATION = /^[ \t]*\r?\n[ \t]*\d+(?![\d.)])/;
 
 function normaliseReference(match: RegExpExecArray): string | undefined {
   const parsed = parseReference(`${match[1]}/${match[2]}`);
