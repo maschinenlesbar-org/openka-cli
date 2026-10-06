@@ -42,6 +42,7 @@ export function archivedDocument(store: Store, id: string, options: { role?: str
     );
   }
   const { sha256 } = document;
+  store.assertBlobStore?.();
   if (!store.hasBlob(sha256)) {
     throw new StoreError(`The archived bytes for ${document.url} (${sha256}) are missing.`);
   }

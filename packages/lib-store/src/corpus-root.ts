@@ -19,6 +19,21 @@ export const CORPUS_ENV = "OPENKA_CORPUS";
  */
 export const CORPUS_DEFAULT_TEXT = `$${CORPUS_ENV}, else $XDG_DATA_HOME/openka, else ~/.local/share/openka`;
 
+/** Environment variable naming a blob directory apart from the corpus. */
+export const BLOBS_ENV = "OPENKA_BLOBS";
+
+/**
+ * Where the archived documents are, when not in the corpus: `blobs` (the `--blobs`
+ * flag), else `$OPENKA_BLOBS`, else undefined — `<corpus>/blobs`. Resolved as given;
+ * a blank `blobs` is refused, a blank environment variable counts as unset.
+ */
+export function resolveBlobRoot(options: { blobs?: string; env: NodeJS.ProcessEnv }): string | undefined {
+  assertValid("blobs", options.blobs, nonBlankProblem);
+  if (options.blobs !== undefined) return resolve(options.blobs);
+  const fromEnv = options.env[BLOBS_ENV];
+  return fromEnv !== undefined && !isBlank(fromEnv) ? resolve(fromEnv) : undefined;
+}
+
 export interface CorpusRootOptions {
   /** A path the caller named (`ka --corpus`); wins over the environment. */
   root?: string;

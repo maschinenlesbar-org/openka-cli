@@ -1,7 +1,7 @@
 // The corpus on disk:
 //
 //   <root>/
-//     blobs/<sha[0:2]>/<sha>.bin        content-addressed source documents
+//     blobs/<sha[0:2]>/<sha>.bin        content-addressed source documents (or elsewhere: `blobs` option)
 //     records/<id>.json                 canonical records, one file each
 //     index/catalog.json                denormalised rows for filtering + listing
 //     index/tokens/<shard>.json         inverted index shards (256 of them)
@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, s
 import { AsyncLocalStorage } from "node:async_hooks";
 import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { CorpusLockedError, MissingCorpusError, StoreError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, MissingCorpusError, StoreError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
@@ -95,16 +95,33 @@ function catalogProblem(rows: unknown): string | undefined {
   return undefined;
 }
 
+export interface FileStoreOptions {
+  /**
+   * Where the archived documents live, when not in `<root>/blobs`: the bulk of a
+   * corpus, on a large external drive, beside a database on the fast internal disk.
+   * This directory must exist — it is never created, so an unplugged drive's mount
+   * path does not turn into a folder on the internal disk. A blank path is refused.
+   */
+  blobs?: string;
+}
+
 export class FileStore implements Store {
   readonly root: string;
+  /** Where the archived documents are: `<root>/blobs`, or the `blobs` option. */
+  readonly blobsRoot: string;
+  /** True when `blobsRoot` was named apart from the corpus, and so may be missing. */
+  private readonly separateBlobs: boolean;
 
   /**
    * Open the corpus at `root`, or create it on the first write. For a writer
    * (`sync`, a test fixture): a directory that is not there yet is where the corpus
    * will be. A reader wants `FileStore.open` instead.
    */
-  constructor(root: string) {
+  constructor(root: string, options: FileStoreOptions = {}) {
+    assertValid("blobs", options.blobs, nonBlankProblem);
     this.root = resolve(root);
+    this.separateBlobs = options.blobs !== undefined;
+    this.blobsRoot = options.blobs === undefined ? join(this.root, "blobs") : resolve(options.blobs);
   }
 
   /**
@@ -115,7 +132,7 @@ export class FileStore implements Store {
    * wrong answer, indistinguishable from a corpus with nothing in it. Nothing is
    * created.
    */
-  static open(root: string): FileStore {
+  static open(root: string, options: FileStoreOptions = {}): FileStore {
     const resolved = resolve(root);
     let isDirectory: boolean;
     try {
@@ -126,7 +143,7 @@ export class FileStore implements Store {
       throw new StoreError(`Could not open the corpus at ${resolved}: ${reason}`, { cause: err });
     }
     if (!isDirectory) throw new StoreError(`${resolved} is not a directory, so it cannot be a corpus.`);
-    return new FileStore(resolved);
+    return new FileStore(resolved, options);
   }
 
   // ----------------------------------------------------------------- lock
@@ -238,7 +255,34 @@ export class FileStore implements Store {
    */
   blobPath(digest: string): string {
     if (!isSha256(digest)) throw new StoreError(`Not a sha256 digest: ${digest}`);
-    return this.path("blobs", digest.slice(0, 2), `${digest}.bin`);
+    return join(this.blobsRoot, digest.slice(0, 2), `${digest}.bin`);
+  }
+
+  /**
+   * Why the archived documents cannot be reached now, or undefined when they can.
+   * Only a blob directory named apart from the corpus can be missing — its drive
+   * unplugged; `<root>/blobs` is created on the first write.
+   */
+  blobStoreProblem(): string | undefined {
+    if (!this.separateBlobs) return undefined;
+    let isDirectory: boolean;
+    try {
+      isDirectory = statSync(this.blobsRoot).isDirectory();
+    } catch {
+      return `blob store ${this.blobsRoot} is not available — is its drive mounted? On first use, create the directory.`;
+    }
+    return isDirectory ? undefined : `blob store ${this.blobsRoot} is not a directory`;
+  }
+
+  /**
+   * Throw `StoreError` when the archived documents cannot be reached
+   * (`blobStoreProblem`). Whatever reads or writes them — a sync, `ka open`,
+   * `ka verify` — asks first, so an unplugged drive is named as such rather than
+   * surfacing as a raw ENOENT or as every document "missing".
+   */
+  assertBlobStore(): void {
+    const problem = this.blobStoreProblem();
+    if (problem !== undefined) throw new StoreError(problem);
   }
 
   private recordPath(id: string): string {
@@ -293,6 +337,8 @@ export class FileStore implements Store {
   }
 
   putBlob(data: Buffer): string {
+    // Writing would `mkdir -p` an unmounted drive's path on the internal disk.
+    this.assertBlobStore();
     const digest = sha256(data);
     const path = this.blobPath(digest);
     // Content-addressed: identical bytes are already the same file. Re-writing
@@ -311,7 +357,10 @@ export class FileStore implements Store {
    */
   getBlob(digest: string): Buffer {
     const path = this.blobPath(digest);
-    if (!existsSync(path)) throw new StoreError(`No blob ${digest} in ${this.root}`);
+    if (!existsSync(path)) {
+      this.assertBlobStore();
+      throw new StoreError(`No blob ${digest} in ${this.blobsRoot}`);
+    }
     const bytes = readFileSync(path);
     const actual = sha256(bytes);
     if (actual !== digest) {

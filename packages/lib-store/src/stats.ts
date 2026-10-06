@@ -102,7 +102,7 @@ export function corpusDiskUsage(store: FileStore): CorpusDiskUsage {
     bySource[key] = usage;
   }
   return {
-    blobs: directoryUsage(join(store.root, "blobs")),
+    blobs: directoryUsage(store.blobsRoot),
     records: directoryUsage(join(store.root, "records")),
     index: directoryUsage(join(store.root, "index")),
     by_source: bySource,

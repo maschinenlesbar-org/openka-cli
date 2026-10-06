@@ -46,6 +46,9 @@ export interface VerifyOptions {
  * the direction that flatters us.
  */
 export async function verifyRecord(id: string, options: VerifyOptions): Promise<VerifyResult> {
+  // Not a failed row per record: with the blob directory unplugged, nothing can be
+  // verified, and that is said once (StoreError) rather than as N missing documents.
+  options.store.assertBlobStore?.();
   const currentVersion = extractorVersion(options.env);
   let stored: KaRecord | undefined;
   try {
@@ -194,6 +197,7 @@ export interface CorpusVerifyReport {
 export async function verifyCorpus(options: VerifyCorpusOptions): Promise<CorpusVerifyReport> {
   if (options.limit !== undefined) assertValid("limit", options.limit, intRangeProblem(1));
   const { store } = options;
+  store.assertBlobStore?.();
   const ids =
     options.ids !== undefined
       ? options.ids

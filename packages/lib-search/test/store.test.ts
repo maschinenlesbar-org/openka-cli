@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
-import { FileStore, RECORD_ID_REASON, archivedDocument, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
+import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
@@ -1086,5 +1086,48 @@ describe("waiting for the corpus lock (issue #3)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("documents kept apart from the corpus (issue #8)", () => {
+  it("keeps blobs under --blobs, and nothing of them in the corpus", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-blobs-"));
+    try {
+      mkdirSync(join(dir, "stick"));
+      const store = new FileStore(join(dir, "corpus"), { blobs: join(dir, "stick") });
+      const digest = store.putBlob(Buffer.from("%PDF-1.7 bytes"));
+      strictEqual(store.blobPath(digest), join(dir, "stick", digest.slice(0, 2), `${digest}.bin`));
+      ok(existsSync(store.blobPath(digest)));
+      ok(!existsSync(join(dir, "corpus", "blobs")));
+      deepStrictEqual(store.getBlob(digest), Buffer.from("%PDF-1.7 bytes"));
+      strictEqual(FileStore.open(join(dir, "stick"), { blobs: join(dir, "stick") }).blobsRoot, join(dir, "stick"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("names an unplugged blob drive, and never creates its path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-blobs-"));
+    try {
+      const gone = join(dir, "Volumes", "stick", "openka", "blobs");
+      const store = new FileStore(join(dir, "corpus"), { blobs: gone });
+      match(store.blobStoreProblem() ?? "", /^blob store .* is not available — is its drive mounted\?/);
+      throws(() => store.putBlob(Buffer.from("x")), (error: unknown) => error instanceof StoreError && /not available/.test(error.message));
+      throws(() => store.getBlob("a".repeat(64)), /not available/);
+      ok(!existsSync(join(dir, "Volumes")), "the mount path was not created on this disk");
+      // The default place may be missing: it is created on the first write.
+      strictEqual(new FileStore(join(dir, "fresh")).blobStoreProblem(), undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the blob directory from the flag, else the environment, else the corpus", () => {
+    strictEqual(resolveBlobRoot({ blobs: "/a", env: { [BLOBS_ENV]: "/b" } }), "/a");
+    strictEqual(resolveBlobRoot({ env: { [BLOBS_ENV]: "/b" } }), "/b");
+    strictEqual(resolveBlobRoot({ env: { [BLOBS_ENV]: "  " } }), undefined);
+    strictEqual(resolveBlobRoot({ env: {} }), undefined);
+    throws(() => resolveBlobRoot({ blobs: " ", env: {} }), OpenKaValidationError);
+    throws(() => new FileStore("/tmp/x", { blobs: "" }), OpenKaValidationError);
   });
 });

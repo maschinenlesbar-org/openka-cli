@@ -28,7 +28,7 @@ import {
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { CORPUS_DEFAULT_TEXT, FileStore, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { BLOBS_ENV, CORPUS_DEFAULT_TEXT, FileStore, recordIdProblem, resolveBlobRoot, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory (lib-store's). */
 export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
@@ -117,6 +117,7 @@ export function collectInt(min: number, max?: number): (value: string, previous?
 
 export interface GlobalOptions {
   corpus?: string;
+  blobs?: string;
   timeout?: number;
   userAgent?: string;
   maxRetries?: number;
@@ -170,17 +171,19 @@ export function action(
     // flag > OPENKA_CORPUS > XDG_DATA_HOME > home, each path as given: the
     // library's resolution, so the flag and the env var name the same directory.
     const root = resolveCorpusRoot({ ...(global.corpus === undefined ? {} : { root: global.corpus }), env: deps.env });
+    const blobs = resolveBlobRoot({ ...(global.blobs === undefined ? {} : { blobs: global.blobs }), env: deps.env });
+    const storeOptions = blobs === undefined ? {} : { blobs };
     let store: Store | undefined;
     const ctx: ActionContext = {
       deps,
       global,
       opts: command.opts(),
       corpusRoot: () => root,
-      store: () => (store ??= deps.createStore(root)),
+      store: () => (store ??= deps.createStore(root, storeOptions)),
       existingStore: () => {
         if (store !== undefined) return store;
         try {
-          return (store = deps.openStore(root));
+          return (store = deps.openStore(root, storeOptions));
         } catch (err) {
           // Whether a corpus is there is the library's call; where the path
           // came from — and so what to check — is the CLI's to say.
@@ -329,6 +332,11 @@ export function choiceOption(flags: string, description: string, choices: readon
 export function addGlobalOptions(program: Command): Command {
   return program
     .option("--corpus <dir>", `corpus directory (default: ${CORPUS_DEFAULT_TEXT})`, parseNonEmpty)
+    .option(
+      "--blobs <dir>",
+      `keep the archived documents here instead of <corpus>/blobs — an existing directory, e.g. on an external drive (default: $${BLOBS_ENV})`,
+      parseNonEmpty,
+    )
     .option("--timeout <ms>", "timeout per request attempt in milliseconds (a timed-out request is retried once)", parseBoundedInt(0, MAX_TIMEOUT_MS))
     // The bounds and the User-Agent rule are FetchEngine's (assertEngineOptions);
     // these parsers only read argv into numbers and strings.

@@ -58,8 +58,8 @@ export function cliHarness(
   const fixedNow = options.now ?? new Date("2026-01-02T03:04:05Z");
   const deps: CliDeps = {
     io,
-    createStore: (root) => new FileStore(root),
-    openStore: (root) => FileStore.open(root),
+    createStore: (root, storeOptions) => new FileStore(root, storeOptions),
+    openStore: (root, storeOptions) => FileStore.open(root, storeOptions),
     createEngine: (engineOptions) =>
       new FetchEngine({
         ...engineOptions,

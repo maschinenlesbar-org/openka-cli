@@ -62,6 +62,15 @@ The corpus lives in `$OPENKA_CORPUS`, or `~/.local/share/openka`, or wherever
 `--corpus` points. It is a directory of plain files: content-addressed source
 PDFs, one canonical JSON record each, and a JSON index.
 
+**The documents can live elsewhere.** The archived PDFs are the bulk of a corpus; the
+records and the index are small. `--blobs <dir>` (or `OPENKA_BLOBS`) keeps the PDFs in
+a directory of their own — on an external drive, say — while the database stays on the
+internal disk, searchable when the drive is unplugged. That directory must exist; it is
+never created, so a missing drive cannot turn into a folder on the internal disk.
+Without it, `sync`, `open` and `verify` exit 3 ("blob store … is not available"); `search`,
+`get`, `show`, `export`, `feed`, `stats` and `review` work as before. A symlinked
+`<corpus>/blobs` works too.
+
 **On a USB stick formatted FAT32 or exFAT**, macOS writes a `._<name>` companion
 beside every file (and `cp -R` onto such a drive does the same). `ka` skips those and
 `.DS_Store`, says how many it skipped, and `dot_clean <corpus>` removes them; `ka sync`

@@ -117,6 +117,11 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
 
 async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   const { source, store, engine } = options;
+  // A blob directory on an unplugged drive is the corpus's problem, named before
+  // any request — not a failed fetch per Anfrage. Also with --metadata-only: that
+  // run re-extracts a stored record without its documents, so on a corpus whose
+  // drive is away it would replace complete records with metadata-only ones.
+  store.assertBlobStore?.();
   if (source.minHostIntervalMs !== undefined) engine.raiseMinHostInterval(source.minHostIntervalMs);
   const now = options.now ?? (() => new Date());
   const state = store.getSourceState(source.key);

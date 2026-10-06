@@ -4,7 +4,7 @@
 // subprocess, no network, no clock.
 
 import { writeFileSync } from "node:fs";
-import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, type FileStoreOptions } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
@@ -28,10 +28,10 @@ export interface CliIO {
 
 export interface CliDeps {
   io: CliIO;
-  /** Open (or create) the corpus at `root`. */
-  createStore(root: string): Store;
+  /** Open (or create) the corpus at `root`; `options.blobs` puts the documents elsewhere. */
+  createStore(root: string, options?: FileStoreOptions): Store;
   /** Open the existing corpus at `root` for reading; a missing one is an error. */
-  openStore(root: string): Store;
+  openStore(root: string, options?: FileStoreOptions): Store;
   createEngine(options: EngineOptions): FetchEngine;
   env: NodeJS.ProcessEnv;
   /** The clock. Injected so `retrieved_at` and feed timestamps are testable. */
@@ -127,8 +127,8 @@ export const defaultIO: CliIO = {
 
 export const defaultDeps: CliDeps = {
   io: defaultIO,
-  createStore: (root) => new FileStore(root),
-  openStore: (root) => FileStore.open(root),
+  createStore: (root, options) => new FileStore(root, options),
+  openStore: (root, options) => FileStore.open(root, options),
   createEngine: (options) => new FetchEngine(options),
   env: process.env,
   now: () => new Date(),

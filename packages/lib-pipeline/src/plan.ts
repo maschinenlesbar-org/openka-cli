@@ -31,7 +31,7 @@ export const ESTIMATE_MIN_KNOWN = 20;
 export interface SyncPlanOptions extends SyncWindow {
   source: Source;
   /** Read only: records, blobs and source state. Nothing is written. */
-  store: Pick<Store, "getSourceState" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact">;
+  store: Pick<Store, "getSourceState" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact" | "assertBlobStore">;
   engine: FetchEngine;
   apiKey?: string;
   metadataOnly?: boolean;
@@ -79,6 +79,9 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     ...(options.limit === undefined ? {} : { limit: options.limit }),
   });
   const { source, store, engine } = options;
+  // Which documents the corpus holds is read from the blob store; with it unplugged,
+  // every one would count as still to fetch.
+  store.assertBlobStore?.();
   if (source.minHostIntervalMs !== undefined) engine.raiseMinHostInterval(source.minHostIntervalMs);
   const state = store.getSourceState(source.key);
 

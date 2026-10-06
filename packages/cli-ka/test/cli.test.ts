@@ -3,7 +3,7 @@
 
 import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
@@ -465,6 +465,37 @@ describe("ka", () => {
       match(harness.stderr(), /cannot count by Wahlperiode/);
     } finally {
       harness.cleanup();
+    }
+  });
+
+  it("keeps the documents on another drive with --blobs, and reads without them when it is away", async () => {
+    const drive = mkdtempSync(join(tmpdir(), "openka-drive-"));
+    const harness = cliHarness({ transport: berlinTransport().transport, env: { OPENKA_BLOBS: join(drive, "blobs") } });
+    try {
+      // First use: the directory must exist — a path on an unplugged drive is never created.
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /blob store .*blobs is not available — is its drive mounted\? On first use, create the directory\./);
+      ok(!existsSync(join(drive, "blobs")));
+
+      mkdirSync(join(drive, "blobs"));
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_OK, harness.stderr());
+      ok(!existsSync(join(harness.corpus, "blobs")), "nothing of the documents in the corpus");
+      strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_OK);
+
+      rmSync(join(drive, "blobs"), { recursive: true }); // the drive is unplugged
+      for (const argv of [["search", "solaranlagen"], ["get", "berlin-19-10006"], ["stats"], ["export", "--format", "csv"], ["review"]]) {
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, argv.join(" "));
+      }
+      for (const argv of [["open", "berlin-19-10006"], ["verify", "--all"], ["sync", "--source", "berlin"], ["sync", "--source", "berlin", "--metadata-only"]]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_STORE, argv.join(" "));
+        match(harness.stderr(), /^Error: blob store .* is not available/m, argv.join(" "));
+      }
+      ok(!existsSync(join(drive, "blobs")));
+      strictEqual(await run(["--corpus", harness.corpus, "--blobs", " ", "stats"], harness.deps), EXIT_USAGE);
+    } finally {
+      harness.cleanup();
+      rmSync(drive, { recursive: true, force: true });
     }
   });
 

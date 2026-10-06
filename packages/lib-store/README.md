@@ -36,6 +36,15 @@ it is `store.lock`. `ka sync --wait` uses it in place of a shell loop polling `p
 Catalog batches (`batchCatalog`) nest — the outermost flushes — and concurrent ones,
 the syncs of one multi-source run, each flush at their own end.
 
+**The documents can be kept apart.** `new FileStore(root, { blobs })` (and
+`FileStore.open`) puts the blobs in `blobs` instead of `<root>/blobs`; `resolveBlobRoot`
+reads it from `--blobs` or `OPENKA_BLOBS` (`BLOBS_ENV`). That directory is never
+created: `blobStoreProblem()` names it when it is missing — an unplugged drive — and
+`assertBlobStore()` throws that as a `StoreError`. `putBlob`, a missing `getBlob`,
+`archivedDocument`, `sync()`, `planSync()` and `verifyRecord`/`verifyCorpus` ask first;
+everything that reads only records and the index does not. A store without the method
+(`Store.assertBlobStore` is optional) has nothing to check.
+
 `new FileStore(root)` opens a corpus or creates it on the first write — what a
 writer wants. A reader wants `FileStore.open(root)`, which requires the corpus to be
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
@@ -74,7 +83,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
+FileStore, isSafeKey, isPlatformFile, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
 ```
 
 ## Depends on

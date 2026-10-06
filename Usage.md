@@ -8,6 +8,7 @@ are authoritative; this is the narrative version.
 | Option | Meaning |
 |--------|---------|
 | `--corpus <dir>` | where the corpus lives (default: `$OPENKA_CORPUS`, else `$XDG_DATA_HOME/openka`, else `~/.local/share/openka`); the flag and the variable are taken as given, spaces included |
+| `--blobs <dir>` | keep the archived documents in this existing directory instead of `<corpus>/blobs` (default: `$OPENKA_BLOBS`); while it is missing, `sync`, `open` and `verify` exit 3 and every other command works |
 | `--timeout <ms>` | timeout per request attempt; a timed-out request is retried once |
 | `--user-agent <ua>` | override the identifying User-Agent; not blank, no control characters, nothing above U+00FF |
 | `--max-retries <n>` | retries (0–10) for a transient 429/503 or a dropped connection; a response over `--max-response-bytes` is never retried |

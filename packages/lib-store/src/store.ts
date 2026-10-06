@@ -60,6 +60,12 @@ export interface BlobStore {
   getBlob(sha256: string): Buffer;
   /** Filesystem path of a stored blob — what `ka open` hands to the OS. */
   blobPath(sha256: string): string;
+  /**
+   * Throw `StoreError` when the blobs cannot be reached at all — a blob directory
+   * on a drive that is not mounted. Optional: a store whose blobs are always there
+   * (the in-memory double) has nothing to check.
+   */
+  assertBlobStore?(): void;
 }
 
 export interface RecordStore {
