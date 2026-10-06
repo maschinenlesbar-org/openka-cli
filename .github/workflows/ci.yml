@@ -66,3 +66,17 @@ jobs:
       # The coverage floor: 80% of lines and functions across the workspace.
       - name: Coverage
         run: npm run coverage
+
+      # Issue #1: a global install of the packed tarball once left
+      # node_modules/commander empty and every `ka` command crashed, while a local
+      # install worked. Pack the real tarball, install it globally into a scratch
+      # prefix with the registry out of reach (the tarball must be self-contained),
+      # and run both bins.
+      - name: Packed tarball installs globally
+        run: |
+          npm run pack
+          prefix="$RUNNER_TEMP/global"
+          npm install --global --offline --prefix "$prefix" ./maschinenlesbar.org-openka-cli-*.tgz
+          "$prefix/bin/ka" --version
+          "$prefix/bin/ka-factory" --version
+          OPENKA_CORPUS="$RUNNER_TEMP/corpus" "$prefix/bin/ka" sources list > /dev/null

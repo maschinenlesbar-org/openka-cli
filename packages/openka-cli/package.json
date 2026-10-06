@@ -97,7 +97,8 @@
     "@maschinenlesbar.org/openka-lib-starweb",
     "@maschinenlesbar.org/openka-lib-store",
     "@maschinenlesbar.org/openka-lib-text",
-    "@maschinenlesbar.org/openka-lib-verify"
+    "@maschinenlesbar.org/openka-lib-verify",
+    "commander"
   ],
   "keywords": [
     "kleine-anfrage",

@@ -31,6 +31,15 @@ built `dist` into this package's `node_modules`, walks the dependency graph
 copies in the repository-level documents the tarball carries, `LICENSE` among them,
 because npm cannot reach outside a package directory when it builds one. Everything
 it writes is generated and gitignored; the originals stay the single source of truth.
+
+**Third-party dependencies are bundled too** — today that is `commander` alone.
+`prepack` copies the runtime closure of every bundled package from the root
+`node_modules`, and refuses to pack when one is missing from `bundleDependencies`.
+Left unbundled, `npm install -g` created `node_modules/commander` as an empty
+directory, counted it as installed, and every `ka` command crashed with
+`ERR_MODULE_NOT_FOUND`; a local install hoisted a real copy and hid the bug
+(issue #1). `test/bundle.test.ts` checks the manifest, and CI installs the packed tarball
+globally, offline, and runs both bins.
 `tools/postpack.mjs` removes it all again as soon as the tarball exists.
 
 Three more things happen on the way, each because the registry reads the tarball
@@ -64,6 +73,9 @@ npm run pack                      # from the workspace root
 cd /tmp && mkdir t && cd t && npm init -y
 npm install /path/to/maschinenlesbar.org-openka-cli-<version>.tgz
 ./node_modules/.bin/ka sources list
+# and globally, which is where an unbundled dependency shows up
+npm install -g --offline --prefix /tmp/g /path/to/maschinenlesbar.org-openka-cli-<version>.tgz
+/tmp/g/bin/ka --version
 ```
 
 ## Depends on
@@ -97,7 +109,8 @@ npm install /path/to/maschinenlesbar.org-openka-cli-<version>.tgz
 
 ## Tests
 
-`test/pipeline.test.ts` — run with:
+`test/pipeline.test.ts`, plus `test/readme-links.test.ts` and `test/bundle.test.ts`
+for what the tarball carries — run with:
 
 ```bash
 npm test -w @maschinenlesbar.org/openka-cli

@@ -109,17 +109,62 @@ for (const name of closure) {
   writeFileSync(file, `${JSON.stringify(packed, null, 2)}\n`);
 }
 
-// `bundleDependencies` has to name them too, or npm packs none of them.
+/**
+ * Every third-party package the bundled graph needs at run time, transitively.
+ *
+ * These have to be bundled as well, not left to npm to install. A global install
+ * (`npm install -g`) of a tarball whose bundled packages depend on `commander`
+ * created `node_modules/commander` as an **empty directory**, counted the
+ * dependency as satisfied, and every `ka` command then failed with
+ * ERR_MODULE_NOT_FOUND (issue #1). A local install hoisted a real copy and hid it.
+ * Bundling the whole runtime closure makes the tarball self-contained, which also
+ * means an install needs nothing from the registry.
+ */
+function thirdPartyClosure(manifests) {
+  const seen = new Set();
+  const queue = manifests.flatMap((m) => Object.keys(m.dependencies ?? {}));
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (name.startsWith("@maschinenlesbar.org/") || seen.has(name)) continue;
+    seen.add(name);
+    const file = join(root, "node_modules", name, "package.json");
+    if (!existsSync(file)) throw new Error(`${name} is not installed — run npm ci before packing`);
+    queue.push(...Object.keys(JSON.parse(readFileSync(file, "utf8")).dependencies ?? {}));
+  }
+  return [...seen].sort();
+}
+
+const thirdParty = thirdPartyClosure([
+  manifest,
+  ...closure.map((name) =>
+    JSON.parse(readFileSync(join(root, "packages", name.replace("@maschinenlesbar.org/openka-", ""), "package.json"), "utf8")),
+  ),
+]);
+for (const name of thirdParty) {
+  cpSync(join(root, "node_modules", name), join(target, "node_modules", name), {
+    recursive: true,
+    dereference: true,
+  });
+}
+
+// `bundleDependencies` has to name all of them, or npm packs none of them — and a
+// third-party one missing from the list is the empty-directory bug above, so that
+// is an error rather than something to patch into the manifest here.
 const declared = new Set(manifest.bundleDependencies ?? []);
+const undeclared = thirdParty.filter((name) => !declared.has(name));
+if (undeclared.length > 0) {
+  throw new Error(`bundleDependencies must name ${undeclared.join(", ")} (a runtime dependency of the bundled packages)`);
+}
 const missing = closure.filter((name) => !declared.has(name));
 if (missing.length > 0) {
   writeFileSync(
     join(target, "package.json"),
-    `${JSON.stringify({ ...manifest, bundleDependencies: closure }, null, 2)}\n`,
+    `${JSON.stringify({ ...manifest, bundleDependencies: [...closure, ...thirdParty] }, null, 2)}\n`,
   );
 }
 
 console.log(
-  `prepack: ${DOCUMENTS.length} document(s), ${bundled} bundled package(s)` +
+  `prepack: ${DOCUMENTS.length} document(s), ${bundled} bundled package(s), ` +
+    `${thirdParty.length} third-party (${thirdParty.join(", ")})` +
     (missing.length > 0 ? ` (added ${missing.length} transitive to bundleDependencies)` : ""),
 );
