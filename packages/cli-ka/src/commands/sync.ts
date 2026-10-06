@@ -7,9 +7,10 @@ import { SYNC_LIMIT_MIN, sync } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
+import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type InterruptSignal } from "../io.js";
 import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
-import { truncate } from "../text.js";
+import { sanitizeForTerminal, truncate } from "../text.js";
 
 /** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
 const parseSourceKey = problemParser(sourceKeyProblem);
@@ -80,6 +81,11 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
+        // The command takes the corpus lock itself — sync() re-enters it — so that
+        // before the first request it knows what kind of volume the corpus is on.
+        const release = store.lock?.(`sync --source ${source.key}`);
+        if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
+
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
         // ends the process. A kill -9 cannot be caught: the next sync over the
         // window, or `ka reindex`, catalogues what that run stored.
@@ -122,6 +128,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           });
         } finally {
           stopListening?.();
+          release?.();
         }
 
         const stopped =
@@ -166,4 +173,19 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
       }),
     );
+}
+
+/**
+ * A corpus on a FAT32 or exFAT drive works, but costs twice the files: macOS writes
+ * a `._` companion beside every one. `ka` skips them; this says so before the run
+ * adds a few thousand more, and names the other limit of FAT32 that a flat
+ * `records/` directory runs into.
+ */
+function warnAppleDouble(deps: CliDeps, store: FileStore): void {
+  deps.io.err(
+    `warning: ${sanitizeForTerminal(store.root)} is on a volume without extended attributes (FAT32 or exFAT), so macOS ` +
+      "writes a ._ companion file beside every file of the corpus. ka ignores them, and `dot_clean` removes them. " +
+      "FAT32 also caps a directory at 65,534 entries, and a long file name takes several, so records/ tops out at " +
+      "roughly 8,000–16,000 records there; APFS, HFS+ or ext4 have neither problem.",
+  );
 }

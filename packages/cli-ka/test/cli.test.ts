@@ -300,6 +300,48 @@ describe("ka", () => {
     }
   });
 
+  it("skips the files macOS leaves on a FAT drive and says so once, instead of stopping", async () => {
+    const harness = await seeded();
+    try {
+      writeFileSync(join(harness.corpus, "records", "._berlin-19-10006.json"), "\0\u0005\u0016\u0007");
+      writeFileSync(join(harness.corpus, "records", ".DS_Store"), "");
+      for (const argv of [["stats"], ["verify", "--all"], ["reindex"], ["search", "solaranlagen"]]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, argv.join(" "));
+        if (argv[0] !== "search") {
+          match(harness.stderr(), /^Note: ignored 2 macOS AppleDouble\/\.DS_Store file\(s\) in the corpus; `dot_clean .*` removes them\.$/m);
+        }
+      }
+      // A name the store would never write still stops: that is the guard against path tricks.
+      writeFileSync(join(harness.corpus, "records", "Bad.json"), "{}");
+      strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /Unsafe record file "Bad\.json"/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
+    const harness = cliHarness({ transport: berlinTransport().transport });
+    try {
+      // What FAT32 does by itself the moment `ka sync` writes its lock file.
+      writeFileSync(join(harness.corpus, "._lock"), "");
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /^warning: .* is on a volume without extended attributes \(FAT32 or exFAT\).*65,534 entries/m);
+      ok(!existsSync(join(harness.corpus, "lock")), "the command's lock is released");
+
+      const clean = cliHarness({ transport: berlinTransport().transport });
+      try {
+        strictEqual(await run(["--corpus", clean.corpus, "sync", "--source", "berlin"], clean.deps), EXIT_OK);
+        doesNotMatch(clean.stderr(), /extended attributes/);
+      } finally {
+        clean.cleanup();
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("calls a missing archived document a corpus problem in verify, as open does", async () => {
     const harness = await seeded();
     try {

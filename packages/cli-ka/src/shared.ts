@@ -26,9 +26,9 @@ import {
   userAgentProblem,
 } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
-import { escapeControlChars } from "./text.js";
+import { escapeControlChars, sanitizeForTerminal } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { CORPUS_DEFAULT_TEXT, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { CORPUS_DEFAULT_TEXT, FileStore, recordIdProblem, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory (lib-store's). */
 export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
@@ -171,30 +171,48 @@ export function action(
     // library's resolution, so the flag and the env var name the same directory.
     const root = resolveCorpusRoot({ ...(global.corpus === undefined ? {} : { root: global.corpus }), env: deps.env });
     let store: Store | undefined;
-    await fn(
-      {
-        deps,
-        global,
-        opts: command.opts(),
-        corpusRoot: () => root,
-        store: () => (store ??= deps.createStore(root)),
-        existingStore: () => {
-          if (store !== undefined) return store;
-          try {
-            return (store = deps.openStore(root));
-          } catch (err) {
-            // Whether a corpus is there is the library's call; where the path
-            // came from — and so what to check — is the CLI's to say.
-            if (err instanceof MissingCorpusError) {
-              throw new StoreError(`${err.message} Check --corpus / OPENKA_CORPUS, or run \`ka sync\` first.`, { cause: err });
-            }
-            throw err;
+    const ctx: ActionContext = {
+      deps,
+      global,
+      opts: command.opts(),
+      corpusRoot: () => root,
+      store: () => (store ??= deps.createStore(root)),
+      existingStore: () => {
+        if (store !== undefined) return store;
+        try {
+          return (store = deps.openStore(root));
+        } catch (err) {
+          // Whether a corpus is there is the library's call; where the path
+          // came from — and so what to check — is the CLI's to say.
+          if (err instanceof MissingCorpusError) {
+            throw new StoreError(`${err.message} Check --corpus / OPENKA_CORPUS, or run \`ka sync\` first.`, { cause: err });
           }
-        },
+          throw err;
+        }
       },
-      positionals,
-    );
+    };
+    try {
+      await fn(ctx, positionals);
+    } finally {
+      if (store instanceof FileStore) noteIgnoredFiles(deps, store);
+    }
   };
+}
+
+/**
+ * Say once, after the command, that the corpus listings skipped platform files
+ * (`._*`, `.DS_Store`) — what macOS leaves on a FAT32 or exFAT drive. Skipped
+ * without a word, a user would never learn why `dot_clean` is worth running; a
+ * hard stop on the first one, which is what this replaced, made the corpus
+ * unusable.
+ */
+function noteIgnoredFiles(deps: CliDeps, store: FileStore): void {
+  const ignored = store.ignoredFiles();
+  if (ignored.length === 0) return;
+  deps.io.err(
+    `Note: ignored ${ignored.length} macOS AppleDouble/.DS_Store file(s) in the corpus; ` +
+      `\`dot_clean ${sanitizeForTerminal(store.root)}\` removes them.`,
+  );
 }
 
 /** Print a JSON value, pretty by default and compact with --compact. */

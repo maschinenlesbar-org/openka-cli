@@ -54,6 +54,20 @@ export function assertRecordId(id: string): void {
   assertValid("id", id, recordIdProblem);
 }
 
+/**
+ * Files the operating system puts beside ours, which the store never wrote and
+ * never reads: macOS's AppleDouble companions (`._<name>`, written next to every
+ * file on a volume that cannot store extended attributes — FAT32, exFAT, many
+ * network shares — and by `cp -R` onto one) and Finder's `.DS_Store`. A corpus on a
+ * USB stick holds hundreds of them, and the first one in `records/` used to stop
+ * every command with "Unsafe record file". They are skipped, and the store keeps
+ * their paths so a caller can say so once (`FileStore.ignoredFiles`). Neither name
+ * can be a record id or a source key, which start with a letter or a digit.
+ */
+export function isPlatformFile(name: string): boolean {
+  return name.startsWith("._") || name === ".DS_Store";
+}
+
 function assertSafeKey(value: string, what: string): void {
   if (!isSafeKey(value)) {
     throw new StoreError(`Unsafe ${what} "${value}": expected [a-z0-9][a-z0-9._-]*`);
@@ -156,7 +170,48 @@ export class FileStore implements Store {
       }
     }
     this.locks = 1;
+    // The cheapest honest probe there is: the lock file was just written, and on a
+    // volume without extended attributes macOS writes its `._lock` companion at the
+    // same moment. Deleting the lock deletes the companion too.
+    if (existsSync(this.path("._lock"))) this.appleDouble = true;
     return this.releaseOnce();
+  }
+
+  private appleDouble = false;
+
+  /**
+   * Whether macOS writes an AppleDouble companion (`._<name>`) beside every file
+   * this corpus holds — a FAT32 or exFAT volume. Known once `lock()` has run; false
+   * before that, and on every other system.
+   */
+  get writesAppleDouble(): boolean {
+    return this.appleDouble;
+  }
+
+  private readonly ignored = new Set<string>();
+
+  /** Platform files (`isPlatformFile`) the listings have skipped so far, as paths, sorted. */
+  ignoredFiles(): string[] {
+    return [...this.ignored].sort();
+  }
+
+  /**
+   * The `<key>.json` names in `dir`, without the extension and sorted — every
+   * listing of the corpus goes through here, so a platform file is skipped (and
+   * remembered) in each of them alike.
+   */
+  private listJsonKeys(...parts: string[]): string[] {
+    const dir = this.path(...parts);
+    if (!existsSync(dir)) return [];
+    const keys: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (isPlatformFile(name)) {
+        this.ignored.add(join(dir, name));
+        continue;
+      }
+      if (name.endsWith(".json")) keys.push(name.slice(0, -".json".length));
+    }
+    return keys.sort();
   }
 
   private releaseOnce(): () => void {
@@ -316,15 +371,12 @@ export class FileStore implements Store {
   /**
    * Every record id in the corpus, sorted — the basis for a full re-index. A record
    * file whose name is not a record id was not written by the store: it is a
-   * `StoreError` here, so it does not reach `getRecord` as a caller's usage error.
+   * `StoreError` here, so it does not reach `getRecord` as a caller's usage error —
+   * except a platform file (`isPlatformFile`), which is skipped.
    */
   recordIds(): string[] {
     const dir = this.path("records");
-    if (!existsSync(dir)) return [];
-    const ids = readdirSync(dir)
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => name.slice(0, -".json".length))
-      .sort();
+    const ids = this.listJsonKeys("records");
     for (const id of ids) {
       if (!isSafeKey(id)) {
         throw new StoreError(`Unsafe record file "${id}.json" in ${dir}: expected [a-z0-9][a-z0-9._-]*.json`);
@@ -466,12 +518,7 @@ export class FileStore implements Store {
 
   /** Every shard file present, sorted — used by a full index rebuild and by stats. */
   shardNames(): string[] {
-    const dir = this.path("index", "tokens");
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => name.slice(0, -".json".length))
-      .sort();
+    return this.listJsonKeys("index", "tokens");
   }
 
   // ------------------------------------------------------------ artifacts
@@ -516,12 +563,7 @@ export class FileStore implements Store {
   }
 
   sourceStateKeys(): string[] {
-    const dir = this.path("state");
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => name.slice(0, -".json".length))
-      .sort();
+    return this.listJsonKeys("state");
   }
 }
 

@@ -62,6 +62,13 @@ The corpus lives in `$OPENKA_CORPUS`, or `~/.local/share/openka`, or wherever
 `--corpus` points. It is a directory of plain files: content-addressed source
 PDFs, one canonical JSON record each, and a JSON index.
 
+**On a USB stick formatted FAT32 or exFAT**, macOS writes a `._<name>` companion
+beside every file (and `cp -R` onto such a drive does the same). `ka` skips those and
+`.DS_Store`, says how many it skipped, and `dot_clean <corpus>` removes them; `ka sync`
+warns when it starts on such a volume. FAT32 also caps a directory at 65,534 entries,
+and a long file name takes several, so `records/` holds roughly 8,000–16,000 records
+there. APFS, HFS+ and ext4 have neither limit.
+
 ## What makes a record trustworthy
 
 Every record carries an `extraction` block that says exactly how to reproduce it:

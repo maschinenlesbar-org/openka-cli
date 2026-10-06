@@ -20,6 +20,15 @@ both reported success. Readers do not take it. The lock is re-entrant per store
 object; a lock whose process on this host is gone (a killed run) is taken over, one
 from another host is never — the error names the file to delete.
 
+**Files the store never wrote are skipped when they belong to the platform.**
+macOS writes an AppleDouble companion (`._<name>`) beside every file on a volume
+without extended attributes (FAT32, exFAT), and Finder leaves `.DS_Store`. Every
+listing (`recordIds`, `shardNames`, `sourceStateKeys`) skips them (`isPlatformFile`)
+and remembers their paths (`FileStore.ignoredFiles()`); `ka` names them once. Any
+other record file that is not a record id is still a `StoreError`. After `lock()`,
+`writesAppleDouble` says whether this is such a volume — the lock file's own `._lock`
+companion is the probe.
+
 `new FileStore(root)` opens a corpus or creates it on the first write — what a
 writer wants. A reader wants `FileStore.open(root)`, which requires the corpus to be
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
@@ -58,7 +67,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
+FileStore, isSafeKey, isPlatformFile, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
 ```
 
 ## Depends on

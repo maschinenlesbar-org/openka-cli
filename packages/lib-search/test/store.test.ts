@@ -956,3 +956,67 @@ describe("the corpus lock", () => {
     strictEqual(markHumanVerified(memory, sampleRecord().id)?.extraction.review_status, "human_verified");
   });
 });
+
+describe("platform files in the corpus", () => {
+  // Issue #4: on a FAT32 or exFAT drive macOS writes a `._<name>` companion beside
+  // every file, and the first one in records/ stopped every command.
+  it("skips AppleDouble companions and .DS_Store in every listing, and names them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-platform-"));
+    try {
+      const store = new FileStore(dir);
+      const record = sampleRecord();
+      store.putRecord(record);
+      store.putSourceState({ source: "berlin", http_cache: {} });
+      store.saveShard("00", { term: [[record.id, 1]] });
+      for (const path of [
+        ["records", `._${record.id}.json`],
+        ["records", ".DS_Store"],
+        ["state", "._berlin.json"],
+        ["index", "tokens", "._00.json"],
+      ]) {
+        writeFileSync(join(dir, ...path), "\0\u0005\u0016\u0007 AppleDouble");
+      }
+      deepStrictEqual(store.recordIds(), [record.id]);
+      deepStrictEqual(store.sourceStateKeys(), ["berlin"]);
+      deepStrictEqual(store.shardNames(), ["00"]);
+      deepStrictEqual(store.ignoredFiles(), [
+        join(dir, "index", "tokens", "._00.json"),
+        join(dir, "records", ".DS_Store"),
+        join(dir, "records", `._${record.id}.json`),
+        join(dir, "state", "._berlin.json"),
+      ]);
+      strictEqual(reindexAll(store), 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still refuses any other record file the store did not write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-platform-"));
+    try {
+      mkdirSync(join(dir, "records"));
+      writeFileSync(join(dir, "records", "._ok.json"), "");
+      writeFileSync(join(dir, "records", "Bad.json"), "{}");
+      throws(() => new FileStore(dir).recordIds(), StoreError);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("knows after taking the lock whether macOS writes companions on this volume", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-platform-"));
+    try {
+      const plain = new FileStore(dir);
+      plain.lock("test")();
+      strictEqual(plain.writesAppleDouble, false);
+      // What a FAT32 volume does on its own the moment the lock file is written.
+      writeFileSync(join(dir, "._lock"), "");
+      const fat = new FileStore(dir);
+      strictEqual(fat.writesAppleDouble, false, "unknown before the lock");
+      fat.lock("test")();
+      strictEqual(fat.writesAppleDouble, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
