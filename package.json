@@ -1,7 +1,7 @@
 {
   "name": "openka-workspace",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
   "description": "Workspace for @maschinenlesbar.org/openka-cli — every package lives under packages/.",
   "workspaces": [
@@ -29,6 +29,6 @@
   },
   "license": "AGPL-3.0-or-later",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   }
 }

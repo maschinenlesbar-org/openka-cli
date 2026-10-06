@@ -126,7 +126,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-lib-testing": "0.0.1"

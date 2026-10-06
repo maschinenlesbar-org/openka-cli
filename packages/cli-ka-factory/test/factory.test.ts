@@ -424,10 +424,21 @@ describe("the supported Node versions", () => {
   });
 
   it("keeps the published package's floor in step with the workspace", () => {
-    const published = JSON.parse(
-      readFileSync(join(PROJECT_ROOT, "packages", "openka-cli", "package.json"), "utf8"),
-    ) as { engines?: { node?: string } };
-    strictEqual(published.engines?.node, `>=${enginesFloor(PROJECT_ROOT)}`);
+    const read = (...parts: string[]) =>
+      JSON.parse(readFileSync(join(PROJECT_ROOT, ...parts, "package.json"), "utf8")) as { engines?: { node?: string } };
+    const workspace = read().engines?.node;
+    ok(workspace?.startsWith(`>=${enginesFloor(PROJECT_ROOT)}`));
+    strictEqual(read("packages", "openka-cli").engines?.node, workspace);
+  });
+});
+
+describe("the workspace root", () => {
+  // `openka-workspace` was published once by an `npm publish` run in the wrong
+  // directory and had to be unpublished: the root carries every package's sources,
+  // tests and fixture PDFs. `private` makes npm refuse instead.
+  it("is private, so npm refuses to publish it", () => {
+    const root = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")) as { private?: unknown };
+    strictEqual(root.private, true);
   });
 });
 

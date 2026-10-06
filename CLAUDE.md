@@ -94,8 +94,9 @@ You may **not** without asking:
 - **Zero required runtime dependencies** beyond `commander`. HTTP is
   `node:http`/`https`; the PDF reader is ours; the corpus is plain files. OCR is an
   *optional peer* dependency, loaded dynamically.
-- **Strict TypeScript, ESM, Node ≥ 22.** `noUncheckedIndexedAccess` is on; the
-  coverage gate needs Node 22's `--test-coverage-*` flags, which is the floor.
+- **Strict TypeScript, ESM, Node ≥ 22.12.** `noUncheckedIndexedAccess` is on; the
+  coverage gate needs Node 22's `--test-coverage-*` flags, and 22.12 is the floor the
+  sibling repositories share (`engines.node`, root and published package alike).
 - **Every CLI option that takes a value gets a parser.** A blank filter is a usage
   error, never a silently dropped constraint.
 - **Nothing on the line reads the clock** except the pipeline, which stamps

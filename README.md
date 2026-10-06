@@ -25,8 +25,12 @@ Two binaries are installed:
 | `ka`         | line    | the deterministic runtime: sync, search, get, verify, review, export |
 | `ka-factory` | factory | build-time tooling: the no-model guardrail, golden fixtures, health and drift |
 
-Node ≥ 22. The only required runtime dependency is `commander`; HTTP is
+Requires Node.js 22.12+. The only required runtime dependency is `commander`; HTTP is
 `node:http`/`https`, PDF reading is written here, and the corpus is plain files.
+
+**Install with npm.** The package carries its own workspace packages as
+`bundleDependencies`, which npm installs from the tarball. bun resolves them from the
+registry instead, where they do not exist, and fails; yarn and pnpm are untested.
 
 ## Quick start
 

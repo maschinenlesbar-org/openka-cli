@@ -24,7 +24,10 @@ package is above the floor; the workspace sits at ~94% of lines and ~93% of
 functions.
 
 **Releasing bumps the published package, not the root.** The root is
-`openka-workspace` and `private`; `npm version patch` there moves a version nobody
+`openka-workspace` and `"private": true` — npm refuses to publish it, which matters
+because a root pack carries every package's sources, tests and fixture PDFs (it was
+published once by mistake, and unpublished; a test in `cli-ka-factory` keeps the flag
+set). `npm version patch` there moves a version nobody
 ships and leaves the tag pointing at the wrong number. Use
 `npm version --workspace @maschinenlesbar.org/openka-cli patch`, and pack with
 `npm run pack` so the prepack/postpack pair runs. `release.yml` and `publish.yml`
@@ -38,11 +41,12 @@ and a test in `lib-repro` fails if the two ever disagree.
 **The first publish is local; every one after it is `publish.yml`.** npm Trusted
 Publishing can only be configured for a package that already exists, so the first
 version goes up from a maintainer's machine, from a clean checkout of its tag:
-`npm publish --workspace @maschinenlesbar.org/openka-cli --access public`. Not
-`npm run publish:npm` — its `--provenance` needs the OIDC token of a GitHub Actions
-run and fails anywhere else. Then set the trusted publisher on npmjs.com (this
-repository, workflow `publish.yml`), and later versions go tag → `release.yml` →
-dispatch `publish.yml`, like every other repository in the workspace.
+`npm publish --workspace @maschinenlesbar.org/openka-cli --access public` — the
+command `npm run publish:npm` runs, too. It passes no `--provenance`: under npm
+Trusted Publishing `publish.yml` gets the provenance attestation without the flag,
+and the flag only made a local publish fail. Then set the trusted publisher on
+npmjs.com (this repository, workflow `publish.yml`), and later versions go tag →
+`release.yml` → dispatch `publish.yml`, like every other repository in the workspace.
 
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
