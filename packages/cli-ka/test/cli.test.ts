@@ -14,7 +14,9 @@ import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.j
 import { renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
-import { defaultIO } from "../src/io.js";
+import { defaultIO, handleOutputErrors } from "../src/io.js";
+import { EventEmitter } from "node:events";
+import { fileURLToPath } from "node:url";
 
 // Real documents come from the connector that recorded them: one copy of the
 // bytes, and the borrowing is visible as a devDependency.
@@ -728,5 +730,49 @@ describe("the harness itself", () => {
     deepStrictEqual(harness.err, ["b"]);
     strictEqual(harness.files.get("/tmp/x")?.toString(), "c");
     harness.cleanup();
+  });
+});
+
+// P7 of the 2026-10-05 fix plan, adapted: the sibling repos spawn the bin, but no
+// test here spawns a subprocess, so the handler is driven with fake streams and
+// the bins are checked to install it before they run anything.
+describe("a closed output pipe", () => {
+  function fakeStreams(): { stdout: EventEmitter; stderr: EventEmitter; exits: number[]; exit: (code: number) => void } {
+    const exits: number[] = [];
+    return { stdout: new EventEmitter(), stderr: new EventEmitter(), exits, exit: (code) => void exits.push(code) };
+  }
+  const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+
+  it("exits 0 quietly when stdout's reader stops early (`ka export | head`)", () => {
+    const streams = fakeStreams();
+    handleOutputErrors(streams as never, streams.exit);
+    streams.stdout.emit("error", epipe);
+    deepStrictEqual(streams.exits, [0]);
+  });
+
+  it("keeps a failed run's exit code when stderr's reader is gone", () => {
+    const streams = fakeStreams();
+    handleOutputErrors(streams as never, streams.exit);
+    streams.stderr.emit("error", epipe);
+    deepStrictEqual(streams.exits, []);
+  });
+
+  it("exits 1 on any other output error", () => {
+    const streams = fakeStreams();
+    handleOutputErrors(streams as never, streams.exit);
+    streams.stderr.emit("error", Object.assign(new Error("EIO"), { code: "EIO" }));
+    deepStrictEqual(streams.exits, [1]);
+  });
+
+  it("is installed by both bins before they run a command", () => {
+    for (const bin of [
+      fileURLToPath(new URL("../src/index.js", import.meta.url)),
+      fileURLToPath(new URL("../../../cli-ka-factory/dist/src/cli/index.js", import.meta.url)),
+    ]) {
+      const text = readFileSync(bin, "utf8");
+      const installed = text.indexOf("handleOutputErrors()");
+      ok(installed > 0, `${bin} does not install handleOutputErrors`);
+      ok(installed < text.search(/await run(?:Factory)?\(/), `${bin} runs before it installs the handler`);
+    }
   });
 });
