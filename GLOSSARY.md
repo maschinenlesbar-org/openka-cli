@@ -92,6 +92,10 @@ certainty. Recorded in `abstained_fields`, surfaced by `ka review`, whose queue 
 every record with an abstention that no person has marked `human_verified` yet. The project's
 central safety mechanism: a record may publish with holes, because holes are honest
 and invented content is not.
+Some holes are named whatever the document: no asker (`askers`, also when a name still
+carries a party word or a bracket the parser did not understand), no question date
+(`dates.submitted` — a combined paper is dated by its answer), and for an answered
+record no answer date (`dates.answered`) or no answering body (`answered_by.ministry`).
 A field the schema requires keeps a placeholder while it is abstained — `markers`
 still reads `classified: false`, `contains_tables: false`, `attachments_referenced:
 []` — and that placeholder is not a finding: when `markers` is in `abstained_fields`,

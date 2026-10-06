@@ -165,6 +165,23 @@ const LAND_OFFICE =
 const KNOWN_PARTY =
   /^(?:AfD|CDU|CSU|SPD|FDP|BSW|SSW|Freie Demokraten|FREIE WÄHLER|Freie Wähler|BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen|GRÜNE|Grüne|DIE LINKE|Die Linke|fraktionslos|parteilos)$/u;
 
+/**
+ * Party words no person's name carries, anywhere in it. "Linke" and "Grüne" are not
+ * among them: both are surnames too.
+ */
+const PARTY_IN_NAME =
+  /(?<![\p{L}\p{N}])(?:AfD|CDU|CSU|SPD|FDP|BSW|SSW|BÜNDNIS|Bündnis 90|GRÜNEN|DIE LINKE|Die Linke|FREIE WÄHLER|Freie Demokraten|fraktionslos)(?![\p{L}\p{N}])/u;
+
+/**
+ * Whether an asker's name still carries what is not a name: a party word, or a
+ * bracket — the sign of an Urheber form the parser did not understand. The
+ * validators abstain on `askers` for it rather than publish "Lara BÜNDNIS 90/DIE
+ * GRÜNEN Klaes" as a person.
+ */
+export function nameCarriesParty(name: string): boolean {
+  return PARTY_IN_NAME.test(name) || /[()]/.test(name.replace(/\(FH\)/g, ""));
+}
+
 /** A trailing party in the given-name-first form, with what precedes it. */
 const TRAILING_PARTY =
   /^(.+?)\s+(AfD|CDU|CSU|SPD|FDP|BSW|SSW|Freie Demokraten|FREIE WÄHLER|Freie Wähler|BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen|GRÜNE|DIE LINKE|Die Linke|fraktionslos|parteilos)$/u;

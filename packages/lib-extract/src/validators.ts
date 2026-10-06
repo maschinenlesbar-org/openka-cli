@@ -7,6 +7,7 @@
 
 import { isCalendarDate } from "@maschinenlesbar.org/openka-lib-models";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { nameCarriesParty } from "./metadata.js";
 
 export interface ValidatorProblem {
   /** The field to abstain on, in the same path form as `abstained_fields`. */
@@ -94,6 +95,29 @@ export function validateExtractedRecord(record: KaRecord, now?: Date): Validator
   // visible in `abstained_fields`; this was the one that was not.
   if (record.title.trim() === "") {
     problems.push({ path: "title", message: "the source carried no title" });
+  }
+
+  // Every Anfrage was asked by someone, on some day, and an answered one was
+  // answered on some day. Not knowing which is a hole like the ministry below: the
+  // Bayern feed claims neither askers nor dates, combined papers carry only the
+  // answer's date, and records with neither were `ok` — invisible to `ka review`,
+  // and placed by a date filter at the answer's date or nowhere.
+  if (record.askers.length === 0) {
+    problems.push({ path: "askers", message: "the source named no asker" });
+  } else {
+    const unread = record.askers.find((asker) => nameCarriesParty(asker.name));
+    if (unread !== undefined) {
+      problems.push({
+        path: "askers",
+        message: `"${unread.name}" carries a party or a bracket inside the name — the source's form was not understood`,
+      });
+    }
+  }
+  if (record.dates.submitted === undefined) {
+    problems.push({ path: "dates.submitted", message: "the date the Anfrage was asked is not known" });
+  }
+  if (record.dates.answered === undefined && isAnswered(record)) {
+    problems.push({ path: "dates.answered", message: "the document is answered but its answer date is not known" });
   }
 
   // An answered document had an answering body. Not knowing which one is a hole

@@ -1062,7 +1062,7 @@ describe("validators", () => {
   });
 
   it("judges a future date against the archive, not against the clock", () => {
-    const record = sampleRecord({ dates: { submitted: "2028-05-01" } });
+    const record = sampleRecord({ dates: { submitted: "2028-05-01", answered: "2028-05-20" } });
     // Retrieved in 2026, a 2028 date is dated in advance...
     ok(
       validateExtractedRecord(record, new Date("2026-09-22T00:00:00Z")).some(
@@ -1075,7 +1075,7 @@ describe("validators", () => {
   });
 
   it("leaves the upper bound unasserted when no instant is known", () => {
-    const record = sampleRecord({ dates: { submitted: "2999-01-01" } });
+    const record = sampleRecord({ dates: { submitted: "2999-01-01", answered: "2999-02-01" } });
     deepStrictEqual(validateExtractedRecord(record), []);
     // The lower bound needs no clock, so it still holds.
     ok(
@@ -1127,8 +1127,9 @@ describe("validators", () => {
 
     // An answer date, as the Bundestag's metadata gives it...
     deepStrictEqual(paths({ dates: { submitted: "2024-03-01", answered: "2024-03-28" } }), ["answered_by.ministry"]);
-    // ...a Q/A pair that has an answer, where the reply was segmented...
-    deepStrictEqual(paths({ qa: [{ number: "1", question: "Frage?", answer: "Antwort." }] }), ["answered_by.ministry"]);
+    // ...a Q/A pair that has an answer, where the reply was segmented — which also
+    // makes the missing answer date a hole...
+    deepStrictEqual(paths({ qa: [{ number: "1", question: "Frage?", answer: "Antwort." }] }), ["dates.answered", "answered_by.ministry"]);
     // ...or an answer document, which is all Saarland's prose reply leaves behind.
     deepStrictEqual(
       paths({
@@ -1136,8 +1137,23 @@ describe("validators", () => {
           { role: "answer_pdf", url: "https://x.invalid/a.pdf", sha256: "0".repeat(64), url_stable: true },
         ],
       }),
-      ["answered_by.ministry"],
+      ["dates.answered", "answered_by.ministry"],
     );
+  });
+
+  // Findings 01#1 and 01#8 of the 2026-10-05 review: Bayern's feed records had no
+  // askers and no dates, combined papers no question date, some answered records no
+  // answer date — all `ok`, none in `ka review`.
+  it("abstains on askers and dates that are not known", () => {
+    const paths = (overrides: Parameters<typeof sampleRecord>[0]): string[] =>
+      validateExtractedRecord(sampleRecord(overrides)).map((problem) => problem.path);
+    deepStrictEqual(paths({ askers: [] }), ["askers"]);
+    deepStrictEqual(paths({ dates: { answered: "2024-03-28" } }), ["dates.submitted"]);
+    deepStrictEqual(paths({ dates: {} }), ["dates.submitted", "dates.answered"]);
+    deepStrictEqual(paths({ askers: [{ name: "Lara BÜNDNIS 90/DIE GRÜNEN Klaes" }] }), ["askers"]);
+    deepStrictEqual(paths({ askers: [{ name: "Anna (SPD) Müller Hans Schmidt", party: "SPD" }] }), ["askers"]);
+    // Names that only look like a party word stay names.
+    deepStrictEqual(paths({ askers: [{ name: "Petra Linke" }, { name: "Dipl.-Betriebswirt (FH) Andreas Winhart", party: "AfD" }] }), []);
   });
 
   it("rejects a question that swallowed the rest of the document", () => {
@@ -1151,11 +1167,11 @@ describe("reading more than one document", () => {
     reference: "17/1331",
     legislative_period: 17,
     title: "Zwei Papiere",
-    askers: [],
-    // Saarland's result row names it, and an answered record without one abstains,
-    // which would put an unrelated entry in every `abstained_fields` below.
+    // Saarland's result row names all three, and an answered record without one
+    // abstains, which would put an unrelated entry in every `abstained_fields` below.
+    askers: [{ name: "Jutta Schmitt-Lang", party: "CDU" }],
     answered_by: { ministry: "Landesregierung" },
-    dates: {},
+    dates: { submitted: "2025-01-09", answered: "2025-02-10" },
   };
 
   /** A minimal PDF holding the given text, so the tier can be driven end to end. */
