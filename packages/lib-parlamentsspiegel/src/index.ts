@@ -47,6 +47,15 @@ const PAGE_SIZE = 50;
 /** Never walk more pages than this in one run, however large the window is. */
 const MAX_PAGES = 100;
 
+/**
+ * The portal's first result page. `page` counts from 0: `page=1` is the *second*
+ * page, which the result count confirms ("Seite 2 von …"). Discovery started at 1
+ * and so skipped the newest `PAGE_SIZE` results of every search — and a window with
+ * no more than that many came back empty: Saarland's September 2026, with 15
+ * Kleine Anfragen, discovered none.
+ */
+export const FIRST_PAGE = 0;
+
 /** `DokTyp` filter for Kleine Anfragen, as the portal's own quick link uses it. */
 export const KLEINE_ANFRAGE_FILTER = "KlAnfr";
 
@@ -62,7 +71,7 @@ herkunft: string | undefined,
   const refs: DocRef[] = [];
   const seen = new Set<string>();
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  for (let page = FIRST_PAGE; page < FIRST_PAGE + MAX_PAGES; page++) {
     // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
     // but that is a full-text constraint on top of the structured filters, and it
     // silently drops entire Länder whose documents do not use the word
@@ -87,7 +96,7 @@ herkunft: string | undefined,
     const html = response.body.toString("utf8");
     const blocks = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/);
     if (blocks.length === 0) {
-      if (page === 1) {
+      if (page === FIRST_PAGE) {
         warnings.push(
           "the search returned no `ps-vorgang` results — either the window is empty or the " +
             "portal's markup changed; this adapter reports nothing rather than guessing",
@@ -140,7 +149,7 @@ async function countFromPortal(options: CountOptions, herkunft: string | undefin
     type: "vorgang",
     als: 0,
     size: 5,
-    page: 0,
+    page: FIRST_PAGE,
   };
   if (herkunft !== undefined) params["qyHerk"] = herkunft;
   const response = await options.engine.get(`${PARLAMENTSSPIEGEL_BASE}/suche`, { params, headers: { accept: "text/html" } });

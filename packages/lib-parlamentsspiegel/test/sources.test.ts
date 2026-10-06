@@ -1,7 +1,7 @@
 import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { blocksWithClass } from "@maschinenlesbar.org/openka-lib-source";
-import { ParlamentsspiegelSource, documentRole, parseResultCount, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
+import { FIRST_PAGE, ParlamentsspiegelSource, documentRole, parseResultCount, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MemoryStore, scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
@@ -247,5 +247,24 @@ describe("counting the portal (issue #5)", () => {
     await rejects(new ParlamentsspiegelSource("berlin").count({ engine: testEngine(transport), period: 19 }), UsageError);
     strictEqual(requests.length, 0, "refused before asking");
     await rejects(new ParlamentsspiegelSource("berlin").count({ engine: testEngine(transport) }), /printed no result count/);
+  });
+});
+
+describe("paging the portal", () => {
+  it("starts at the first page, page=0, so a window of one page is not empty", async () => {
+    // The portal counts pages from 0. A discovery that began at page=1 skipped the
+    // newest 50 results, and Saarland's September 2026 — 15 Anfragen — found none.
+    const html = readFixtureText("payloads", "parlamentsspiegel-results.html");
+    const { transport, requests } = scriptedTransport([
+      { match: /[?&]page=0(&|$)/, body: html },
+      { match: "/suche", body: "<html><body></body></html>" },
+    ]);
+    const result = await new ParlamentsspiegelSource("nordrhein-westfalen").discover({
+      engine: testEngine(transport),
+      state: { source: "nordrhein-westfalen", http_cache: {} },
+    });
+    strictEqual(FIRST_PAGE, 0);
+    ok(result.refs.length > 0, "the first page's results are found");
+    deepStrictEqual(requests.map((request) => new URL(request.url).searchParams.get("page")), ["0", "1"]);
   });
 });

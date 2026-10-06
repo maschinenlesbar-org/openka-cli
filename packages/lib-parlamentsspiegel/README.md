@@ -32,10 +32,11 @@ it is an error rather than zero. The portal has no Wahlperiode filter, so a `per
 refused. The Länder whose discovery runs through the portal count through it too, and
 Berlin does, instead of downloading its 50+ MB feed per Wahlperiode.
 
-**The portal's `page` parameter counts from 0.** `page=0` is the first page; discovery
-still starts at `page=1`, so it skips the newest page of every search (found 2026-10-06
-while building `count()`). A fix changes which records a sync discovers and is a change
-of its own.
+**The portal's `page` parameter counts from 0** (`FIRST_PAGE`): `page=0` is the first
+page, and `page=1` the second — the page itself says "Seite 2". Discovery started at
+`page=1` until 2026-10-06 and so skipped the newest 50 results of every search; a window
+with no more than that came back empty (Saarland, September 2026: 15 Anfragen, none
+found). Every Land discovered through the portal is affected, so re-sync recent windows.
 
 The recorded result rows live here rather than with the Länder because a
 Parlamentsspiegel search result is the aggregator's document. A connector that needs
