@@ -438,6 +438,14 @@ they need reading quickly. What it does and does not do:
 - **Filters** — Flate (with PNG/TIFF predictors), LZW, ASCIIHex, ASCII85, RunLength.
   An unsupported filter throws; the tier turns that into an abstention.
 - **Encrypted documents** — refused outright. There is nothing to salvage.
+- **A file that stops early** — reported, not read as a shorter document: no `%%EOF`
+  in the last 1024 bytes (`truncated`), pages that name content the file does not
+  hold or that were refused (`unreadPages`), and pages the tree's `/Count` declares
+  beyond those found (`missingPages`). Every golden of the ten parliaments ends with
+  `%%EOF`. When any of these hits a document whose text was still read, the
+  extractor abstains on `full_text` ("the text is incomplete — …"), so the record is
+  `needs_review` and not parse-complete: a truncated Berlin answer used to yield one
+  Q/A pair of ten, marked `ok`.
 - **Fonts** — `ToUnicode` first, then a base encoding plus `/Differences` through a
   glyph-name table. Glyph *widths* are read from `/Widths` and `/W`, which is what
   makes word breaks measured rather than guessed.

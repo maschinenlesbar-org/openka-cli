@@ -50,9 +50,25 @@ export interface PdfTextResult {
   undecodableStreams: number;
   /** Objects lost with an object stream that would not decode. */
   lostObjects: number;
+  /**
+   * True when the file does not end with `%%EOF`: the download stopped early.
+   * What was read may be partial, or an earlier revision of an object that a
+   * later, cut-off update replaced.
+   */
+  truncated: boolean;
+  /**
+   * Pages whose content the reader could not get — named but missing from the
+   * file, refused (an undecodable stream, the work budget) — in page order.
+   */
+  unreadPages: number[];
+  /** Pages the page tree declares (`/Count`) beyond those found in the file. */
+  missingPages: number;
   version: string;
   pageCount: number;
 }
+
+/** How far from the end of the file `%%EOF` may sit (trailing whitespace, junk). */
+const EOF_WINDOW = 1024;
 
 /** Page separator in the joined text. `\f` is what `pdftotext` uses too. */
 export const PAGE_SEPARATOR = "\f";
@@ -80,7 +96,9 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
 
   let undecodable = 0;
   let drawsImages = false;
+  const unreadPages: number[] = [];
   for (const page of pages) {
+    if (page.undecodable.length > 0 || page.missingContent) unreadPages.push(page.number);
     if (!drawsImages && hasImage(doc, page.resources)) drawsImages = true;
     if (page.undecodable.length > 0) {
       undecodable += page.undecodable.length;
@@ -103,6 +121,7 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
       // refused whole, like a stream we cannot decode: half of a runaway page is
       // not text anybody wrote once.
       undecodable++;
+      if (!unreadPages.includes(page.number)) unreadPages.push(page.number);
       problems.push(`page ${page.number}: refused — ${err.message}`);
       results.push({ page: page.number, text: "", unmappedCodes: 0, totalCodes: 0 });
       continue;
@@ -145,6 +164,18 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     );
   }
 
+  // A truncated download is the common way to lose pages without a decode error:
+  // the objects of the last pages are simply not in the file. The PDF ends with
+  // `%%EOF` by definition, and every golden of the ten parliaments does, within
+  // its last few bytes.
+  const truncated = !bytes.subarray(Math.max(0, bytes.length - EOF_WINDOW)).includes("%%EOF");
+  if (truncated) problems.push("the file does not end with %%EOF — it is truncated");
+  const declared = doc.declaredPageCount();
+  const missingPages = declared !== undefined && declared > pages.length ? declared - pages.length : 0;
+  if (missingPages > 0) {
+    problems.push(`the page tree declares ${declared} page(s), ${pages.length} are in the file`);
+  }
+
   if (pages.length === 0) problems.push("no pages found");
   else if (total === 0 && undecodable === 0 && lostObjects === 0 && !drawsImages) {
     problems.push("no page draws text or an image");
@@ -162,6 +193,9 @@ export function extractPdfText(bytes: Buffer): PdfTextResult {
     imageOnly: total === 0 && undecodable === 0 && lostObjects === 0 && drawsImages,
     undecodableStreams: undecodable,
     lostObjects,
+    truncated,
+    unreadPages,
+    missingPages,
     version: doc.version,
     pageCount: pages.length,
   };

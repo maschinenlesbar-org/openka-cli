@@ -1379,3 +1379,37 @@ describe("the tier stack", () => {
   });
 });
 
+
+// Finding 03#1: the first 60 % of Berlin 19/10041 gave 1 Q/A pair of 10 with
+// `review_status: ok` and `parse_complete: true`; the lost pages were only a note.
+describe("a document that was read only in part", () => {
+  const bytes = readFixture("berlin", "berlin-19-10041", "1b11b97d7fbfc91f18ac5b101752d8dc25e39c5c64d76858f4b838c6bccc64c0.bin");
+  const request = (document: Buffer) => ({
+    parliament: "berlin" as const,
+    documentType: "schriftliche_anfrage" as const,
+    tier: "text_layer" as const,
+    metadata: {
+      reference: "19/10041",
+      legislative_period: 19,
+      title: "Titel",
+      askers: [{ name: "Anne Helm", party: "Die Linke" }],
+      answered_by: { ministry: "Senatsverwaltung für Inneres und Sport" },
+      dates: { submitted: "2021-11-08", answered: "2021-11-22" },
+    },
+    documents: [{ role: "combined_pdf" as const, url: "https://example.invalid/a.pdf", bytes: document, urlStable: true }],
+  });
+
+  it("abstains on full_text whenever pages were lost or the file was cut", async () => {
+    for (const share of [0.6, 0.8, 0.99]) {
+      const { record } = await extract(request(bytes.subarray(0, Math.floor(bytes.length * share))));
+      ok(record.extraction.abstained_fields.includes("full_text"), `cut at ${share}`);
+      strictEqual(record.extraction.review_status, "needs_review");
+      strictEqual(record.extraction.parse_complete, false);
+    }
+  });
+
+  it("leaves the complete file alone", async () => {
+    const { record } = await extract(request(bytes));
+    ok(!record.extraction.abstained_fields.includes("full_text"));
+  });
+});

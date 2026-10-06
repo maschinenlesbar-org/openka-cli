@@ -566,6 +566,55 @@ describe("reporting a page that lost its text", () => {
   });
 });
 
+// Finding 03#1: a truncated download read as a shorter, complete-looking document.
+describe("a file that stops early", () => {
+  const twoPages = (): Buffer =>
+    Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >> endobj",
+        "3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj",
+        "4 0 obj << /Length 37 >> stream\nBT /F1 12 Tf 72 720 Td (Erste) Tj ET\nendstream endobj",
+        "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj",
+        "6 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >> endobj",
+        "7 0 obj << /Length 38 >> stream\nBT /F1 12 Tf 72 720 Td (Zweite) Tj ET\nendstream endobj",
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+
+  it("reads a complete file as complete", () => {
+    const whole = extractPdfText(twoPages());
+    deepStrictEqual([whole.truncated, whole.unreadPages, whole.missingPages], [false, [], 0]);
+    match(whole.text, /Zweite/);
+  });
+
+  it("names the truncation and the page whose content is not in the file", () => {
+    const bytes = twoPages();
+    const cut = bytes.subarray(0, bytes.indexOf("7 0 obj"));
+    const read = extractPdfText(cut);
+    strictEqual(read.truncated, true);
+    deepStrictEqual(read.unreadPages, [2]);
+    match(read.text, /Erste/);
+    ok(read.problems.some((problem) => /does not end with %%EOF/.test(problem)));
+  });
+
+  it("counts pages the page tree declares but the file no longer holds", () => {
+    const bytes = twoPages();
+    const cut = bytes.subarray(0, bytes.indexOf("6 0 obj"));
+    const read = extractPdfText(cut);
+    strictEqual(read.missingPages, 1);
+    ok(read.problems.some((problem) => /declares 2 page\(s\), 1 are in the file/.test(problem)));
+  });
+
+  it("does not call a page without /Contents (a blank page) unread", () => {
+    const blank = Buffer.from(twoPages().toString("latin1").replace("/Contents 7 0 R ", ""), "latin1");
+    deepStrictEqual(extractPdfText(blank).unreadPages, []);
+  });
+});
+
 describe("a content stream the reader refuses", () => {
   const withFilter = (filter: string): Buffer => {
     const content = "BT /F1 12 Tf 72 720 Td (Wichtiger Text) Tj ET";

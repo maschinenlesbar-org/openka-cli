@@ -34,6 +34,12 @@ export interface PdfPage {
    * because there is none — which is a different fact and a different repair.
    */
   undecodable: string[];
+  /**
+   * True when the page names content (`/Contents`) that is not in the file — a
+   * truncated download stops before the objects of its last pages. A page with no
+   * `/Contents` at all is blank by design and is not missing anything.
+   */
+  missingContent: boolean;
   resources: PdfDict;
 }
 
@@ -217,6 +223,12 @@ export class PdfDocument {
     return undefined;
   }
 
+  /** The page count the page tree's root declares (`/Count`), if it declares one. */
+  declaredPageCount(): number | undefined {
+    const count = this.resolve(this.dict(this.catalog()?.get("Pages"))?.get("Count"));
+    return typeof count === "number" && Number.isInteger(count) && count >= 0 ? count : undefined;
+  }
+
   // ----------------------------------------------------------- page tree
 
   /**
@@ -266,14 +278,17 @@ export class PdfDocument {
     out.push(node);
   }
 
-  private pageContent(page: PdfDict): { content: Buffer; undecodable: string[] } {
-    const contents = this.resolve(page.get("Contents"));
+  private pageContent(page: PdfDict): { content: Buffer; undecodable: string[]; missingContent: boolean } {
+    const declared = page.get("Contents");
+    const contents = this.resolve(declared);
     const streams: PdfStream[] = [];
+    let missingContent = declared !== undefined && !isStream(contents) && !Array.isArray(contents);
     if (isStream(contents)) streams.push(contents);
     else if (Array.isArray(contents)) {
       for (const item of contents) {
         const resolved = this.resolve(item);
         if (isStream(resolved)) streams.push(resolved);
+        else missingContent = true;
       }
     }
     const parts: Buffer[] = [];
@@ -291,6 +306,6 @@ export class PdfDocument {
         undecodable.push(filterChain(stream.dict, (value: PdfValue | undefined) => this.resolve(value)).filters.join("+") || "unknown");
       }
     }
-    return { content: Buffer.concat(parts), undecodable };
+    return { content: Buffer.concat(parts), undecodable, missingContent };
   }
 }

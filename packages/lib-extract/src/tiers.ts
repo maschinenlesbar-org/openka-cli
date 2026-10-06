@@ -312,6 +312,19 @@ function tryText(bytes: Buffer, abstentions: Abstentions): string | undefined {
     abstentions.note("pdf: no text was drawn, and no page image either — nothing to read");
     return undefined;
   }
+  // Text was read, but not all of it: a record built from part of a document
+  // reads as complete — one Q/A pair of ten, `ok`, parse-complete — unless the
+  // loss is a named hole. The page problems above are only notes, which the
+  // corpus does not keep.
+  const losses = [
+    result.truncated ? "the file is truncated (no %%EOF at its end)" : undefined,
+    result.missingPages > 0 ? `${result.missingPages} declared page(s) are not in the file` : undefined,
+    result.unreadPages.length > 0 ? `page(s) ${result.unreadPages.join(", ")} could not be read` : undefined,
+    result.lostObjects > 0 ? `${result.lostObjects} object(s) were lost with an undecodable object stream` : undefined,
+  ].filter((loss): loss is string => loss !== undefined);
+  if (losses.length > 0) {
+    abstentions.add("full_text", `pdf: the text is incomplete — ${losses.join("; ")}`);
+  }
   return result.text;
 }
 

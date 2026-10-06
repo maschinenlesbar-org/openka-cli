@@ -28,6 +28,13 @@ out exponentially within any depth limit, so `InterpretBudget` counts form
 invocations and interpreted content bytes across a whole document. A page that
 exceeds it is refused and named in `problems`, like an undecodable stream.
 
+**A file that stops early says so.** `extractPdfText` reports `truncated` (no
+`%%EOF` in the last 1024 bytes), `unreadPages` (pages naming content the file does not
+hold, or refused) and `missingPages` (declared by the page tree's `/Count`, not
+found). A truncated download otherwise reads as a shorter document — or, after a cut
+incremental update, as an earlier revision of one — with nothing wrong in sight;
+`lib-extract` abstains on `full_text` when any of them is set.
+
 This package is part of the **extraction digest**: changing it changes what a
 document turns into, so `npm run stamp` and a golden re-freeze are required.
 

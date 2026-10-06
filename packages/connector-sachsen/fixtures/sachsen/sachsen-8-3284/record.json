@@ -14,7 +14,7 @@
     "abstained_fields": [
       "answered_by.ministry"
     ],
-    "extractor_version": "pkg:0.1.0+extract:a3caf8e957c5",
+    "extractor_version": "pkg:0.1.0+extract:adb9a242e6da",
     "input_sha256": "290580d9ab3673b9dacb3ca577bb99dc5a36becd272bea1050d1ebd7a62e711d",
     "model_artifacts": [],
     "parse_complete": false,
