@@ -18,11 +18,12 @@ import {
   renderCsvRow,
   renderJson,
   renderJsonLd,
+  renderJsonLines,
   renderMarkdown,
   renderRecord,
   renderText,
 } from "../src/index.js";
-import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { canonicalJson, canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 
 const incomplete = sampleRecord({
@@ -265,4 +266,23 @@ describe("what the renderers refuse", () => {
     ok(feed.includes(`<id>${DEFAULT_FEED_ID}</id>`));
     deepStrictEqual([DEFAULT_FEED_TITLE, DEFAULT_FEED_ID], ["OpenKA — Kleine Anfragen", "urn:openka:feed"]);
   });
+});
+
+describe("bulk renderings", () => {
+  const records = [sampleRecord(), sampleRecord({ id: "berlin-19-10007", reference: "19/10007" })];
+
+  it("writes JSON Lines: one compact record per line, keys sorted", () => {
+    const text = renderJsonLines(records);
+    const lines = text.split("\n");
+    strictEqual(lines.pop(), "", "ends with a newline");
+    strictEqual(lines.length, 2);
+    lines.forEach((line, index) => {
+      const record = records[index];
+      ok(record !== undefined);
+      deepStrictEqual(JSON.parse(line), JSON.parse(renderJson(record)));
+      strictEqual(line, canonicalJson(record, 0));
+    });
+    strictEqual(renderJsonLines([]), "");
+  });
+
 });

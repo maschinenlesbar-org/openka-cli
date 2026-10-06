@@ -6,7 +6,7 @@
 // abstentions, and the feed says so in the entry. A hole a consumer cannot see is
 // the same problem as an invented value.
 
-import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
+import { canonicalJson, canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { parliamentByKey } from "@maschinenlesbar.org/openka-lib-models";
@@ -30,6 +30,21 @@ export function renderJson(record: KaRecord): string {
  * the abstentions and the provenance, which are the parts worth publishing.
  */
 export function renderJsonLd(record: KaRecord): string {
+  return canonicalJsonLine(jsonLdNode(record));
+}
+
+/**
+ * Many records as JSON Lines: one compact canonical record per line, nothing else
+ * on it. `ka export --format jsonl` used to join the pretty-printed on-disk form,
+ * ~80 lines per record with `{` alone on the first, which `jq -s` tolerates and
+ * every line-oriented reader (pandas `lines=True`, DuckDB, `split -l`) does not.
+ * Keys stay sorted, so a line is the stored record minus its whitespace.
+ */
+export function renderJsonLines(records: readonly KaRecord[]): string {
+  return records.map((record) => canonicalJson(record, 0) + "\n").join("");
+}
+
+function jsonLdNode(record: KaRecord): Record<string, unknown> {
   const parliament = parliamentByKey(record.parliament);
   const document: Record<string, unknown> = {
     "@context": {
@@ -71,7 +86,7 @@ export function renderJsonLd(record: KaRecord): string {
     })),
     "openka:extraction": record.extraction,
   };
-  return canonicalJsonLine(document);
+  return document;
 }
 
 /**

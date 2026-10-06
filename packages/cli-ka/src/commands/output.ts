@@ -3,10 +3,17 @@
 import type { Command } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
-import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { corpusStats } from "@maschinenlesbar.org/openka-lib-store";
 import { LIMIT_MIN, selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
-import { DEFAULT_FEED_ID, DEFAULT_FEED_TITLE, csvHeader, renderAtom, renderCsvRow, renderJsonLd } from "@maschinenlesbar.org/openka-lib-render";
+import {
+  DEFAULT_FEED_ID,
+  DEFAULT_FEED_TITLE,
+  csvHeader,
+  renderAtom,
+  renderCsvRow,
+  renderJsonLd,
+  renderJsonLines,
+} from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliDeps } from "../io.js";
 import {
@@ -73,7 +80,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
 
       let text: string;
       if (format === "csv") text = [csvHeader(), ...records.map(renderCsvRow)].join("\n") + "\n";
-      else if (format === "jsonl") text = records.map((record) => canonicalJsonLine(record).replace(/\n+$/, "")).join("\n") + "\n";
+      else if (format === "jsonl") text = renderJsonLines(records);
       else text = records.map((record) => renderJsonLd(record).replace(/\n+$/, "")).join("\n") + "\n";
 
       emit(ctx, text, out);

@@ -35,7 +35,7 @@ import {
   verifyGoldens,
 } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { reviewQueue, search, searchLike, selectRecords, type SearchFilters } from "@maschinenlesbar.org/openka-lib-search";
-import { renderAtom, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
+import { renderAtom, renderJsonLines, renderRecord } from "@maschinenlesbar.org/openka-lib-render";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertVerified, verifyCorpus, verifyRecord } from "@maschinenlesbar.org/openka-lib-verify";
 import { rmSync } from "node:fs";
@@ -236,7 +236,10 @@ describe("the feed's newest-first selection and the export set (finding 8)", () 
     store.flushCatalog();
   }
   const updated = "2026-01-02T03:04:05Z";
-  const exportedIds = (jsonl: string): string[] => [...jsonl.matchAll(/^ {2}"id": "([^"]+)"/gm)].map((m) => m[1] as string);
+  // JSON Lines: every line one whole record (finding 02#2 — it used to be the
+  // pretty-printed form, ~80 lines a record).
+  const exportedIds = (jsonl: string): string[] =>
+    jsonl.split("\n").filter((line) => line !== "").map((line) => (JSON.parse(line) as { id: string }).id);
 
   it("builds the same feed as renderAtom over selectRecords", async () => {
     for (const extra of [[], ["--parliament", "berlin"], ["--query", "Brücken"]]) {
@@ -259,7 +262,7 @@ describe("the feed's newest-first selection and the export set (finding 8)", () 
     const result = await parity({
       seed: seedDated,
       argv: (corpus) => ["--corpus", corpus, "export", "--format", "jsonl"],
-      lib: ({ store }) => selectRecords(store, "").records.map((record) => canonicalJsonLine(record).replace(/\n+$/, "")).join("\n"),
+      lib: ({ store }) => renderJsonLines(selectRecords(store, "").records).replace(/\n$/, ""),
     });
     strictEqual(result.cli.code, 0, result.cli.err);
     ok(result.lib.ok);

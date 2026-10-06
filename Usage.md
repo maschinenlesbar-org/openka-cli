@@ -106,6 +106,10 @@ ka feed --party GRÜNE --limit 50 --out gruene.atom
 ka feed --query "brücken" --title "Brücken-Anfragen"
 ```
 
+Formats: `csv` (one row per record, `abstained_fields` as a column), `jsonl` (JSON
+Lines — one compact canonical record per line, keys sorted) and `jsonld` (the schema.org
+form `ka get --format jsonld` prints, one record after another).
+
 `export` writes every match — by id, or the most relevant first with `--query` — and
 `feed` picks its `--limit` newest entries from the whole selection. A catalog row whose
 record file is gone is named on stderr and left out; `ka reindex` rebuilds the catalog.
