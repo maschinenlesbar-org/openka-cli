@@ -101,6 +101,14 @@ describe("terminal-safe text", () => {
   it("truncates with an ellipsis", () => {
     strictEqual(truncate("abcdef", 4), "abc…");
   });
+
+  // Finding 03#6: an override reached the terminal, and truncation cut off its end.
+  it("strips bidi controls, so no title reverses the rest of a line", () => {
+    strictEqual(sanitizeForTerminal("a\u202egnirts\u202c b\u2066c\u2069\u200f"), "agnirts bc");
+    strictEqual(truncate("\u202egnirtsgnirtsgnirts\u202c", 5), "gnir…");
+    const lines = renderShowLines(sampleRecord({ title: "Titel \u202eesrever\u202c" })).join("\n");
+    doesNotMatch(lines, /[\u202a-\u202e\u2066-\u2069]/);
+  });
 });
 
 describe("ka", () => {

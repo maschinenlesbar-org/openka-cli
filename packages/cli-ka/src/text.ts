@@ -29,8 +29,17 @@ export function escapeControlChars(json: string): string {
  * A terminal line is one line, so the structural whitespace goes too.
  */
 export function sanitizeForTerminal(text: string): string {
-  return stripControlCharacters(text, { keepWhitespace: false });
+  return stripControlCharacters(text, { keepWhitespace: false }).replace(BIDI_CONTROLS, "");
 }
+
+/**
+ * The bidirectional-text controls: embeddings and overrides (U+202A–U+202E),
+ * isolates (U+2066–U+2069) and the implicit marks (U+200E, U+200F, U+061C). A
+ * terminal obeys them, so a title carrying U+202E printed the rest of its line —
+ * and, once `truncate` had cut off the closing U+202C, the score after it —
+ * reversed. Record text keeps them; only what reaches a terminal loses them.
+ */
+const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g;
 
 /** Truncate to `width` display columns, appending an ellipsis when cut. */
 export function truncate(text: string, width: number): string {
