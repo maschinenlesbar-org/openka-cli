@@ -25,6 +25,14 @@ export interface CatalogEntry {
   review_status: string;
   tier: string;
   abstained: number;
+  /**
+   * The abstained fields by kind — `qa[3].answer` counts as `qa[].answer`
+   * (`abstainedFieldKind`) — with how often each occurs in the record. Absent on a
+   * row without abstentions, and on a row catalogued before this was indexed
+   * (`ka reindex` adds it). It lets `ka review --group-by field` and `ka stats`
+   * group without reading the records.
+   */
+  abstained_fields?: Record<string, number>;
   /** Number of tokens indexed for this document — kept so removals stay exact. */
   terms: number;
 }

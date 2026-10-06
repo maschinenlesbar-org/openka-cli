@@ -28,6 +28,16 @@ export function indexableFields(record: KaRecord): { title: string; body: string
   return { title: record.title, body, extra };
 }
 
+/**
+ * The kind of an abstained field: its path with every index dropped, so
+ * `qa[3].answer` and `qa[7].answer` are one kind, `qa[].answer`. Four hundred records
+ * abstaining on the same kind of field are most likely one rule failing on one
+ * layout, not four hundred problems.
+ */
+export function abstainedFieldKind(path: string): string {
+  return path.replace(/\[\d+\]/g, "[]");
+}
+
 /** Build the catalog row for a record. Pure, so the projection is unit-testable. */
 export function toCatalogEntry(record: KaRecord, terms: number): CatalogEntry {
   const parties = [
@@ -56,6 +66,14 @@ export function toCatalogEntry(record: KaRecord, terms: number): CatalogEntry {
   if (record.dates.submitted !== undefined) entry.submitted = record.dates.submitted;
   if (record.dates.answered !== undefined) entry.answered = record.dates.answered;
   if (year !== undefined) entry.year = year;
+  if (record.extraction.abstained_fields.length > 0) {
+    const kinds: Record<string, number> = {};
+    for (const path of [...record.extraction.abstained_fields].sort()) {
+      const kind = abstainedFieldKind(path);
+      kinds[kind] = (kinds[kind] ?? 0) + 1;
+    }
+    entry.abstained_fields = Object.fromEntries(Object.entries(kinds).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  }
   return entry;
 }
 

@@ -319,3 +319,68 @@ export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): Rev
     verified: withHoles.length - queue.length,
   };
 }
+
+/** How many example record ids `reviewGroups` names per field kind. */
+export const REVIEW_GROUP_EXAMPLES = 3;
+
+export interface ReviewGroup {
+  /** The kind of field, indices dropped: `qa[].question`. */
+  field: string;
+  /** How often it was abstained on, summed over the records. */
+  occurrences: number;
+  /** How many records abstained on it at least once. */
+  records: number;
+  /** The first record ids (sorted) that did — where to start looking. */
+  examples: string[];
+}
+
+export interface ReviewGroups {
+  parliament: string;
+  /** Records of this parliament in the review queue. */
+  queued: number;
+  /** Most occurrences first, ties on the field. */
+  groups: ReviewGroup[];
+  /** Queued records whose catalog row predates the field breakdown (`ka reindex` adds it). */
+  unknown: number;
+}
+
+/**
+ * The review queue grouped by the kind of field abstained on, per parliament —
+ * what `ka review --group-by field` prints. A queue of 421 records reads as 421
+ * problems; grouped, it is most likely one or two segmentation rules failing on a
+ * common layout, with example ids to start from. Read from the catalog alone; the
+ * same records as `reviewQueue` (verified ones have left the queue).
+ */
+export function reviewGroups(store: Pick<Store, "catalog">, options: { parliament?: string } = {}): ReviewGroups[] {
+  const filters = normalizeSearchFilters({
+    onlyAbstained: true,
+    ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),
+  });
+  const queued = store
+    .catalog()
+    .filter((entry) => matchesFilters(entry, filters) && entry.review_status !== "human_verified");
+  const byParliament = new Map<string, { queued: number; unknown: number; fields: Map<string, ReviewGroup> }>();
+  for (const entry of queued) {
+    const bucket = byParliament.get(entry.parliament) ?? { queued: 0, unknown: 0, fields: new Map() };
+    bucket.queued++;
+    if (entry.abstained_fields === undefined) bucket.unknown++;
+    for (const [field, count] of Object.entries(entry.abstained_fields ?? {})) {
+      const group = bucket.fields.get(field) ?? { field, occurrences: 0, records: 0, examples: [] };
+      group.occurrences += count;
+      group.records++;
+      if (group.examples.length < REVIEW_GROUP_EXAMPLES) group.examples.push(entry.id);
+      bucket.fields.set(field, group);
+    }
+    byParliament.set(entry.parliament, bucket);
+  }
+  return [...byParliament]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([parliament, bucket]) => ({
+      parliament,
+      queued: bucket.queued,
+      groups: [...bucket.fields.values()].sort(
+        (a, b) => b.occurrences - a.occurrences || (a.field < b.field ? -1 : a.field > b.field ? 1 : 0),
+      ),
+      unknown: bucket.unknown,
+    }));
+}

@@ -168,7 +168,27 @@ marks each with `"unreadable": true`.
 ka review                                     # the abstention queue, worst first
 ka review --source berlin --limit 50
 ka review --mark-verified berlin-19-10041     # a person checked it against the PDF
+ka review --group-by field                    # the queue per source, by kind of field
 ```
+
+**Group the queue to find the rule that fails.** A queue of 421 records reads as 421
+problems; `--group-by field` shows it per source by the kind of field abstained on —
+`qa[3].answer` counts as `qa[].answer` — with how often, in how many records, and the
+first example ids:
+
+```
+berlin: 421 record(s) in the queue
+  FIELD                  OCCURRENCES  RECORDS  EXAMPLES
+  qa[].question                1,008      400  berlin-19-20001, berlin-19-20005, …
+  qa[].answer                    959      398  …
+```
+
+The same breakdown is in `ka stats --json` (`abstained_by_field` per parliament, over all
+records with holes, verified or not), and `ka-factory drift` reports a field whose rate
+rose (`field_spike`), which the overall abstention rate can hide. It is read from the
+catalog; rows catalogued by an older version lack it and are counted as
+`abstained_fields_unknown` until `ka reindex`. The records do not keep which
+segmentation rule refused a field, so there is no grouping by rule.
 
 Marking a record verified does **not** fill its holes; it records that someone
 looked. The mark survives `ka sync --force` when re-extraction yields the same record

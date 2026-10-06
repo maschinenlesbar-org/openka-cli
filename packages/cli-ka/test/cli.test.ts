@@ -499,6 +499,35 @@ describe("ka", () => {
     }
   });
 
+  it("groups the review queue by kind of field, and refuses options that do not apply", async () => {
+    const harness = await seeded();
+    try {
+      const store = new FileStore(harness.corpus);
+      for (const [id, fields] of [["berlin-19-90001", ["qa[0].answer", "qa[3].answer"]], ["berlin-19-90002", ["qa[1].answer", "dates.answered"]]] as const) {
+        const record = sampleRecord({
+          id,
+          reference: `19/${id.split("-").pop()}`,
+          extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: [...fields], review_status: "needs_review" },
+        });
+        store.putRecord(record);
+        store.putCatalogEntry(toCatalogEntry(record, 1));
+      }
+      strictEqual(await run(["--corpus", harness.corpus, "review", "--group-by", "field"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^berlin: \d+ record\(s\) in the queue$/m);
+      match(harness.stdout(), /^ {2}qa\[\]\.answer +3 +2 {2}berlin-19-90001, berlin-19-90002$/m);
+      match(harness.stdout(), /^ {2}dates\.answered +1 +1 {2}berlin-19-90002$/m);
+      for (const extra of [["--limit", "5"], ["--mark-verified", "berlin-19-90001"]]) {
+        strictEqual(await run(["--corpus", harness.corpus, "review", "--group-by", "field", ...extra], harness.deps), EXIT_USAGE);
+      }
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "stats", "--json"], harness.deps), EXIT_OK);
+      const stats = JSON.parse(harness.stdout()) as { by_parliament: Record<string, { abstained_by_field: Record<string, number> }> };
+      strictEqual(stats.by_parliament["berlin"]?.abstained_by_field["qa[].answer"], 3);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     try {

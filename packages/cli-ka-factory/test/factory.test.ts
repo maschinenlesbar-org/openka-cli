@@ -508,3 +508,28 @@ describe("the answer sweep's range", () => {
     assertSweepRange({ period: 19, from: 3, to: 3 });
   });
 });
+
+describe("drift per kind of field (issue #9)", () => {
+  const source = (rates: Record<string, number> | undefined) => ({
+    source: "berlin",
+    records: 100,
+    parse_complete: 65,
+    abstention_rate: 0.35,
+    qa_rate: 0.9,
+    by_tier: { text_layer: 100 },
+    ...(rates === undefined ? {} : { abstained_by_field: rates }),
+  });
+
+  it("names the field whose abstention rate rose, while the overall rate stayed put", () => {
+    const baseline = { taken_at: "t0", records: 100, sources: [source({ "qa[].answer": 0.05, "qa[].question": 0.3 })] };
+    const current = { taken_at: "t1", records: 100, sources: [source({ "qa[].answer": 0.3, "qa[].question": 0.3 })] };
+    const findings = detectDrift(current, baseline);
+    deepStrictEqual(findings.map((finding) => [finding.kind, finding.detail]), [["field_spike", "qa[].answer abstained in 30.0% of records, up from 5.0%"]]);
+    match(findings[0]?.suggestion ?? "", /ka review --group-by field/);
+  });
+
+  it("says nothing per field against a baseline saved before the breakdown", () => {
+    const findings = detectDrift({ taken_at: "t1", records: 100, sources: [source({ "qa[].answer": 0.9 })] }, { taken_at: "t0", records: 100, sources: [source(undefined)] });
+    deepStrictEqual(findings, []);
+  });
+});

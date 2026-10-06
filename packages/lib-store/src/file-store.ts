@@ -91,6 +91,11 @@ function catalogProblem(rows: unknown): string | undefined {
       if (typeof entry[key] !== "number") return `row ${index} (${entry["id"]}) has no ${key}`;
     }
     if (!Array.isArray(entry["parties"])) return `row ${index} (${entry["id"]}) has no parties`;
+    const fields = entry["abstained_fields"];
+    if (fields !== undefined) {
+      if (typeof fields !== "object" || fields === null || Array.isArray(fields)) return `row ${index} (${entry["id"]}) has malformed abstained_fields`;
+      if (Object.values(fields).some((count) => typeof count !== "number")) return `row ${index} (${entry["id"]}) has malformed abstained_fields`;
+    }
   }
   return undefined;
 }

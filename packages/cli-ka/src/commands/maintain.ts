@@ -2,13 +2,13 @@
 // honest about itself.
 
 import type { Command } from "commander";
-import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { DEFAULT_VERIFY_SAMPLE, assertVerified, verifyCorpus } from "@maschinenlesbar.org/openka-lib-verify";
 import { catalogGaps, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
 import { noteCatalogGaps } from "./output.js";
 import { markHumanVerified } from "@maschinenlesbar.org/openka-lib-store";
 import { countSources, sourceStatus } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
+import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewGroups, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
 import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@maschinenlesbar.org/openka-lib-registry";
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
@@ -71,10 +71,40 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .option("--source <key>", "restrict to one parliament", parseParliament)
     .option("--limit <n>", `how many records to list (default: ${DEFAULT_REVIEW_LIMIT})`, parseBoundedInt(LIMIT_MIN, 10_000))
     .option("--mark-verified <id>", "record that a human checked this record against its source", parseRecordId)
+    .addOption(choiceOption("--group-by <what>", "summarise the queue per source by the kind of field abstained on, with example ids", ["field"]))
     .option("--json", "print the queue as JSON")
     .action(
       action(deps, async (ctx) => {
         const store = ctx.existingStore();
+        if (ctx.opts["groupBy"] !== undefined) {
+          for (const [key, flag] of [["markVerified", "--mark-verified"], ["limit", "--limit"]] as const) {
+            if (ctx.opts[key] !== undefined) throw new UsageError(`${flag} does not apply to --group-by, which summarises the whole queue.`);
+          }
+          const parliament = ctx.opts["source"] as string | undefined;
+          const grouped = reviewGroups(store, parliament === undefined ? {} : { parliament });
+          if (ctx.opts["json"] === true) {
+            printJson(ctx, grouped);
+            return;
+          }
+          const io = ctx.deps.io;
+          if (grouped.length === 0) {
+            io.out("Nothing in the review queue.");
+            return;
+          }
+          for (const set of grouped) {
+            io.out(`${set.parliament}: ${formatCount(set.queued)} record(s) in the queue`);
+            if (set.groups.length > 0) io.out(`  ${pad("FIELD", 22)} ${"OCCURRENCES".padStart(11)} ${"RECORDS".padStart(8)}  EXAMPLES`);
+            for (const group of set.groups) {
+              io.out(
+                `  ${pad(group.field, 22)} ${formatCount(group.occurrences).padStart(11)} ${formatCount(group.records).padStart(8)}  ${group.examples.join(", ")}`,
+              );
+            }
+            if (set.unknown > 0) {
+              io.err(`note: ${set.parliament}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
+            }
+          }
+          return;
+        }
 
         const mark = ctx.opts["markVerified"] as string | undefined;
         if (mark !== undefined) {

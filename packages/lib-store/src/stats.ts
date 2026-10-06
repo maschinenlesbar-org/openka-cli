@@ -10,6 +10,17 @@ export interface ParliamentStats {
   records: number;
   /** Records with at least one abstained field. */
   abstained: number;
+  /**
+   * How often each kind of field was abstained on (`qa[].question`, …), summed over
+   * the records, keys sorted — where a heal-loop session pays off most, and, saved
+   * over time, which field drifted.
+   */
+  abstained_by_field: Record<string, number>;
+  /**
+   * Records with abstentions whose catalog row predates the field breakdown, so
+   * they are missing from `abstained_by_field`; `ka reindex` adds them.
+   */
+  abstained_fields_unknown: number;
 }
 
 export interface CorpusStats {
@@ -43,9 +54,15 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
   const byParliament = new Map<string, ParliamentStats>();
   const byTier = new Map<string, number>();
   for (const entry of catalog) {
-    const bucket = byParliament.get(entry.parliament) ?? { records: 0, abstained: 0 };
+    const bucket = byParliament.get(entry.parliament) ?? { records: 0, abstained: 0, abstained_by_field: {}, abstained_fields_unknown: 0 };
     bucket.records++;
-    if (entry.abstained > 0) bucket.abstained++;
+    if (entry.abstained > 0) {
+      bucket.abstained++;
+      if (entry.abstained_fields === undefined) bucket.abstained_fields_unknown++;
+      for (const [kind, count] of Object.entries(entry.abstained_fields ?? {})) {
+        bucket.abstained_by_field[kind] = (bucket.abstained_by_field[kind] ?? 0) + count;
+      }
+    }
     byParliament.set(entry.parliament, bucket);
     byTier.set(entry.tier, (byTier.get(entry.tier) ?? 0) + 1);
   }
@@ -55,7 +72,12 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
     records: catalog.length,
     parse_complete: complete,
     needs_review: catalog.length - complete,
-    by_parliament: Object.fromEntries([...byParliament].sort(byKey)),
+    by_parliament: Object.fromEntries(
+      [...byParliament].sort(byKey).map(([key, bucket]) => [
+        key,
+        { ...bucket, abstained_by_field: Object.fromEntries(Object.entries(bucket.abstained_by_field).sort(byKey)) },
+      ]),
+    ),
     by_tier: Object.fromEntries([...byTier].sort(byKey)),
     uncatalogued: gaps.uncatalogued,
     missing_files: gaps.missingFiles,

@@ -21,7 +21,11 @@ What lives here is everything the concept puts on the factory plane:
   only the named constants missed a rule change and produced two readings under one
   version.
 - **`health`** — coverage and drift signals. Not pass/fail: these tell the factory
-  *when* to do work.
+  *when* to do work. A snapshot carries each source's abstention rate per kind of
+  field (`abstained_by_field`), and `drift` reports a field whose rate rose by more
+  than `ABSTENTION_SPIKE` as a `field_spike` — one rule failing on a new layout, which
+  the overall rate hides when those records were abstaining on something else
+  already. Baselines saved before have no breakdown and are not compared per field.
 - **`embed`** — frozen embeddings, computed here and consumed by the line, which
   never embeds anything at runtime.
 - **`answers niedersachsen`** — the Drucksachen sweep that recovers a link no

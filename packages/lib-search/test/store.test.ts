@@ -10,8 +10,8 @@ import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenles
 import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
-import { catalogGaps, corpusStats, indexableFields, indexRecord, lockCorpus, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
-import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewQueue, search, selectRecords } from "../src/search.js";
+import { abstainedFieldKind, catalogGaps, corpusStats, indexableFields, indexRecord, lockCorpus, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
+import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewGroups, reviewQueue, search, selectRecords } from "../src/search.js";
 import {
   DEFAULT_SEARCH_LIMIT,
   LIMIT_MIN,
@@ -699,7 +699,10 @@ describe("corpus statistics", () => {
       records: 3,
       parse_complete: 2,
       needs_review: 1,
-      by_parliament: { bayern: { records: 1, abstained: 0 }, berlin: { records: 2, abstained: 1 } },
+      by_parliament: {
+        bayern: { records: 1, abstained: 0, abstained_by_field: {}, abstained_fields_unknown: 0 },
+        berlin: { records: 2, abstained: 1, abstained_by_field: { qa: 1 }, abstained_fields_unknown: 0 },
+      },
       by_tier: { text_layer: 3 },
       uncatalogued: [],
       missing_files: [],
@@ -1129,5 +1132,72 @@ describe("documents kept apart from the corpus (issue #8)", () => {
     strictEqual(resolveBlobRoot({ env: {} }), undefined);
     throws(() => resolveBlobRoot({ blobs: " ", env: {} }), OpenKaValidationError);
     throws(() => new FileStore("/tmp/x", { blobs: "" }), OpenKaValidationError);
+  });
+});
+
+describe("abstentions by kind of field (issue #9)", () => {
+  const holed = (id: string, fields: string[], review_status: "needs_review" | "human_verified" = "needs_review") =>
+    sampleRecord({
+      id,
+      reference: `19/${id.split("-").pop()}`,
+      extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: fields, review_status },
+    });
+
+  it("drops indices, so qa[3].answer and qa[7].answer are one kind", () => {
+    deepStrictEqual(["qa[3].answer", "qa[12].question", "qa", "dates.answered"].map(abstainedFieldKind), ["qa[].answer", "qa[].question", "qa", "dates.answered"]);
+  });
+
+  it("indexes the kinds in the catalog row, and stats sums them per parliament", () => {
+    const store = new MemoryStore();
+    for (const record of [holed("berlin-19-1", ["qa[0].answer", "qa[1].answer", "qa[1].question"]), holed("berlin-19-2", ["qa[4].answer"]), sampleRecord({ id: "berlin-19-3", reference: "19/3" })]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    deepStrictEqual(store.catalogEntry("berlin-19-1")?.abstained_fields, { "qa[].answer": 2, "qa[].question": 1 });
+    strictEqual(store.catalogEntry("berlin-19-3")?.abstained_fields, undefined);
+    // A row catalogued before the breakdown existed is counted as unknown, not as none.
+    const old = { ...toCatalogEntry(holed("berlin-19-4", ["full_text"]), 1) };
+    delete old.abstained_fields;
+    store.putCatalogEntry(old);
+    const stats = corpusStats(store).by_parliament["berlin"];
+    deepStrictEqual(stats?.abstained_by_field, { "qa[].answer": 3, "qa[].question": 1 });
+    strictEqual(stats?.abstained_fields_unknown, 1);
+  });
+
+  it("groups the review queue per parliament, most occurrences first, with example ids", () => {
+    const store = new MemoryStore();
+    for (const record of [
+      holed("berlin-19-1", ["qa[0].question", "qa[1].question"]),
+      holed("berlin-19-2", ["qa[0].question"]),
+      holed("berlin-19-3", ["qa[0].answer"]),
+      holed("berlin-19-4", ["qa[0].answer", "qa[1].answer", "qa[2].answer"], "human_verified"),
+    ]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    deepStrictEqual(reviewGroups(store), [
+      {
+        parliament: "berlin",
+        queued: 3,
+        groups: [
+          { field: "qa[].question", occurrences: 3, records: 2, examples: ["berlin-19-1", "berlin-19-2"] },
+          { field: "qa[].answer", occurrences: 1, records: 1, examples: ["berlin-19-3"] },
+        ],
+        unknown: 0,
+      },
+    ]);
+    deepStrictEqual(reviewGroups(store, { parliament: "bund" }), []);
+  });
+
+  it("refuses a catalog row whose breakdown is not a map of counts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-kinds-"));
+    try {
+      const row = { ...toCatalogEntry(holed("berlin-19-1", ["qa"]), 1), abstained_fields: ["qa"] };
+      mkdirSync(join(dir, "index"), { recursive: true });
+      writeFileSync(join(dir, "index", "catalog.json"), JSON.stringify([row]));
+      throws(() => new FileStore(dir).catalog(), /malformed abstained_fields/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

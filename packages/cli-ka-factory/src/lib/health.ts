@@ -21,6 +21,13 @@ export interface SourceHealth {
   abstention_rate: number;
   /** Share of records that produced at least one question/answer pair, 0..1. */
   qa_rate: number;
+  /**
+   * Per kind of field (`qa[].question`), the share of records that abstained on it,
+   * 0..1, keys sorted — so `drift` can name the field that went, where the overall
+   * abstention rate only says that something did. Absent in baselines saved before
+   * it existed.
+   */
+  abstained_by_field?: Record<string, number>;
   by_tier: Record<string, number>;
   last_sync?: string;
   last_error?: string;
@@ -43,7 +50,7 @@ export function measureHealth(
   store: CatalogStore & RecordStore & SourceStateStore,
   takenAt: string,
 ): HealthSnapshot {
-  const perSource = new Map<string, { records: number; complete: number; qa: number; tiers: Map<string, number> }>();
+  const perSource = new Map<string, { records: number; complete: number; qa: number; tiers: Map<string, number>; fields: Map<string, number> }>();
 
   // Seed from the sources that have sync state, not only from the catalog. A
   // source is otherwise visible only through the records it produced, so a source
@@ -54,13 +61,14 @@ export function measureHealth(
   const spanning = spanningSources();
   for (const key of store.sourceStateKeys()) {
     if (spanning.has(key)) continue;
-    perSource.set(key, { records: 0, complete: 0, qa: 0, tiers: new Map() });
+    perSource.set(key, { records: 0, complete: 0, qa: 0, tiers: new Map(), fields: new Map() });
   }
 
   for (const entry of store.catalog()) {
-    const bucket = perSource.get(entry.parliament) ?? { records: 0, complete: 0, qa: 0, tiers: new Map() };
+    const bucket = perSource.get(entry.parliament) ?? { records: 0, complete: 0, qa: 0, tiers: new Map(), fields: new Map() };
     bucket.records++;
     if (entry.abstained === 0) bucket.complete++;
+    for (const field of Object.keys(entry.abstained_fields ?? {})) bucket.fields.set(field, (bucket.fields.get(field) ?? 0) + 1);
     bucket.tiers.set(entry.tier, (bucket.tiers.get(entry.tier) ?? 0) + 1);
     perSource.set(entry.parliament, bucket);
   }
@@ -86,6 +94,9 @@ export function measureHealth(
         abstention_rate: bucket.records === 0 ? 0 : round((bucket.records - bucket.complete) / bucket.records),
         qa_rate: bucket.records === 0 ? 0 : round(bucket.qa / bucket.records),
         by_tier: Object.fromEntries([...bucket.tiers].sort(([a], [b]) => (a < b ? -1 : 1))),
+        abstained_by_field: Object.fromEntries(
+          [...bucket.fields].sort(([a], [b]) => (a < b ? -1 : 1)).map(([field, count]) => [field, round(count / bucket.records)]),
+        ),
       };
       if (state.last_sync !== undefined) health.last_sync = state.last_sync;
       if (state.last_error !== undefined) health.last_error = state.last_error;
@@ -180,6 +191,7 @@ export type DriftKind =
   | "no_results"
   | "source_error"
   | "abstention_spike"
+  | "field_spike"
   | "qa_collapse"
   | "coverage_drop"
   | "new_source";
@@ -248,6 +260,22 @@ export function detectDrift(current: HealthSnapshot, baseline: HealthSnapshot | 
         suggestion: "the documents changed shape, not the site — regenerate the parse rules and re-run the goldens",
       });
     }
+    // Per field, against a baseline that has the breakdown: a layout change that
+    // breaks the answers of records that were already abstaining on something else
+    // leaves the overall rate where it was, and only this sees it.
+    if (before.abstained_by_field !== undefined) {
+      for (const [field, rate] of Object.entries(source.abstained_by_field ?? {})) {
+        const was = before.abstained_by_field[field] ?? 0;
+        if (rate - was > ABSTENTION_SPIKE) {
+          findings.push({
+            source: source.source,
+            kind: "field_spike",
+            detail: `${field} abstained in ${pct(rate)} of records, up from ${pct(was)}`,
+            suggestion: `one rule stopped reading ${field} — pull examples with \`ka review --group-by field\` and repair it in the factory`,
+          });
+        }
+      }
+    }
     if (before.qa_rate - source.qa_rate > QA_COLLAPSE) {
       findings.push({
         source: source.source,
@@ -276,7 +304,9 @@ export function detectDrift(current: HealthSnapshot, baseline: HealthSnapshot | 
     });
   }
 
-  return findings.sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : a.kind < b.kind ? -1 : 1));
+  const order = (x: string, y: string): number => (x < y ? -1 : x > y ? 1 : 0);
+  // The detail breaks ties, so a source with several field spikes lists them in one order.
+  return findings.sort((a, b) => order(a.source, b.source) || order(a.kind, b.kind) || order(a.detail, b.detail));
 }
 
 function pct(value: number): string {
