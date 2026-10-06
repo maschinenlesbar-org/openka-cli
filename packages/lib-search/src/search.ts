@@ -6,7 +6,7 @@
 import { assertValid } from "@maschinenlesbar.org/openka-lib-errors";
 import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "@maschinenlesbar.org/openka-lib-store";
 import type { CatalogEntry, Store } from "@maschinenlesbar.org/openka-lib-store";
-import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters, searchableQueryProblem } from "./filters.js";
+import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters, partyKey, searchableQueryProblem } from "./filters.js";
 
 export interface SearchFilters {
   parliament?: string[];
@@ -72,8 +72,10 @@ export function matchesFilters(entry: CatalogEntry, filters: SearchFilters): boo
   if (filters.reviewStatus?.length && !filters.reviewStatus.includes(entry.review_status)) return false;
   if (filters.onlyAbstained && entry.abstained === 0) return false;
   if (filters.party?.length) {
-    const wanted = filters.party.map((party) => party.trim().toLowerCase());
-    if (!entry.parties.some((party) => wanted.includes(party))) return false;
+    // By party, not by spelling: "GRÜNE" finds Bayern's "GRU" and Hessen's
+    // "BÜNDNIS 90/DIE GRÜNEN" too (`partyKey`).
+    const wanted = filters.party.map(partyKey);
+    if (!entry.parties.some((party) => wanted.includes(partyKey(party)))) return false;
   }
   // A record is dated by when it was asked. Without that date it is in no window:
   // falling back to the answer's date placed SH 20/2905, asked in February, in May.

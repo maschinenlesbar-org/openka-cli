@@ -23,6 +23,7 @@ import {
   limitProblem,
   normalizeSearchFilters,
   offsetProblem,
+  partyKey,
   reviewStatusProblem,
   searchParliamentProblem,
   searchableQueryProblem,
@@ -516,6 +517,25 @@ describe("indexing and search", () => {
     ok(matchesFilters(entry, { parliament: ["berlin"] }));
     strictEqual(matchesFilters(entry, { parliament: ["bund"] }), false);
     strictEqual(matchesFilters(entry, { onlyAbstained: true }), false);
+  });
+
+  // Finding 01#6: party spellings are per source, and --party matched them literally.
+  it("matches a party by what it is, not by how a source spelled it", () => {
+    const store = new MemoryStore();
+    const spellings = ["Grüne", "GRU", "BÜNDNIS 90/DIE GRÜNEN", "Die Linke", "DIE LINKE", "Freie Demokraten", "FDP"];
+    spellings.forEach((party, i) => {
+      const record = sampleRecord({ id: `berlin-19-${i + 1}`, reference: `19/${i + 1}`, askers: [{ name: "Anna Muster", party }] });
+      store.putRecord(record);
+      indexRecord(store, record);
+    });
+    const ids = (party: string) => search(store, "", { party: [party] }).hits.map((hit) => hit.entry.id);
+    deepStrictEqual(ids("GRÜNE"), ["berlin-19-1", "berlin-19-2", "berlin-19-3"]);
+    deepStrictEqual(ids("Bündnis 90/Die Grünen"), ["berlin-19-1", "berlin-19-2", "berlin-19-3"]);
+    deepStrictEqual(ids("Linke"), ["berlin-19-4", "berlin-19-5"]);
+    deepStrictEqual(ids("fdp"), ["berlin-19-6", "berlin-19-7"]);
+    deepStrictEqual(ids("Piraten"), []);
+    strictEqual(partyKey("  bündnis 90/die  grünen "), "gruene");
+    strictEqual(partyKey("Tierschutzpartei"), "tierschutzpartei");
   });
 
   // Finding 01#2: SH 20/2905, asked in February and answered in May, was found by a

@@ -15,6 +15,34 @@ import {
 } from "@maschinenlesbar.org/openka-lib-models";
 import type { SearchFilters } from "./search.js";
 
+/**
+ * One key per party, whatever the source called it. The record keeps the label as
+ * printed — Bayern's portal rows say "GRU", Berlin's "Grüne", Hessen's "BÜNDNIS
+ * 90/DIE GRÜNEN" — and `--party GRÜNE`, the README's own example, found only Berlin
+ * (finding 01#6). Matching goes through this instead: an alias the table knows
+ * becomes its key, anything else is compared as written, case-folded.
+ */
+const PARTY_ALIASES: Record<string, readonly string[]> = {
+  gruene: ["grüne", "gruene", "gru", "die grünen", "bündnis 90/die grünen", "bündnis 90 / die grünen", "b90/grüne", "bündnis 90/grüne"],
+  linke: ["die linke", "linke", "dielinke"],
+  fdp: ["fdp", "freie demokraten", "fdp/dvp"],
+  "freie-waehler": ["freie wähler", "fw"],
+  bsw: ["bsw", "gruppe bsw"],
+  afd: ["afd"],
+  cdu: ["cdu"],
+  csu: ["csu"],
+  spd: ["spd"],
+  ssw: ["ssw"],
+};
+
+const PARTY_KEY = new Map(Object.entries(PARTY_ALIASES).flatMap(([key, aliases]) => aliases.map((alias) => [alias, key] as const)));
+
+/** The key `--party` matches on: a known alias's party, else the label case-folded. */
+export function partyKey(label: string): string {
+  const folded = label.trim().toLowerCase().replace(/\s+/g, " ");
+  return PARTY_KEY.get(folded) ?? folded;
+}
+
 /** The years `year` may name: the first Bundestag to well past any corpus. */
 export const YEAR_RANGE = [1949, 2999] as const;
 // Re-exported where search callers have always found them; the rules themselves

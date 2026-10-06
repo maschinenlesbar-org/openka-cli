@@ -43,7 +43,7 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, searchableQueryProblem, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, undatedMatch, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, searchableQueryProblem, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, partyKey, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, makeSnippet, cosine, SemanticOptions, searchLike
 ```
 
 ## Depends on

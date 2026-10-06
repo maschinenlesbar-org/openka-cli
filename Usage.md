@@ -79,7 +79,10 @@ ka search "radwege" --snippet --json
 ```
 
 Filters are repeatable (`--parliament berlin --parliament bund`). An empty query
-lists everything that passes the filters. With `--like`, `total` in the JSON counts
+lists everything that passes the filters. `--party` matches the party, not the
+spelling: the sources print the Greens as "Grüne", "GRU" or "BÜNDNIS 90/DIE GRÜNEN", the
+Left as "Die Linke" or "DIE LINKE", the FDP as "Freie Demokraten" — any of them (or
+"GRÜNE", "Linke", "FDP") finds all; records keep the spelling their source printed. With `--like`, `total` in the JSON counts
 every similar record, not just the page `--limit` shows, as it does for keyword search.
 
 ## `ka get` / `ka show` / `ka open`
