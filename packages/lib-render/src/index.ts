@@ -273,13 +273,19 @@ export function renderRecord(record: KaRecord, format: RenderFormat): string {
 
 const XML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" };
 
+/** Everything XML 1.0's `Char` production excludes, unpaired surrogates included. */
+const NOT_XML_CHAR =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
 export function escapeXml(value: string): string {
   // Control characters are not representable in XML 1.0 at all; dropping them
   // keeps the feed well-formed rather than emitting a document no reader accepts.
   // DEL and the C1 block belong in that set too: they were left in, so a feed
   // could carry U+009B — the 8-bit form of CSI — straight to whatever prints it.
+  // So do U+FFFE/U+FFFF and unpaired surrogates, which XML 1.0 excludes as well:
+  // one U+FFFE in a title made xmllint reject the whole feed (finding 03#5).
   return value
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
+    .replace(NOT_XML_CHAR, "")
     .replace(/[&<>"']/g, (ch) => XML_ESCAPES[ch] as string);
 }
 

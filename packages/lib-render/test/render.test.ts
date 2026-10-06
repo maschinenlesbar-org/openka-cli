@@ -292,3 +292,12 @@ describe("bulk renderings", () => {
     deepStrictEqual(parsed, records.map((record) => JSON.parse(renderJsonLd(record))));
   });
 });
+
+describe("XML the feed cannot carry", () => {
+  it("drops U+FFFE, U+FFFF and unpaired surrogates, and keeps a paired one", () => {
+    strictEqual(escapeXml("Titel\ufffe \uffff\ud800x\udc00 & 😀"), "Titel x &amp; 😀");
+    const feed = renderAtom([sampleRecord({ title: "Brücken\ufffe" })], { updated: "2026-01-02T03:04:05Z" });
+    ok(!feed.includes("\ufffe"));
+    match(feed, /<title>Brücken<\/title>/);
+  });
+});
