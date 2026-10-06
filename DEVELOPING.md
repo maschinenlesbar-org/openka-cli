@@ -38,6 +38,13 @@ literal, because the line reads no manifest at run time — which is what `ka --
 lifecycle script (`tools/version.mjs`) rewrites and stages it during `npm version`,
 and a test in `lib-repro` fails if the two ever disagree.
 
+**The README npm shows is the repository's** (prepack swaps it in), so a relative link
+in it must point to a document the tarball carries — `LICENSE`, `LICENSING.md`,
+`CONTRIBUTING.md`, `DATA_LICENSE.md`, `CONCEPT.md`; anything else (DEVELOPING.md, a
+package README) is linked by its absolute GitHub URL, or it is dead on npmjs.com.
+`packages/openka-cli/test/readme-links.test.ts` checks every relative link against the
+package's `files` and prepack's document list (P21 of the 2026-10-06 follow-up round).
+
 **The first publish is local; every one after it is `publish.yml`.** npm Trusted
 Publishing can only be configured for a package that already exists, so the first
 version goes up from a maintainer's machine, from a clean checkout of its tag:

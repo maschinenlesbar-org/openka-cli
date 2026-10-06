@@ -10,7 +10,7 @@ can re-derive from the archived bytes.
 > A missing fact is recoverable; a fabricated one poisons the corpus.
 
 See [CONCEPT.md](CONCEPT.md) for the design this implements, and
-[DEVELOPING.md](DEVELOPING.md) for how it is built.
+[DEVELOPING.md](https://github.com/maschinenlesbar-org/openka-cli/blob/main/DEVELOPING.md) for how it is built.
 
 ## Install
 

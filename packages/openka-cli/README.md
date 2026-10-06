@@ -40,7 +40,10 @@ differently from a maintainer reading this directory:
   page, and this file is written for whoever maintains the package, not whoever
   installs it. For the length of the pack the repository README stands in for it,
   and this one waits as `package-readme.parked.md`. A pack that dies before
-  `postpack` leaves it parked; the next `prepack` puts it back first.
+  `postpack` leaves it parked; the next `prepack` puts it back first. A relative link
+  in the repository README must therefore name a document the tarball carries (one of
+  prepack's `DOCUMENTS`, listed in `files`); any other goes by its absolute GitHub URL.
+  `test/readme-links.test.ts` checks it.
 - **No source maps.** `tsconfig.base.json` emits none, because they would point at
   `src/*.ts`, which the tarball does not carry. Any an older build left in a `dist/`
   stay out anyway: `files` excludes this package's own and `prepack` skips the
