@@ -24,6 +24,7 @@ are authoritative; this is the narrative version.
 ka sync --source berlin --since 2024-01-01 --until 2024-06-30 --limit 200
 ka sync --source nordrhein-westfalen --since 2025-03-01 --until 2025-04-30
 ka sync --source bund --api-key "$DIP_KEY" --period 21
+ka sync --source bund --period 3                        # 1957–1961: from DIP's Drucksachen, question only
 ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metadata + links
 ka sync --source berlin --metadata-only                 # no downloads; qa abstains
 ka sync --source berlin --force                         # re-extract unchanged inputs

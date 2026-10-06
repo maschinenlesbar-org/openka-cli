@@ -1,0 +1,109 @@
+{
+ "numFound": 480,
+ "documents": [
+  {
+   "id": "191784",
+   "drucksachetyp": "Kleine Anfrage",
+   "dokumentart": "Drucksache",
+   "autoren_anzahl": 4,
+   "typ": "Dokument",
+   "vorgangsbezug_anzahl": 0,
+   "dokumentnummer": "07/5896",
+   "wahlperiode": 7,
+   "herausgeber": "BT",
+   "pdf_hash": "8078880c6b7e150accbd3106ae5074d9",
+   "aktualisiert": "2022-07-26T19:57:15+02:00",
+   "urheber": [
+    {
+     "einbringer": false,
+     "bezeichnung": "CDU/CSU",
+     "titel": "Fraktion der CDU/CSU"
+    }
+   ],
+   "fundstelle": {
+    "pdf_url": "https://dserver.bundestag.de/btd/07/058/0705896.pdf",
+    "id": "191784",
+    "dokumentnummer": "07/5896",
+    "datum": "1976-11-23",
+    "dokumentart": "Drucksache",
+    "drucksachetyp": "Kleine Anfrage",
+    "herausgeber": "BT",
+    "urheber": [
+     "Fraktion der CDU/CSU"
+    ]
+   },
+   "autoren_anzeige": [
+    {
+     "id": "2747",
+     "titel": "Anton Pfeifer, MdB, CDU/CSU",
+     "autor_titel": "Anton Pfeifer"
+    },
+    {
+     "id": "3717",
+     "titel": "Dr. Georg Gölter, MdB, CDU/CSU",
+     "autor_titel": "Dr. Georg Gölter"
+    },
+    {
+     "id": "4087",
+     "titel": "Dr. Karl Carstens (Fehmarn), MdB, CDU/CSU",
+     "autor_titel": "Dr. Karl Carstens (Fehmarn)"
+    },
+    {
+     "id": "3576",
+     "titel": "Richard Stücklen, MdB, CDU/CSU",
+     "autor_titel": "Richard Stücklen"
+    }
+   ],
+   "titel": "Mitteilung des Bundesministers für Bildung und Wissenschaft über den weiteren Fortgang in der Berufsbildungspolitik",
+   "datum": "1976-11-23"
+  },
+  {
+   "id": "191743",
+   "drucksachetyp": "Kleine Anfrage",
+   "dokumentart": "Drucksache",
+   "autoren_anzahl": 29,
+   "typ": "Dokument",
+   "vorgangsbezug_anzahl": 0,
+   "dokumentnummer": "07/5837",
+   "wahlperiode": 7,
+   "herausgeber": "BT",
+   "pdf_hash": "df60b34bf7dcb2dd62de3445a2badbb3",
+   "aktualisiert": "1976-10-27T00:00:00+01:00",
+   "fundstelle": {
+    "pdf_url": "https://dserver.bundestag.de/btd/07/058/0705837.pdf",
+    "id": "191743",
+    "dokumentnummer": "07/5837",
+    "datum": "1976-10-27",
+    "dokumentart": "Drucksache",
+    "drucksachetyp": "Kleine Anfrage",
+    "herausgeber": "BT",
+    "urheber": []
+   },
+   "autoren_anzeige": [
+    {
+     "id": "4082",
+     "titel": "Albert Leicht, MdB, CDU/CSU",
+     "autor_titel": "Albert Leicht"
+    },
+    {
+     "id": "3768",
+     "titel": "Dr. Walter Althammer, MdB, CDU/CSU",
+     "autor_titel": "Dr. Walter Althammer"
+    },
+    {
+     "id": "4309",
+     "titel": "Hermann Höcherl, MdB, CDU/CSU",
+     "autor_titel": "Hermann Höcherl"
+    },
+    {
+     "id": "4084",
+     "titel": "Dr. Gerhard Zeitel, MdB, CDU/CSU",
+     "autor_titel": "Dr. Gerhard Zeitel"
+    }
+   ],
+   "titel": "Inanspruchnahme der Verpflichtungsermächtigung für die Kapitalhilfe im Bundeshaushaltsplan 1976 (hier: Exportfinanzierung von Schiffen und Beitritt zum Internationalen Agrarfond - IFAD -)",
+   "datum": "1976-10-27"
+  }
+ ],
+ "cursor": "recorded-end"
+}

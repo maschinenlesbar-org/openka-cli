@@ -36,6 +36,25 @@ interface DipListResult {
   cursor?: string;
 }
 
+/**
+ * The day the 8th Bundestag first sat. DIP's Vorgänge — procedure records — start
+ * here; the Kleine Anfragen of the 1st to 7th Wahlperiode (1949–1976) exist only as
+ * Drucksachen, which the Vorgang-based discovery cannot reach.
+ */
+export const FIRST_VORGANG_DATE = "1976-12-14";
+
+/** The last Wahlperiode DIP holds no Vorgänge for. */
+export const LAST_PERIOD_WITHOUT_VORGAENGE = 7;
+
+/**
+ * Whether a window can only be served from the Drucksachen: a period up to the 7th,
+ * or a window that ends before the first Vorgang.
+ */
+export function drucksacheWindow(options: { period?: number; until?: string }): boolean {
+  if (options.period !== undefined) return options.period <= LAST_PERIOD_WITHOUT_VORGAENGE;
+  return options.until !== undefined && options.until < FIRST_VORGANG_DATE;
+}
+
 /** A missing credential is the operator's to supply, not a degraded source: a usage error. */
 function requireKey(apiKey: string | undefined): asserts apiKey is string {
   if (apiKey === undefined || apiKey.trim() === "") {
@@ -65,26 +84,81 @@ export class BundDipSource implements Source {
    */
   async count(options: CountOptions): Promise<UpstreamCount> {
     requireKey(options.apiKey);
-    const params: Record<string, string | number> = { "f.vorgangstyp": "Kleine Anfrage", format: "json" };
-    if (options.period !== undefined) params["f.wahlperiode"] = options.period;
-    const response = await options.engine.get(`${DIP_BASE_URL}/api/v1/vorgang`, {
+    const ask = (path: string, params: Record<string, string | number>): Promise<number> =>
+      this.numFound(options.apiKey as string, options.engine, path, { ...params, format: "json" });
+    if (options.period !== undefined && options.period <= LAST_PERIOD_WITHOUT_VORGAENGE) {
+      const total = await ask("/api/v1/drucksache", { "f.drucksachetyp": "Kleine Anfrage", "f.wahlperiode": options.period });
+      return { total, basis: "DIP numFound (Drucksachen)" };
+    }
+    const vorgaenge = await ask("/api/v1/vorgang", {
+      "f.vorgangstyp": "Kleine Anfrage",
+      ...(options.period === undefined ? {} : { "f.wahlperiode": options.period }),
+    });
+    if (options.period !== undefined) return { total: vorgaenge, basis: "DIP numFound" };
+    // Every period: the Vorgänge from the 8th on, and the Drucksachen before them.
+    const before = await ask("/api/v1/drucksache", { "f.drucksachetyp": "Kleine Anfrage", "f.datum.end": dayBefore(FIRST_VORGANG_DATE) });
+    return { total: vorgaenge + before, basis: "DIP numFound (Drucksachen to WP 7, Vorgänge from WP 8)" };
+  }
+
+  private async numFound(apiKey: string, engine: CountOptions["engine"], path: string, params: Record<string, string | number>): Promise<number> {
+    const response = await engine.get(`${DIP_BASE_URL}${path}`, {
       params,
-      headers: { authorization: `ApiKey ${options.apiKey}`, accept: "application/json" },
+      headers: { authorization: `ApiKey ${apiKey}`, accept: "application/json" },
     });
     let body: DipListResult;
     try {
       body = JSON.parse(response.body.toString("utf8")) as DipListResult;
     } catch (err) {
-      throw new ParseError("DIP returned a body that is not JSON (/api/v1/vorgang)", { cause: err });
+      throw new ParseError(`DIP returned a body that is not JSON (${path})`, { cause: err });
     }
     if (typeof body.numFound !== "number" || !Number.isSafeInteger(body.numFound) || body.numFound < 0) {
-      throw new ParseError("DIP returned no numFound for /api/v1/vorgang");
+      throw new ParseError(`DIP returned no numFound for ${path}`);
     }
-    return { total: body.numFound, basis: "DIP numFound" };
+    return body.numFound;
+  }
+
+  /**
+   * The 1st to 7th Wahlperiode, which DIP holds only as Drucksachen: every
+   * `Kleine Anfrage` Drucksache in the window, as a question-only ref. DIP links
+   * none of them to an answer — no Vorgang, no reference — so none is paired with
+   * one: a pairing by number or title would be a guess, and the record says
+   * instead that its answers are missing. These are old scans; most will land on
+   * the `ocr` tier or abstain, and the record and its archived PDF are still worth
+   * having.
+   */
+  private async discoverDrucksachen(options: DiscoverOptions): Promise<DiscoverResult> {
+    const warnings: string[] = [];
+    const params: Record<string, string | number> = { "f.drucksachetyp": "Kleine Anfrage", format: "json" };
+    if (options.since !== undefined) params["f.datum.start"] = options.since;
+    if (options.until !== undefined) params["f.datum.end"] = options.until;
+    if (options.period !== undefined) params["f.wahlperiode"] = options.period;
+    // One Drucksache per Anfrage: `page` budgets two positions per Anfrage, so it
+    // is given half the limit to stop at the same number of refs.
+    const budget = options.limit === undefined ? undefined : Math.ceil(options.limit / 2);
+    const documents = await this.page(options, "/api/v1/drucksache", params, budget);
+    const refs: DocRef[] = [];
+    const seen = new Set<string>();
+    for (const document of documents) {
+      const ref = drucksacheRef(document, warnings);
+      // A cursor that stops moving may hand the last page out twice; the Vorgang
+      // path groups by Vorgang and never noticed, this one would store it twice.
+      if (ref === undefined || seen.has(ref.key)) continue;
+      seen.add(ref.key);
+      refs.push(ref);
+    }
+    const windowed = applyWindow(refs, options);
+    if (windowed.length > 0) {
+      warnings.push(
+        `${windowed.length} Kleine Anfrage(n) from DIP's Drucksachen (before the 8th Wahlperiode DIP has no Vorgänge): ` +
+          "DIP links no answer to them, so each is stored with its answers abstained rather than paired by guess",
+      );
+    }
+    return { refs: windowed, warnings };
   }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     requireKey(options.apiKey);
+    if (drucksacheWindow(options)) return this.discoverDrucksachen(options);
     const warnings: string[] = [];
     const params: Record<string, string | number> = {
       "f.vorgangstyp": "Kleine Anfrage",
@@ -129,6 +203,12 @@ export class BundDipSource implements Source {
     for (const [vorgang, bucket] of groups) {
       const ref = toRef(vorgang, bucket, warnings);
       if (ref !== undefined) refs.push(ref);
+    }
+    if (options.period === undefined && (options.since === undefined || options.since < FIRST_VORGANG_DATE)) {
+      warnings.push(
+        `Kleine Anfragen from before ${FIRST_VORGANG_DATE} (Wahlperioden 1–${LAST_PERIOD_WITHOUT_VORGAENGE}) have no ` +
+          `Vorgang in DIP and are not in this discovery; sync them with --period 1 … --period ${LAST_PERIOD_WITHOUT_VORGAENGE}`,
+      );
     }
     // The window is re-applied to the assembled refs: a repair request deliberately
     // ignores the date filter, so without this a completed pair from outside the
@@ -248,6 +328,50 @@ export function toRef(
  * recorded as the asker with `role: "Fraktion"` rather than being turned into a
  * person who does not exist.
  */
+/**
+ * A `Kleine Anfrage` Drucksache as a question-only ref: its number, period, title,
+ * askers (`autoren_anzeige`, else the Fraktion in `urheber`), date and PDF.
+ */
+export function drucksacheRef(document: Record<string, unknown>, warnings: string[]): DocRef | undefined {
+  const fundstelle = record(document["fundstelle"]);
+  const reference = stringOf(document["dokumentnummer"]) ?? stringOf(fundstelle?.["dokumentnummer"]);
+  if (reference === undefined) {
+    warnings.push(`Drucksache ${stringOf(document["id"]) ?? "?"}: no Drucksachennummer; skipped`);
+    return undefined;
+  }
+  const period = typeof document["wahlperiode"] === "number" ? (document["wahlperiode"] as number) : periodFromReference(reference);
+  if (period === undefined) {
+    warnings.push(`Drucksache ${reference}: cannot read a Wahlperiode; skipped`);
+    return undefined;
+  }
+  const documents: DocRefDocument[] = [];
+  const pdf = stringOf(fundstelle?.["pdf_url"]);
+  if (pdf !== undefined) documents.push({ role: "question_pdf", url: pdf, urlStable: true });
+  else warnings.push(`Drucksache ${reference}: DIP names no PDF; stored with metadata only`);
+  const ref: DocRef = {
+    key: `drucksache-${stringOf(document["id"]) ?? reference}`,
+    reference,
+    legislative_period: period,
+    title: stringOf(document["titel"]) ?? "",
+    documentType: "kleine_anfrage",
+    // The same display strings as a Vorgangsposition's activities, under another name.
+    askers: askersOf({ aktivitaet_anzeige: document["autoren_anzeige"], urheber: document["urheber"] }),
+    answered_by: {},
+    dates: {},
+    documents,
+  };
+  const submitted = isoDate(stringOf(fundstelle?.["datum"]) ?? stringOf(document["datum"]));
+  if (submitted !== undefined) ref.dates.submitted = submitted;
+  return ref;
+}
+
+/** The ISO day before `iso`. */
+function dayBefore(iso: string): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export function askersOf(position: Record<string, unknown>): Asker[] {
   const askers: Asker[] = [];
   const seen = new Set<string>();
