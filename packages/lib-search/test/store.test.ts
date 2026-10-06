@@ -633,6 +633,8 @@ describe("the review queue", () => {
     strictEqual(store.getRecord("berlin-19-12346")?.extraction.review_status, "human_verified");
     strictEqual(store.catalogEntry("berlin-19-12346")?.review_status, "human_verified");
     deepStrictEqual(ids(reviewQueue(store)), ["berlin-19-12347", "bayern-18-00001"]);
+    strictEqual(reviewQueue(store).verified, 1);
+    strictEqual(reviewQueue(store, { parliament: "bayern" }).verified, 0);
     strictEqual(search(store, "", { reviewStatus: ["human_verified"] }).total, 1);
     strictEqual(markHumanVerified(store, "berlin-19-99999"), undefined);
   });

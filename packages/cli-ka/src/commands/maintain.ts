@@ -99,7 +99,14 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           return;
         }
         if (queue.total === 0) {
-          ctx.deps.io.out("Nothing in the review queue — every stored record extracted completely.");
+          // A verified record left the queue with its holes: "extracted completely"
+          // would claim something nobody did.
+          ctx.deps.io.out(
+            queue.verified === 0
+              ? "Nothing in the review queue — every stored record extracted completely."
+              : `Nothing left to review — ${queue.verified} record(s) with abstained fields were checked by a ` +
+                  "person (human_verified); their holes stay, see `ka search --needs-review`.",
+          );
           return;
         }
         for (const entry of queue.entries) {

@@ -257,6 +257,11 @@ export interface ReviewQueue {
   /** Every record in the queue, before the limit. */
   total: number;
   entries: CatalogEntry[];
+  /**
+   * Records with abstained fields that a person marked `human_verified`, which is
+   * why they are not in the queue: checked, not filled.
+   */
+  verified: number;
 }
 
 /**
@@ -272,9 +277,13 @@ export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): Rev
     onlyAbstained: true,
     ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),
   });
-  const queue = store
-    .catalog()
-    .filter((entry) => entry.review_status !== "human_verified" && matchesFilters(entry, filters))
+  const withHoles = store.catalog().filter((entry) => matchesFilters(entry, filters));
+  const queue = withHoles
+    .filter((entry) => entry.review_status !== "human_verified")
     .sort((a, b) => b.abstained - a.abstained || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { total: queue.length, entries: queue.slice(0, options.limit ?? DEFAULT_REVIEW_LIMIT) };
+  return {
+    total: queue.length,
+    entries: queue.slice(0, options.limit ?? DEFAULT_REVIEW_LIMIT),
+    verified: withHoles.length - queue.length,
+  };
 }

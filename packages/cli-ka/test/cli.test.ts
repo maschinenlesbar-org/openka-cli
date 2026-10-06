@@ -368,6 +368,16 @@ describe("ka", () => {
       match(harness.stderr(), /not that they were filled/);
       const store = harness.deps.createStore(harness.corpus);
       strictEqual(store.getRecord("berlin-19-10006")?.extraction.review_status, "human_verified");
+
+      // Finding 02#8: with only verified holes left, the queue is empty — but the
+      // records did not extract completely, and the message no longer says so.
+      for (const id of store.recordIds().filter((id) => id !== "berlin-19-10006")) {
+        await run(["--corpus", harness.corpus, "review", "--mark-verified", id], harness.deps);
+      }
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "review"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /Nothing left to review — \d+ record\(s\) with abstained fields were checked by a person/);
+      doesNotMatch(harness.stdout(), /extracted completely/);
     } finally {
       harness.cleanup();
     }
