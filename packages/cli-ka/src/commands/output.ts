@@ -75,6 +75,12 @@ function someIds(ids: readonly string[]): string {
  * to all four — what an interrupted sync used to leave behind for good.
  */
 export function noteCatalogGaps(ctx: ActionContext, gaps: CatalogGaps): void {
+  if (gaps.missingFiles.length > 0) {
+    ctx.deps.io.err(
+      `Note: ${gaps.missingFiles.length} catalog row(s) have no record file, so they are counted and listed ` +
+        `but cannot be read: ${someIds(gaps.missingFiles)}. \`ka reindex\` rebuilds the catalog from the records.`,
+    );
+  }
   if (gaps.uncatalogued.length > 0) {
     ctx.deps.io.err(
       `Note: ${gaps.uncatalogued.length} record file(s) are not in the catalog, so search, stats and export ` +
@@ -159,7 +165,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
         }
         const io = ctx.deps.io;
         io.out(`${summary.records} record(s) in ${summary.corpus}`);
-        noteCatalogGaps(ctx, { uncatalogued: summary.uncatalogued, missingFiles: [] });
+        noteCatalogGaps(ctx, { uncatalogued: summary.uncatalogued, missingFiles: summary.missing_files });
         if (summary.records === 0 && summary.uncatalogued.length === 0) {
           io.out("Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
           return;

@@ -299,6 +299,22 @@ describe("ka", () => {
     }
   });
 
+  it("names catalog rows whose record file is gone in search, stats and verify", async () => {
+    const harness = await seeded();
+    try {
+      rmSync(join(harness.corpus, "records", "berlin-19-10006.json"));
+      strictEqual(await run(["--corpus", harness.corpus, "search", "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /1 of these catalog row\(s\) have no record file: berlin-19-10006/);
+      for (const argv of [["stats"], ["verify", "--all"]]) {
+        harness.err.length = 0;
+        await run(["--corpus", harness.corpus, ...argv], harness.deps);
+        match(harness.stderr(), /catalog row\(s\) have no record file, so they are counted and listed but cannot be read: berlin-19-10006/);
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("names record files the catalog lacks in stats and verify", async () => {
     const harness = await seeded();
     try {

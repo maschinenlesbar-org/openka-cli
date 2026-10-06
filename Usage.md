@@ -135,6 +135,8 @@ document: an array of the schema.org nodes `ka get --format jsonld` prints).
 `export` writes every match — by id, or the most relevant first with `--query` — and
 `feed` picks its `--limit` newest entries from the whole selection. A catalog row whose
 record file is gone is named on stderr and left out; `ka reindex` rebuilds the catalog.
+`ka search` lists such a row (the catalog still has it) and names it on stderr, and `ka
+stats` and `ka verify` name every one (`missing_files` in `ka stats --json`).
 A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here as in
 `ka search`, rather than a selection of every record.
 

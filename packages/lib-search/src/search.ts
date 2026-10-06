@@ -41,6 +41,13 @@ export interface SearchHit {
 export interface SearchResult {
   total: number;
   hits: SearchHit[];
+  /**
+   * Hits on this page whose record file is gone: the catalog still lists them,
+   * so they are counted and shown, but `get`/`show` have nothing to read. `ka
+   * search` names them; `ka reindex` drops them from the catalog. Keyword search
+   * fills it; `searchLike` reads no record and leaves it out.
+   */
+  missing?: string[];
 }
 
 /**
@@ -99,13 +106,14 @@ export function search(store: Store, query: string, searchOptions: SearchOptions
   }
 
   const page = ranked.slice(offset, offset + limit);
+  const missing = page.filter((hit) => !store.hasRecord(hit.entry.id)).map((hit) => hit.entry.id);
   if (options.snippet) {
     for (const hit of page) {
       const snippet = makeSnippet(store, hit.entry.id, parsed.required);
       if (snippet !== undefined) hit.snippet = snippet;
     }
   }
-  return { total: ranked.length, hits: page };
+  return { total: ranked.length, hits: page, missing };
 }
 
 function rank(store: Store, parsed: ParsedQuery, filters: SearchFilters): SearchHit[] {

@@ -659,8 +659,17 @@ describe("corpus statistics", () => {
       by_parliament: { bayern: { records: 1, abstained: 0 }, berlin: { records: 2, abstained: 1 } },
       by_tier: { text_layer: 3 },
       uncatalogued: [],
+      missing_files: [],
     });
-    deepStrictEqual(corpusStats(new MemoryStore()), { records: 0, parse_complete: 0, needs_review: 0, by_parliament: {}, by_tier: {}, uncatalogued: [] });
+    deepStrictEqual(corpusStats(new MemoryStore()), {
+      records: 0,
+      parse_complete: 0,
+      needs_review: 0,
+      by_parliament: {},
+      by_tier: {},
+      uncatalogued: [],
+      missing_files: [],
+    });
   });
 
   it("names record files the catalog has no row for, without counting them", () => {
@@ -674,6 +683,9 @@ describe("corpus statistics", () => {
     deepStrictEqual(catalogGaps(store), { uncatalogued: ["berlin-19-33333"], missingFiles: [] });
     store.deleteRecord(sampleRecord().id);
     deepStrictEqual(catalogGaps(store), { uncatalogued: ["berlin-19-33333"], missingFiles: [sampleRecord().id] });
+    deepStrictEqual(corpusStats(store).missing_files, [sampleRecord().id]);
+    // Finding 02#7: search lists the row and names it as having no file.
+    deepStrictEqual(search(store, "").missing, [sampleRecord().id]);
   });
 
   it("indexes a record whose catalog row was lost without doubling its postings", () => {

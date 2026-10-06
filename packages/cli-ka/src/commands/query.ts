@@ -173,6 +173,13 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         return;
       }
       for (const hit of result.hits) ctx.deps.io.out(formatHit(hit.entry, hit.score, hit.snippet));
+      const missing = result.missing ?? [];
+      if (missing.length > 0) {
+        ctx.deps.io.err(
+          `Note: ${missing.length} of these catalog row(s) have no record file: ${missing.slice(0, 5).join(", ")}` +
+            `${missing.length > 5 ? `, and ${missing.length - 5} more` : ""}. \`ka reindex\` rebuilds the catalog from the records.`,
+        );
+      }
       const shown = result.hits.length;
       const offset = (ctx.opts["offset"] as number | undefined) ?? 0;
       ctx.deps.io.err(`${shown} of ${result.total} match(es)${offset > 0 ? `, from offset ${offset}` : ""}.`);

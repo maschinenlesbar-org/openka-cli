@@ -25,6 +25,8 @@ export interface CorpusStats {
    * reindex` closes the gap.
    */
   uncatalogued: string[];
+  /** Catalog rows whose record file is gone, sorted — counted above, but nothing to read. */
+  missing_files: string[];
 }
 
 const byKey = <T>([a]: [string, T], [b]: [string, T]): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -45,12 +47,14 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
     byTier.set(entry.tier, (byTier.get(entry.tier) ?? 0) + 1);
   }
   const complete = catalog.filter((entry) => entry.abstained === 0).length;
+  const gaps = catalogGaps(store);
   return {
     records: catalog.length,
     parse_complete: complete,
     needs_review: catalog.length - complete,
     by_parliament: Object.fromEntries([...byParliament].sort(byKey)),
     by_tier: Object.fromEntries([...byTier].sort(byKey)),
-    uncatalogued: catalogGaps(store).uncatalogued,
+    uncatalogued: gaps.uncatalogued,
+    missing_files: gaps.missingFiles,
   };
 }
