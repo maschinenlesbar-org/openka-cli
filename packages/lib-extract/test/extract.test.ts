@@ -793,6 +793,20 @@ describe("metadata rules", () => {
     }
   });
 
+  // Finding 01#7: "bis" was a list separator, so a range listed only its two ends.
+  it("expands an attachment range", () => {
+    deepStrictEqual(
+      findMarkers("siehe Anlagen 1 bis 12").attachments_referenced,
+      Array.from({ length: 12 }, (_, i) => `Anlage ${i + 1}`),
+    );
+    deepStrictEqual(findMarkers("Anlagen 3–5 und 8").attachments_referenced, ["Anlage 3", "Anlage 4", "Anlage 5", "Anlage 8"]);
+    deepStrictEqual(findMarkers("Anlagen II bis IV").attachments_referenced, ["Anlage II", "Anlage III", "Anlage IV"]);
+    deepStrictEqual(findMarkers("Anlage 3, 4 und 5").attachments_referenced, ["Anlage 3", "Anlage 4", "Anlage 5"]);
+    // Backwards, mixed or implausibly long: the two ends, as written.
+    deepStrictEqual(findMarkers("Anlagen 5 bis 2").attachments_referenced, ["Anlage 2", "Anlage 5"]);
+    deepStrictEqual(findMarkers("Anlagen 1 bis 99").attachments_referenced, ["Anlage 1", "Anlage 99"]);
+  });
+
   it("does not read an attachment out of the word after Anlage", () => {
     // "die PV-Anlage in Betrieb" was "Anlage i", frozen into berlin-19-10006.
     for (const text of [

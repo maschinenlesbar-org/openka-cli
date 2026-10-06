@@ -296,6 +296,64 @@ export function isClassified(text: string): boolean {
  */
 const ATTACHMENT_NUMBER = String.raw`(?:\d{1,2}|[IVXLC]{1,5})(?![\p{L}\p{N}])`;
 
+/** Ranges longer than this are not expanded: "Anlagen 1 bis 99" is more likely a misread. */
+const MAX_ATTACHMENT_RANGE = 30;
+
+const ROMAN: [string, number][] = [["C", 100], ["XC", 90], ["L", 50], ["XL", 40], ["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]];
+
+function romanValue(token: string): number | undefined {
+  let rest = token;
+  let value = 0;
+  for (const [symbol, amount] of ROMAN) {
+    while (rest.startsWith(symbol)) {
+      value += amount;
+      rest = rest.slice(symbol.length);
+    }
+  }
+  return rest === "" && value > 0 ? value : undefined;
+}
+
+function roman(value: number): string {
+  let out = "";
+  let rest = value;
+  for (const [symbol, amount] of ROMAN) {
+    while (rest >= amount) {
+      out += symbol;
+      rest -= amount;
+    }
+  }
+  return out;
+}
+
+/**
+ * The attachment numbers of one "Anlage(n) …" list. A comma or "und" separates
+ * numbers; "bis" or a dash joins a range, which is expanded: "Anlagen 1 bis 12"
+ * used to list Anlage 1 and Anlage 12 and none of the ten between. A range whose
+ * ends are not both Arabic or both Roman, run backwards, or spans more than
+ * `MAX_ATTACHMENT_RANGE` is kept as its two ends, as before.
+ */
+function attachmentNumbers(list: string): string[] {
+  const parts = list.split(/\s*(,|und|bis|-|–)\s*/);
+  const out: string[] = [];
+  let previous = (parts[0] ?? "").trim();
+  if (previous !== "") out.push(previous);
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    const separator = parts[i] as string;
+    const next = (parts[i + 1] as string).trim();
+    if (next === "") continue;
+    const isRange = separator === "bis" || separator === "-" || separator === "–";
+    const arabic = /^\d+$/.test(previous) && /^\d+$/.test(next);
+    const from = arabic ? Number(previous) : romanValue(previous);
+    const to = arabic ? Number(next) : romanValue(next);
+    if (isRange && from !== undefined && to !== undefined && to > from && to - from <= MAX_ATTACHMENT_RANGE) {
+      for (let n = from + 1; n < to; n++) out.push(arabic ? String(n) : roman(n));
+    }
+    out.push(next);
+    previous = next;
+  }
+  return out;
+}
+
 /**
  * Structural markers. `contains_tables` is a *hint*, not a claim about layout: a
  * text layer has no table objects, so the marker fires on the tabular typography a
@@ -310,10 +368,7 @@ export function findMarkers(text: string): DocumentMarkers {
   );
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
-    for (const part of (match[1] as string).split(/\s*(?:,|und|bis|-|–)\s*/)) {
-      const token = part.trim();
-      if (token !== "") attachments.add(`Anlage ${token}`);
-    }
+    for (const token of attachmentNumbers(match[1] as string)) attachments.add(`Anlage ${token}`);
   }
 
   const columnar = text.split("\n").filter((line) => /\S {3,}\S.* {3,}\S/.test(line)).length;
