@@ -1018,6 +1018,38 @@ describe("a question paper", () => {
     ok(record.extraction.abstained_fields.includes("qa[0].answer"));
   });
 
+  it("takes no inferred answer from a question paper: its closing is not the government's reply", async () => {
+    // Drs. 1/3271 (1952), read as `antwort_folgt`, was published with its closing
+    // lines as the answer to its last question.
+    const { record } = await extract({
+      parliament: "bund",
+      documentType: "kleine_anfrage",
+      tier: "text_layer",
+      metadata: { reference: "1/3271", legislative_period: 1, title: "T", askers: [], answered_by: {}, dates: {} },
+      documents: [
+        {
+          role: "question_pdf",
+          url: "https://x.invalid/q.pdf",
+          bytes: questionPaper([
+            "Wir fragen die Bundesregierung:",
+            "1. Ist inzwischen die Stellungnahme aller Länder eingeholt worden?",
+            "2. Wie weit sind die Vorarbeiten für diesen Gesetzentwurf gediehen?",
+            "3. Kann damit gerechnet werden, daß der Gesetzentwurf in Kürze",
+            "vorgelegt wird?",
+            "Bonn, den 2. April 1952",
+            "Ollenhauer und Fraktion",
+          ]),
+          urlStable: true,
+        },
+      ],
+      env: {},
+    });
+    ok(record.qa.length > 0);
+    ok(record.qa.every((pair) => pair.answer === undefined), JSON.stringify(record.qa));
+    ok(!JSON.stringify(record.qa).includes("Ollenhauer"), "the closing is in no field");
+    ok(record.qa.every((_pair, index) => record.extraction.abstained_fields.includes(`qa[${index}].answer`)));
+  });
+
   it("still refuses a numbered table that arrives as a question paper", async () => {
     // Dropping the answer requirement must not drop the numbering guards.
     const { record } = await extract({

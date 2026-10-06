@@ -515,6 +515,14 @@ refused unless at least `MIN_INFERRED_ANSWER_RATE` of its questions ended up wit
 answer — which is what makes it decline a Bundestag answer that reprints the whole
 question list before answering anything.
 
+**A question paper read alone yields no inferred answer.** `antwort_folgt` and
+`frage_antwort_folgt` take what follows a question's last `?` line for its answer; on a
+paper whose role is `question_pdf` that is the closing ("Bonn, den 2. April 1952 /
+Ollenhauer und Fraktion" became the answer to question 3 of Drs. 1/3271), so there the
+split only bounds the question and every answer abstains. An answer read under a heading
+stays: Baden-Württemberg's combined papers reach us labelled as questions, and their
+"Zu N." answers are real.
+
 Every rule set is run, the ones that pass their consistency checks are kept, and the
 one that recognised the **most questions** wins; ties break on declaration order.
 Running all of them matters: one family's answer pattern fires on documents whose

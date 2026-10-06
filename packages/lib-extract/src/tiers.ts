@@ -526,6 +526,19 @@ function segmentDocuments(
     // (starts at 1, density, skip) still apply.
     const segmented = segmentQa(whole, ruleSets, only.role === "question_pdf" ? { requireAnswers: false } : {});
     if (segmented.rules !== undefined) {
+      // On a question paper, an answer the family only *inferred* is never one.
+      // `antwort_folgt` takes whatever follows a question's last `?` line for its
+      // answer, and on a question paper that is the closing: Drs. 1/3271 of 1952 was
+      // published with "Bonn, den 2. April 1952 / Ollenhauer und Fraktion" as the
+      // government's answer to question 3. The split still bounds the question; the
+      // rest is dropped. An answer read under a heading ("Zu 1.") stays: it is the
+      // paper saying it holds answers — Baden-Württemberg's combined papers reach us
+      // through the aggregator labelled as questions.
+      const inferred = ruleSets.find((rules) => rules.key === segmented.rules)?.answerFollowsQuestion === true;
+      if (only.role === "question_pdf" && inferred) {
+        const questions = segmented.segments.map(({ answer: _answer, ...segment }) => segment);
+        return collect(questions, segmented.rules, abstentions, "a question paper holds no answers, and none was marked");
+      }
       return collect(segmented.segments, segmented.rules, abstentions);
     }
     // A document that will not read as one text may still be two: Bayern prints the
@@ -632,14 +645,14 @@ function compareNumbers(a: string, b: string): number {
 }
 
 /** Turn segments into pairs, recording an abstention for every hole. */
-function collect(segments: QaSegment[], label: string, abstentions: Abstentions): QaPair[] {
+function collect(segments: QaSegment[], label: string, abstentions: Abstentions, noAnswerReason?: string): QaPair[] {
   const qa: QaPair[] = [];
   segments.forEach((segment, index) => {
     const pair: QaPair = { number: segment.number };
     if (segment.question !== undefined) pair.question = segment.question;
     else abstentions.add(`qa[${index}].question`, `rule set ${label} found no question text`);
     if (segment.answer !== undefined) pair.answer = segment.answer;
-    else abstentions.add(`qa[${index}].answer`, `rule set ${label} found no answer text`);
+    else abstentions.add(`qa[${index}].answer`, noAnswerReason ?? `rule set ${label} found no answer text`);
     qa.push(pair);
   });
   return qa;
