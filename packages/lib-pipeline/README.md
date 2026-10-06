@@ -19,8 +19,17 @@ Everything is re-exported from the package root:
 ```
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
 CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
-syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem
+syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
+planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN
 ```
+
+**A plan instead of a run.** `planSync({ source, store, engine, …window })`
+(`src/plan.ts`) runs discovery only — bypassing the feed's validators, since a 304 says
+nothing about what a window holds — and returns how many Anfragen it found, how many the
+corpus has, how many document URLs a sync would download, and an estimate of their size:
+the average of the source's archived documents once there are `ESTIMATE_MIN_KNOWN`,
+otherwise `Content-Length` from HEAD requests to up to `DRY_RUN_SAMPLE` of them, under
+robots.txt and the source's pacing. It reads the store and writes nothing.
 
 **Several sources in one run.** `syncSources({ sources, engineFor, … })` holds the
 corpus lock once and runs the sources side by side (`src/many.ts`). Each gets its own

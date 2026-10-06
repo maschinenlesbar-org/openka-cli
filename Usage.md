@@ -30,7 +30,25 @@ ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /u
 ka sync --source berlin --source bund --since 2026-01-01  # side by side, one corpus lock
 ka sync --all --since 2026-09-01                        # every source with its own adapter
 ka sync --source bund --wait                            # queue behind a run holding the corpus
+ka sync --source berlin --since 2026-01-01 --dry-run    # how many, and how much disk, before committing to it
 ```
+
+**Look before you sync.** `--dry-run` runs discovery only — no document is downloaded,
+nothing is written, the corpus lock is not taken — and says what a sync over the window
+would do:
+
+```
+berlin 2026-01-01..: 2,471 Anfragen discovered, 0 already in corpus
+documents to fetch: 2,471 (≈ 270 MB at 110 KB avg; HEAD-sampled n=20)
+```
+
+"Documents to fetch" are the document URLs whose bytes the corpus does not hold yet,
+each counted once. The size is the average of what the corpus already holds for that
+source once it holds at least 20 documents (`ka stats --disk` shows it), and otherwise
+the `Content-Length` of a HEAD request to up to 20 of the documents, spread over the
+list — asked under the same robots.txt rules and pacing as a sync. Discovery itself is
+not free: Berlin's is a 50+ MB feed. With `--json` the plan is an object (an array for
+several sources).
 
 **Several sources at once.** `--source` is repeatable: the sources run side by side in
 one process, under one corpus lock, each paced on its own — and a host two of them
@@ -188,6 +206,7 @@ An existing file is not replaced unless `--force` is given.
 ka sources list            # every parliament, its adapter status, its last sync
 ka sources show berlin     # what is specific about one source
 ka stats                   # how much of the corpus is parse-complete
+ka stats --disk            # …and what blobs, records and index take on disk, per source
 ka schema                  # the JSON Schema of a record
 ka reindex                 # rebuild the index from the stored records
 ```

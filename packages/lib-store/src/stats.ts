@@ -1,7 +1,10 @@
 // What is in a corpus, counted from its catalog — the numbers `ka stats` prints.
 
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { CatalogStore, RecordStore } from "./store.js";
 import { catalogGaps } from "./indexer.js";
+import { isPlatformFile, type FileStore } from "./file-store.js";
 
 export interface ParliamentStats {
   records: number;
@@ -57,4 +60,69 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
     uncatalogued: gaps.uncatalogued,
     missing_files: gaps.missingFiles,
   };
+}
+
+/** Files and their total size. */
+export interface DiskUsage {
+  files: number;
+  bytes: number;
+}
+
+export interface CorpusDiskUsage {
+  /** The archived documents, `blobs/`. */
+  blobs: DiskUsage;
+  /** The canonical records, `records/`. */
+  records: DiskUsage;
+  /** The catalog, the inverted index and any embeddings, `index/`. */
+  index: DiskUsage;
+  /**
+   * Per source, the archived documents its syncs brought in — read from its
+   * validators (`SourceState.http_cache`), so a document two sources share counts
+   * for both. Keys sorted. What `ka sync --dry-run` averages for its estimate.
+   */
+  by_source: Record<string, DiskUsage>;
+}
+
+/**
+ * What the corpus takes on disk: every file under `blobs/`, `records/` and `index/`
+ * is listed and its size read (nothing is opened), so on a large corpus this costs
+ * one `stat` per file — which is why `ka stats` only does it when asked (`--disk`).
+ * Platform files (`isPlatformFile`) are not counted.
+ */
+export function corpusDiskUsage(store: FileStore): CorpusDiskUsage {
+  const bySource: Record<string, DiskUsage> = {};
+  for (const key of store.sourceStateKeys()) {
+    const usage: DiskUsage = { files: 0, bytes: 0 };
+    const digests = new Set(Object.values(store.getSourceState(key).http_cache).map((entry) => entry.sha256));
+    for (const digest of digests) {
+      if (digest === undefined || !store.hasBlob(digest)) continue;
+      usage.files++;
+      usage.bytes += statSync(store.blobPath(digest)).size;
+    }
+    bySource[key] = usage;
+  }
+  return {
+    blobs: directoryUsage(join(store.root, "blobs")),
+    records: directoryUsage(join(store.root, "records")),
+    index: directoryUsage(join(store.root, "index")),
+    by_source: bySource,
+  };
+}
+
+function directoryUsage(dir: string): DiskUsage {
+  const usage: DiskUsage = { files: 0, bytes: 0 };
+  if (!existsSync(dir)) return usage;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (isPlatformFile(entry.name)) continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const inner = directoryUsage(path);
+      usage.files += inner.files;
+      usage.bytes += inner.bytes;
+    } else if (entry.isFile()) {
+      usage.files++;
+      usage.bytes += statSync(path).size;
+    }
+  }
+  return usage;
 }

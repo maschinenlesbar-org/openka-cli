@@ -408,6 +408,43 @@ describe("ka", () => {
     }
   });
 
+  it("says what a sync would do with --dry-run, and does none of it", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "pardok-wp19.xml", body: PARDOK },
+      { match: "robots.txt", status: 404 },
+      { match: ".pdf", headers: { "content-length": "110000" } },
+    ]);
+    const harness = cliHarness({ transport });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^berlin \(default window\): \d+ Anfragen discovered, 0 already in corpus$/m);
+      match(harness.stdout(), /^documents to fetch: \d+ \(≈ [\d.]+ (KB|MB) at 110 KB avg; HEAD-sampled n=\d+\)$/m);
+      deepStrictEqual([...new Set(requests.filter((request) => request.url.endsWith(".pdf")).map((request) => request.method))], ["HEAD"]);
+      ok(!existsSync(join(harness.corpus, "records")) && !existsSync(join(harness.corpus, "state")), "nothing is written");
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "--quiet", "sync", "--source", "berlin", "--dry-run", "--json", "--since", "2021-01-01"], harness.deps), EXIT_OK);
+      const plan = JSON.parse(harness.stdout()) as { source: string; window: unknown; documents_to_fetch: number };
+      deepStrictEqual([plan.source, plan.window], ["berlin", { since: "2021-01-01" }]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("adds what the corpus takes on disk to stats with --disk", async () => {
+    const harness = await seeded();
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "stats", "--disk"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^On disk: blobs \d+ KB in 1 file\(s\), records [\d.]+ KB in \d+ file\(s\), index [\d.]+ KB in \d+ file\(s\)$/m);
+      match(harness.stdout(), /^ {2}berlin: 1 document\(s\), \d+ KB \(avg \d+ KB\)$/m);
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "stats", "--json"], harness.deps), EXIT_OK);
+      ok(!("disk" in (JSON.parse(harness.stdout()) as object)), "only when asked: listing every file costs a stat each");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("warns before a sync onto a volume where macOS writes ._ companions", async () => {
     const harness = cliHarness({ transport: berlinTransport().transport });
     try {

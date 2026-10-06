@@ -3,7 +3,7 @@
 import type { Command } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
-import { corpusStats, type CatalogGaps } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, corpusDiskUsage, corpusStats, type CatalogGaps, type DiskUsage } from "@maschinenlesbar.org/openka-lib-store";
 import { LIMIT_MIN, selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
 import {
   DEFAULT_FEED_ID,
@@ -16,6 +16,7 @@ import {
 } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliDeps } from "../io.js";
+import { formatBytes, formatCount } from "../text.js";
 import {
   action,
   addCorpusFilters,
@@ -156,11 +157,13 @@ export function registerOutput(program: Command, deps: CliDeps): void {
   program
     .command("stats")
     .description("what is in this corpus, and how much of it is complete")
+    .option("--disk", "also what it takes on disk: blobs, records and index, and the documents per source (one stat per file)")
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {
         const store = ctx.existingStore();
-        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(store) };
+        const disk = ctx.opts["disk"] === true && store instanceof FileStore ? corpusDiskUsage(store) : undefined;
+        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(store), ...(disk === undefined ? {} : { disk }) };
         if (ctx.opts["json"] === true) {
           printJson(ctx, summary);
           return;
@@ -176,6 +179,14 @@ export function registerOutput(program: Command, deps: CliDeps): void {
         io.out(`${summary.parse_complete} parse-complete (${rate}%), ${summary.needs_review} with abstained fields`);
         for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
           io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
+        }
+        if (disk !== undefined) {
+          const size = (usage: DiskUsage): string => `${formatBytes(usage.bytes)} in ${formatCount(usage.files)} file(s)`;
+          io.out(`On disk: blobs ${size(disk.blobs)}, records ${size(disk.records)}, index ${size(disk.index)}`);
+          for (const [source, usage] of Object.entries(disk.by_source)) {
+            if (usage.files === 0) continue;
+            io.out(`  ${source}: ${formatCount(usage.files)} document(s), ${formatBytes(usage.bytes)} (avg ${formatBytes(usage.bytes / usage.files)})`);
+          }
         }
       }),
     );

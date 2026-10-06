@@ -6,18 +6,20 @@ import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors"
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import {
   SYNC_LIMIT_MIN,
+  planSync,
   syncSources,
   type ProgressEvent,
   type SourceOutcome,
+  type SyncPlan,
   type SyncReport,
 } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { adapterSourceKeys, createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import { FileStore, lockCorpus } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, lockCorpus, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
-import { action, choiceOption, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
-import { sanitizeForTerminal, truncate } from "../text.js";
+import { action, choiceOption, type ActionContext, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
+import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
 
 type Source = ReturnType<typeof createSource>;
@@ -43,6 +45,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
     )
     .option("--all", "every source with an adapter of its own (not the parlamentsspiegel aggregator)")
     .option("--wait", "wait while another run holds the corpus, instead of exiting 3")
+    .option("--dry-run", "discover only: count the Anfragen and estimate the download, fetching no document and writing nothing")
     .option("--since <date>", "only Anfragen dated on or after this date (YYYY-MM-DD)", parseIsoDate)
     .option("--until <date>", "only Anfragen dated on or before this date (YYYY-MM-DD)", parseIsoDate)
     // The window's rules are the library's (normalizeSyncWindow): these parsers
@@ -86,6 +89,10 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
         const several = all || sources.length > 1;
         const store = ctx.store();
+        if (ctx.opts["dryRun"] === true) {
+          await dryRun(ctx, sources, store, keyFor, several);
+          return;
+        }
 
         // The three OCR sub-options describe a model that only runs with --ocr.
         // Accepting them without it ran strict mode and said nothing, so a
@@ -219,6 +226,85 @@ export function registerSync(program: Command, deps: CliDeps): void {
         if (empty.length > 0) throw new OpenKaError(`${empty.join(", ")}: sync produced no records`);
       }),
     );
+}
+
+/**
+ * `ka sync --dry-run`: what each source's window holds and what a sync would
+ * download (`planSync`). No lock, since nothing is written; one source after the
+ * other, on one pacing book like a real run.
+ */
+async function dryRun(
+  ctx: ActionContext,
+  sources: Source[],
+  store: Store,
+  keyFor: (source: Source) => string | undefined,
+  several: boolean,
+): Promise<void> {
+  const io = ctx.deps.io;
+  const pacer = new HostPacer();
+  const results: { source: string; plan?: SyncPlan; error?: unknown }[] = [];
+  for (const source of sources) {
+    if (ctx.global.quiet !== true) io.err(`${source.key}: discovering (no document is downloaded)…`);
+    const apiKey = keyFor(source);
+    try {
+      const plan = await planSync({
+        source,
+        store,
+        engine: ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+        ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
+        ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
+        ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
+        ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
+        ...(apiKey === undefined ? {} : { apiKey }),
+        ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
+        ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+      });
+      results.push({ source: source.key, plan });
+    } catch (error) {
+      if (!several) throw error;
+      results.push({ source: source.key, error });
+    }
+  }
+  if (ctx.opts["json"] === true) {
+    const json = results.map((result) => result.plan ?? { source: result.source, error: errorMessage(result.error) });
+    printJson(ctx, several ? json : json[0]);
+  } else {
+    for (const result of results) {
+      if (result.plan === undefined) continue;
+      const plan = result.plan;
+      io.out(
+        `${plan.source} ${windowLabel(plan.window)}: ${formatCount(plan.discovered)} Anfragen discovered, ` +
+          `${formatCount(plan.in_corpus)} already in corpus`,
+      );
+      io.out(`${several ? `${plan.source}: ` : ""}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
+      for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, 200)}`);
+    }
+  }
+  const failed = results.filter((result) => result.error !== undefined);
+  for (const result of failed.slice(1)) io.err(`error: ${result.source}: ${truncate(errorMessage(result.error), 200)}`);
+  if (failed[0] !== undefined) {
+    io.err(`error: ${failed[0].source} failed:`);
+    throw failed[0].error;
+  }
+}
+
+/** The window a plan covers, in words: "2026-01-01..2026-12-31", "WP 19", "default window". */
+function windowLabel(window: SyncPlan["window"]): string {
+  const parts: string[] = [];
+  if (window.since !== undefined || window.until !== undefined) parts.push(`${window.since ?? ""}..${window.until ?? ""}`);
+  if (window.period !== undefined) parts.push(`WP ${window.period}`);
+  if (window.limit !== undefined) parts.push(`first ${formatCount(window.limit)}`);
+  return parts.length === 0 ? "(default window)" : parts.join(" ");
+}
+
+function fetchLabel(plan: SyncPlan, metadataOnly: boolean): string {
+  if (metadataOnly) return "none (--metadata-only)";
+  const count = formatCount(plan.documents_to_fetch);
+  if (plan.documents_to_fetch === 0) return "none";
+  const estimate = plan.estimate;
+  if (estimate === undefined) return `${count} (size unknown: no document could be measured)`;
+  const basis = estimate.basis === "corpus" ? `average of ${formatCount(estimate.sampled)} in the corpus` : `HEAD-sampled n=${estimate.sampled}`;
+  return `${count} (≈ ${formatBytes(estimate.total_bytes)} at ${formatBytes(estimate.average_bytes)} avg; ${basis})`;
 }
 
 /** commander accumulator for a repeatable `--source`: each a key the registry knows. */

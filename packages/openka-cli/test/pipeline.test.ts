@@ -10,7 +10,10 @@ import {
   SYNC_LIMIT_MIN,
   isoInstant,
   normalizeSyncWindow,
+  DRY_RUN_SAMPLE,
+  ESTIMATE_MIN_KNOWN,
   planLanes,
+  planSync,
   sourceStatus,
   sync,
   syncSources,
@@ -1005,5 +1008,85 @@ describe("several sources in one run (issue #3)", () => {
       onDone: () => controller.abort(),
     });
     deepStrictEqual(outcomes.map((outcome) => outcome.status), ["done", "skipped"]);
+  });
+});
+
+describe("a dry run (issue #6)", () => {
+  /** `count` refs, each with its own document URL, so there is something to sample. */
+  class SpreadSource extends StubSource {
+    constructor(private readonly count: number) {
+      super();
+    }
+    override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+      const one = (await super.discover(options)).refs[0];
+      ok(one !== undefined);
+      const refs = Array.from({ length: this.count }, (_, i) => ({
+        ...one,
+        key: `V-${i + 1}`,
+        reference: `19/${10006 + i}`,
+        // Two roles, one URL: the document is fetched — and counted — once.
+        documents: [
+          { role: "question_pdf" as const, url: `https://pardok.example.invalid/S19-${10006 + i}.pdf`, urlStable: true },
+          { role: "answer_pdf" as const, url: `https://pardok.example.invalid/S19-${10006 + i}.pdf`, urlStable: true },
+        ],
+      }));
+      return { warnings: [], refs };
+    }
+  }
+
+  it("counts, samples with HEAD and estimates, without fetching a document or writing anything", async () => {
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", status: 404 },
+      { match: ".pdf", headers: { "content-length": "110000" } },
+    ]);
+    const plan = await planSync({ source: new SpreadSource(50), store, engine: testEngine(transport), since: "2021-01-01" });
+    deepStrictEqual(plan, {
+      source: "berlin",
+      window: { since: "2021-01-01" },
+      discovered: 50,
+      in_corpus: 0,
+      documents_to_fetch: 50,
+      estimate: { average_bytes: 110000, total_bytes: 5_500_000, basis: "head-sample", sampled: DRY_RUN_SAMPLE },
+      warnings: [],
+    });
+    deepStrictEqual(new Set(requests.filter((request) => request.url.endsWith(".pdf")).map((request) => request.method)), new Set(["HEAD"]));
+    strictEqual(store.catalog().length, 0);
+    deepStrictEqual(store.getSourceState("berlin"), { source: "berlin", http_cache: {} });
+  });
+
+  it("leaves out what the corpus holds, and estimates from the corpus once it holds enough", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-plan-"));
+    try {
+      const store = new FileStore(root);
+      const { transport, requests } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"v1"' } }]);
+      await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+      // Archived documents of this source, 1000 bytes each, under its validators.
+      const cache: Record<string, { sha256: string }> = { ...store.getSourceState("berlin").http_cache } as never;
+      for (let i = 0; i < ESTIMATE_MIN_KNOWN; i++) cache[`https://old.example.invalid/${i}.pdf`] = { sha256: store.putBlob(Buffer.alloc(1000, i)) };
+      store.putSourceState({ ...store.getSourceState("berlin"), http_cache: cache });
+      requests.length = 0;
+
+      const plan = await planSync({ source: new StubSource(), store, engine: testEngine(transport) });
+      strictEqual(plan.in_corpus, 1);
+      strictEqual(plan.documents_to_fetch, 0, "the stored record's document is held under a validator");
+      strictEqual(plan.estimate, undefined);
+
+      const more = await planSync({ source: new SpreadSource(3), store, engine: testEngine(transport) });
+      strictEqual(more.in_corpus, 1);
+      strictEqual(more.documents_to_fetch, 3);
+      strictEqual(more.estimate?.basis, "corpus");
+      ok((more.estimate?.sampled ?? 0) >= ESTIMATE_MIN_KNOWN);
+      ok(!requests.some((request) => request.method === "HEAD"), "no HEAD when the corpus can answer");
+      ok(!requests.some((request) => request.url.endsWith(".pdf")), "and no document");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a window sync() would refuse, before asking anything", async () => {
+    const { transport, requests } = scriptedTransport([]);
+    await rejects(planSync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(transport), since: "2024-06-01", until: "2024-01-01" }), OpenKaValidationError);
+    deepStrictEqual(requests, []);
   });
 });
