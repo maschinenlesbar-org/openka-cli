@@ -56,7 +56,9 @@ command `npm run publish:npm` runs, too. It passes no `--provenance`: under npm
 Trusted Publishing `publish.yml` gets the provenance attestation without the flag,
 and the flag only made a local publish fail. Then set the trusted publisher on
 npmjs.com (this repository, workflow `publish.yml`), and later versions go tag →
-`release.yml` → dispatch `publish.yml`, like every other repository in the workspace.
+`release.yml` → dispatch `publish.yml` from the tag
+(`gh workflow run publish.yml --ref vX.Y.Z`, which takes the version from the tag),
+like every other repository in the workspace.
 
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
