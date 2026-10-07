@@ -137,6 +137,19 @@ describe("Thüringen source", () => {
     }
   });
 
+  it("reports a listing none of whose hits it can read as unreadable, so the aggregator is asked", async () => {
+    // As in Mecklenburg-Vorpommern: rows that all lack what a record needs (a number
+    // sent as a JSON number) ended as a successful, empty sync with no fallback.
+    const envelope = JSON.parse(LISTING) as { data: string };
+    const inner = JSON.parse(envelope.data) as { docs: Record<string, unknown>[] };
+    const body = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, docs: inner.docs.map((doc) => ({ ...doc, number: Number(doc["number"]) })) }) });
+    const { transport: scripted, requests } = scriptedTransport([{ match: "Fulltext/Search", body }]);
+    const result = await new ThueringenParldokSource().discover({ engine: testEngine(scripted), state: { source: "thueringen", http_cache: {} } });
+    deepStrictEqual(result.refs, []);
+    match(result.unreadable ?? "", /none of which carries a number, id, link and Wahlperiode/);
+    strictEqual(requests.filter((request) => request.url.includes("Process/Document")).length, 0);
+  });
+
   it("attaches the answer Drucksache as a combined document", async () => {
     const { transport: scripted } = transport();
     const result = await new ThueringenParldokSource().discover({

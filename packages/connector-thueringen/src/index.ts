@@ -95,10 +95,27 @@ export class ThueringenParldokSource implements Source {
     }
     if (reading.kind === "absent") return { refs: [], warnings };
 
-    const refs: DocRef[] = [];
+    // Read every hit first: hits that all lack what a record needs are not an empty
+    // Land but rows in a changed shape, and counting them as a found page with
+    // nothing on it ended a sync as a successful empty one, with no fallback.
+    const readable: { ref: DocRef; doc: Record<string, unknown>; queryId: number }[] = [];
     for (const { doc, queryId } of reading.value) {
-      const ref = toRef(doc, warnings);
-      if (ref === undefined) continue;
+      const ref = toRef(doc, []);
+      if (ref !== undefined) readable.push({ ref, doc, queryId });
+    }
+    const hits = reading.value.length;
+    if (readable.length === 0) {
+      return {
+        refs: [],
+        warnings,
+        unreadable: `Parldok answered ${hits} hit(s), none of which carries a number, id, link and Wahlperiode in the form this adapter reads`,
+      };
+    }
+    const skipped = hits - readable.length;
+    if (skipped > 0) warnings.push(`Parldok returned ${skipped} of ${hits} hit(s) without a number, id, link or Wahlperiode; skipped`);
+
+    const refs: DocRef[] = [];
+    for (const { ref, doc, queryId } of readable) {
       const answer = await this.findAnswer(doc, queryId, ref.reference, options, warnings);
       if (answer === undefined) {
         refs.push(ref);
