@@ -17,7 +17,7 @@
     "@maschinenlesbar.org/openka-lib-text": "0.0.1"
   },
   "scripts": {
-    "test": "node --test --test-timeout=5000 dist/test/*.test.js"
+    "test": "node --test $(node -p \"+process.versions.node.split('.')[0] >= 24 ? '--test-timeout=5000' : ''\") dist/test/*.test.js"
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-connector-berlin": "0.0.1",
