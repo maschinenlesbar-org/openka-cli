@@ -25,6 +25,7 @@
 import { parseGermanDate } from "@maschinenlesbar.org/openka-lib-extract";
 import {
   FallbackSource,
+  textOf,
   withDiscoveryState,
   type DiscoverOptions,
   type DiscoverResult,
@@ -202,12 +203,15 @@ export function toRef(doc: Record<string, unknown>, warnings: string[]): DocRef 
     warnings.push(`Parldok returned a hit without a number, id or Wahlperiode; skipped`);
     return undefined;
   }
-  const { askers, ministry } = parseAuthors(typeof doc["authorhtml"] === "string" ? doc["authorhtml"] : "");
+  // Both fields are scraped text like any other and are cleaned the same way
+  // (`textOf`: tags, entities, control characters, runs of whitespace). A title with
+  // Word's line break, U+000B, used to fail the whole record.
+  const { askers, ministry } = parseAuthors(typeof doc["authorhtml"] === "string" ? textOf(doc["authorhtml"]) : "");
   const ref: DocRef = {
     key: `parldok:${id}`,
     reference: `${period}/${number}`,
     legislative_period: period,
-    title: typeof doc["title"] === "string" ? doc["title"] : "",
+    title: typeof doc["title"] === "string" ? textOf(doc["title"]) : "",
     documentType: "kleine_anfrage",
     askers,
     answered_by: ministry === undefined ? {} : { ministry },

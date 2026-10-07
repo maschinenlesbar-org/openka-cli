@@ -32,7 +32,10 @@ ländliche Räume und Umwelt)"` — the members who asked *and* the government t
 answered, and three of those four commas belong to the ministry. `splitAuthors`
 splits only on commas outside parentheses, and `parseAuthors` keeps the government
 out of `askers`. Reading it as a list of people is exactly what produced an invented
-political party out of half a ministry's name in Schleswig-Holstein.
+political party out of half a ministry's name in Schleswig-Holstein. Both `authorhtml` and
+`title` are cleaned like any scraped field first (`textOf`: tags, entities, control
+characters, runs of whitespace) — a title with Word's line break, U+000B, used to fail
+the whole record.
 
 **robots.txt**: `https://www.dokumentation.landtag-mv.de/robots.txt` is a 404, so
 nothing here is disallowed. The requests this makes are the ones the site's own

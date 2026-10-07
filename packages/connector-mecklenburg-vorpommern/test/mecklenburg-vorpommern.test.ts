@@ -162,6 +162,23 @@ describe("Mecklenburg-Vorpommern source", () => {
     ok(result.unreadable?.includes("does not know"));
   });
 
+  it("cleans a title and author field the way every scraped field is cleaned", () => {
+    // A title with Word's line break (U+000B) used to fail the whole record
+    // ("Invalid record: title: contains the control character U+000B"), and markup in
+    // a field called `authorhtml` would have ended up in names and parties.
+    const ref = toRef(
+      {
+        id: 1, lp: 8, number: "6809", date: "08.09.2026",
+        title: "Klimaschutzprojekt &bdquo;Serrahn-S&uuml;d&ldquo;\u000bund\u0085mehr",
+        authorhtml: "<a href=\"/x\">Martin Schmidt</a> (AfD), Landesregierung (Ministerium f&uuml;r Inneres und Bau)",
+      },
+      [],
+    );
+    strictEqual(ref?.title, "Klimaschutzprojekt „Serrahn-Süd“ und mehr");
+    deepStrictEqual(ref?.askers, [{ name: "Martin Schmidt", party: "AfD" }]);
+    deepStrictEqual(ref?.answered_by, { ministry: "Ministerium für Inneres und Bau" });
+  });
+
   it("skips a hit with no identity rather than inventing one", () => {
     const warnings: string[] = [];
     strictEqual(toRef({ title: "Ohne Nummer" }, warnings), undefined);
