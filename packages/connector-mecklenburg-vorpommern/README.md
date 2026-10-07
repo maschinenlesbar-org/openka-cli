@@ -24,7 +24,9 @@ is the primary:
 
 `createSource()` returns the Parldok source with `ParlamentsspiegelSource` behind it.
 The aggregator is reached only if the API throws or answers in a shape the client
-does not recognise — never because a window came back empty.
+does not recognise — never because a window came back empty. Its links to the Landtag's documents are plain
+`http://`; they are fetched over https instead (`fromAggregator`) — the same address
+answers there, with a redirect to `/parldok/dokument/<id>`.
 
 **The author field needs care.** `authorhtml` reads
 `"Beate Schlupp (CDU), Landesregierung (Ministerium für Klimaschutz, Landwirtschaft,
@@ -54,7 +56,7 @@ search page makes.
 Everything is re-exported from the package root:
 
 ```
-PARLIAMENT, LABEL, PARLDOK, TYPE_KLEINE_ANFRAGE_UND_ANTWORT, MV_LATEST_PERIOD, splitAuthors, ParsedAuthors, parseAuthors, MecklenburgVorpommernParldokSource, checkRecord, toRef, createSource, ENTRY
+PARLIAMENT, LABEL, PARLDOK, TYPE_KLEINE_ANFRAGE_UND_ANTWORT, MV_LATEST_PERIOD, splitAuthors, ParsedAuthors, parseAuthors, MecklenburgVorpommernParldokSource, checkRecord, toRef, fromAggregator, createSource, ENTRY
 ```
 
 ## Depends on

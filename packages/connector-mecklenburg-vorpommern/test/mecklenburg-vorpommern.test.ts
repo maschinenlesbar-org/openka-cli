@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import {
   MecklenburgVorpommernParldokSource,
   checkRecord,
+  fromAggregator,
   PARLDOK,
   TYPE_KLEINE_ANFRAGE_UND_ANTWORT,
   createSource,
@@ -329,5 +330,34 @@ describe("whether a document is the paper its row names", () => {
   it("is what createSource checks, through the fallback too", () => {
     const source = createSource();
     strictEqual(source.checkRecord?.(row as never, head("LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6344\n") as never), "the document is Drucksache 8/6344, not 8/6809");
+  });
+});
+
+describe("refs the Parlamentsspiegel found", () => {
+  const aggregatorRef = {
+    key: "MEVO_V1_D2",
+    reference: "08/6344",
+    legislative_period: 8,
+    title: "Leistungskursangebote an Gymnasien",
+    documentType: "kleine_anfrage" as const,
+    askers: [],
+    answered_by: {},
+    dates: {},
+    documents: [
+      { role: "combined_pdf" as const, url: "http://www.dokumentation.landtag-mv.de/Parldok/dokument/08/art/Drs/num/6344/jahr/2026/seite/1", urlStable: true },
+    ],
+  };
+
+  it("fetch the Landtag's documents over https, not as the aggregator links them", () => {
+    // The aggregator links http://; the same address answers over https (with a
+    // redirect to /parldok/dokument/<id>), and the Parldok path uses https already.
+    deepStrictEqual(fromAggregator(aggregatorRef).documents.map((document) => document.url), [
+      "https://www.dokumentation.landtag-mv.de/Parldok/dokument/08/art/Drs/num/6344/jahr/2026/seite/1",
+    ]);
+  });
+
+  it("leave a link to another host alone", () => {
+    const other = { ...aggregatorRef, documents: [{ ...aggregatorRef.documents[0]!, url: "http://example.org/x.pdf" }] };
+    strictEqual(fromAggregator(other).documents[0]?.url, "http://example.org/x.pdf");
   });
 });

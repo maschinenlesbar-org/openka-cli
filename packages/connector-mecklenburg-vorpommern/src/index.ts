@@ -317,12 +317,43 @@ function dateOf(doc: Record<string, unknown>): { answered?: string } {
   return iso === undefined ? {} : { answered: iso };
 }
 
+/** The Landtag's document host, as the Parlamentsspiegel links it: plain http. */
+const AGGREGATOR_LINK = /^http:\/\/www\.dokumentation\.landtag-mv\.de\//;
+
+/**
+ * A ref the Parlamentsspiegel found, made to fetch like one Parldok found. The
+ * aggregator links the Landtag's documents over plain http, and the bytes archived as
+ * evidence were fetched in cleartext; the same address answers over https (with a
+ * redirect to `/parldok/dokument/<id>`, checked 2026-10-07), as the Parldok path does.
+ */
+export function fromAggregator(ref: DocRef): DocRef {
+  return {
+    ...ref,
+    documents: ref.documents.map((document) => ({
+      ...document,
+      url: document.url.replace(AGGREGATOR_LINK, "https://www.dokumentation.landtag-mv.de/"),
+    })),
+  };
+}
+
+/** The Parlamentsspiegel for MV, with its refs made to fetch like Parldok's (`fromAggregator`). */
+class MecklenburgVorpommernAggregatorSource extends ParlamentsspiegelSource {
+  constructor() {
+    super(PARLIAMENT);
+  }
+
+  override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    const result = await super.discover(options);
+    return { ...result, refs: result.refs.map(fromAggregator) };
+  }
+}
+
 /**
  * What `createSource()` returns: the Landtag's own documentation, with the
  * Parlamentsspiegel behind it for the days the API is down or has moved.
  */
 export function createSource(): Source {
-  return new FallbackSource(new MecklenburgVorpommernParldokSource(), new ParlamentsspiegelSource(PARLIAMENT));
+  return new FallbackSource(new MecklenburgVorpommernParldokSource(), new MecklenburgVorpommernAggregatorSource());
 }
 
 /** How this connector announces itself to the registry and `ka sources list`. */
