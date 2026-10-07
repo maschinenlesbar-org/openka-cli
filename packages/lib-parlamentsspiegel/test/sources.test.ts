@@ -1,7 +1,7 @@
 import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { blocksWithClass } from "@maschinenlesbar.org/openka-lib-source";
-import { FIRST_PAGE, ParlamentsspiegelSource, documentRole, parseResultCount, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
+import { FIRST_PAGE, MAX_PAGES, ParlamentsspiegelSource, documentRole, parseResultCount, parseVorgangBlock, toGermanDate, ParlamentsspiegelAllLaender, undecorated } from "../src/index.js";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MemoryStore, scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
@@ -302,5 +302,29 @@ describe("paging the portal", () => {
     strictEqual(FIRST_PAGE, 0);
     ok(result.refs.length > 0, "the first page's results are found");
     deepStrictEqual(requests.map((request) => new URL(request.url).searchParams.get("page")), ["0", "1"]);
+    ok(!result.warnings.some((warning) => warning.includes("discovery stopped after")));
+  });
+
+  it("says so when it stops at the page cap with more left", async () => {
+    // Sachsen-Anhalt holds ~20,000 Kleine Anfragen; one walk reads 5,000 and used to
+    // report them as the whole window.
+    const sa = readFixtureText("payloads", "parlamentsspiegel-sachsen-anhalt.html");
+    const first = blocksWithClass(sa, "ps-vorgang", /<hr\s*\/?>/)[0] as string;
+    const row = (n: number): string =>
+      first.replace(/SACA_V\d+/g, `SACA_V${n}`).replace(/_D\d+/g, `_D${n}`).replace(/0?8\/4004/g, `08/${n}`);
+    let requests = 0;
+    const transport = async (request: { url: string }): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> => {
+      requests++;
+      const page = Number(new URL(request.url).searchParams.get("page"));
+      const rows = Array.from({ length: 50 }, (_, i) => row(100000 + page * 50 + i)).join("\n");
+      return { status: 200, headers: {}, body: Buffer.from(`<html><body>${rows}</body></html>`) };
+    };
+    const result = await new ParlamentsspiegelSource("sachsen-anhalt").discover({
+      engine: testEngine(transport),
+      state: { source: "sachsen-anhalt", http_cache: {} },
+    });
+    strictEqual(requests, MAX_PAGES);
+    strictEqual(result.refs.length, MAX_PAGES * 50);
+    ok(result.warnings.some((warning) => warning.includes(`discovery stopped after ${MAX_PAGES} pages`) && warning.includes("--since/--until")));
   });
 });

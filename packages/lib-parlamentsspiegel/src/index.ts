@@ -44,8 +44,12 @@ export const PARLAMENTSSPIEGEL_BASE = "https://www.parlamentsspiegel.de";
 /** Results per request. The form offers 5–100; 50 keeps the page count sane. */
 const PAGE_SIZE = 50;
 
-/** Never walk more pages than this in one run, however large the window is. */
-const MAX_PAGES = 100;
+/**
+ * Never walk more pages than this in one run, however large the window is. Hitting
+ * it is said, not hidden: Sachsen-Anhalt alone holds ~20,000 Kleine Anfragen (live
+ * count, 2026-10-07), four times what one walk reads, newest first.
+ */
+export const MAX_PAGES = 100;
 
 /**
  * The portal's first result page. `page` counts from 0: `page=1` is the *second*
@@ -77,7 +81,10 @@ only?: ParliamentKey,
   // their rules. Left out, and counted for the warning.
   const foreign = new Map<string, number>();
 
+  // Set when the last page walked was full of new rows: the portal has more.
+  let moreLeft = false;
   for (let page = FIRST_PAGE; page < FIRST_PAGE + MAX_PAGES; page++) {
+    moreLeft = false;
     // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
     // but that is a full-text constraint on top of the structured filters, and it
     // silently drops entire Länder whose documents do not use the word
@@ -129,6 +136,13 @@ only?: ParliamentKey,
     // stopping here is what keeps a changed parameter name from looping forever.
     if (added === 0) break;
     if (options.limit !== undefined && refs.length >= options.limit) break;
+    moreLeft = blocks.length >= PAGE_SIZE;
+  }
+  if (moreLeft) {
+    warnings.push(
+      `discovery stopped after ${MAX_PAGES} pages (${MAX_PAGES * PAGE_SIZE} results, newest first) and the portal ` +
+        "has more: the older Anfragen of this window were not discovered — sync it in parts with --since/--until",
+    );
   }
 
   if (foreign.size > 0) {
