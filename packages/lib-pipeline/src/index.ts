@@ -389,7 +389,7 @@ async function syncRef(
     }
   } else {
     for (const wanted of ref.documents) {
-      const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run);
+      const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run, wanted.role !== "metadata");
       if ("gap" in fetched) {
         // The upstream no longer hands this document out — a 404, or a robots.txt
         // that now disallows it. A record that already holds it must not be
@@ -399,7 +399,7 @@ async function syncRef(
         // they are read again, dated when they were actually retrieved.
         const archived = existing?.source_documents.find((document) => document.url === wanted.url);
         if (archived?.sha256 === undefined) {
-          if (fetched.gap === "404") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}`);
+          if (fetched.gap !== "robots") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}`);
           continue;
         }
         if (!store.hasBlob(archived.sha256)) {
@@ -570,10 +570,21 @@ export interface FetchedBytes {
 }
 
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
-export type FetchGap = { gap: "404" | "robots" };
+export type FetchGap = { gap: "404" | "robots" | "not-pdf" };
 
 function gapText(gap: FetchGap["gap"]): string {
+  if (gap === "not-pdf") return "answered something that is not a PDF; nothing was archived";
   return gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
+}
+
+/**
+ * Whether bytes are a PDF: the header `%PDF-` within the first 1024 bytes, where the
+ * format allows it to sit. An HTML error page served with 200 under a document URL was
+ * archived as the paper and stored as a record with every content field abstained,
+ * reported as stored with no word.
+ */
+function looksLikePdf(bytes: Buffer): boolean {
+  return bytes.subarray(0, 1024).includes("%PDF-");
 }
 
 /**
@@ -595,8 +606,9 @@ async function fetchDocument(
   now: () => Date,
   httpCache: SourceState["http_cache"],
   run: RunContext,
+  expectPdf: boolean,
 ): Promise<FetchedBytes | FetchGap> {
-  const { result, again } = await run.fetched.remember(url, () => fetchDocumentOnce(engine, store, url, now, httpCache, run));
+  const { result, again } = await run.fetched.remember(url, () => fetchDocumentOnce(engine, store, url, now, httpCache, run, expectPdf));
   return again && !("gap" in result) ? { ...result, fromCache: true } : result;
 }
 
@@ -607,6 +619,7 @@ async function fetchDocumentOnce(
   now: () => Date,
   httpCache: SourceState["http_cache"],
   run: RunContext,
+  expectPdf: boolean,
 ): Promise<FetchedBytes | FetchGap> {
   // CONCEPT.md §7, at the one place every document URL passes through. A blob
   // already archived under a validator is still re-asked: the rule is about
@@ -643,6 +656,7 @@ async function fetchDocumentOnce(
   }
 
   if (response.body.length === 0) throw new OpenKaError(`Empty document at ${url}`);
+  if (expectPdf && !looksLikePdf(response.body)) return { gap: "not-pdf" };
   const digest = store.putBlob(response.body);
   const entry: { etag?: string; last_modified?: string; sha256?: string } = { sha256: digest };
   if (response.etag !== undefined) entry.etag = response.etag;

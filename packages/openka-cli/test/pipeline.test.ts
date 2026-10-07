@@ -284,20 +284,24 @@ describe("sync pipeline", () => {
     // First run: robots.txt allows everything and the PDF is served. Later runs:
     // the PDF answers 404, or robots.txt disallows it.
     const changingUpstream = () => {
-      const upstream = { mode: "ok" as "ok" | "404" | "robots" };
+      const upstream = { mode: "ok" as "ok" | "404" | "robots" | "html" };
       const engine = testEngine(async (request) => {
         if (request.url.endsWith("/robots.txt")) {
           const body = upstream.mode === "robots" ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n";
           return { status: 200, headers: {}, body: Buffer.from(body) };
         }
         if (upstream.mode === "404") return { status: 404, headers: {}, body: Buffer.from("gone") };
+        if (upstream.mode === "html") {
+          return { status: 200, headers: { "content-type": "text/html" }, body: Buffer.from("<html><body>Dokument nicht gefunden</body></html>") };
+        }
         return { status: 200, headers: {}, body: PDF };
       });
       return { upstream, engine };
     };
 
-    for (const mode of ["404", "robots"] as const) {
-      it(`keeps the stored record when the document now ${mode === "404" ? "answers 404" : "is robots-disallowed"}`, async () => {
+    for (const mode of ["404", "robots", "html"] as const) {
+      const now = { "404": "answers 404", robots: "is robots-disallowed", html: "answers an HTML page" }[mode];
+      it(`keeps the stored record when the document now ${now}`, async () => {
         // It used to be re-extracted from nothing and written over the complete
         // one: 6 Q/A pairs became 0, reported as stored, with no error.
         const store = new MemoryStore();
@@ -350,6 +354,23 @@ describe("sync pipeline", () => {
       strictEqual(report.failed, 1);
       match(report.errors[0] ?? "", /now answers 404, and the archived copy .* is missing; the stored record was left as it was/);
       deepStrictEqual(store.getRecordBytes("berlin-19-10006"), before);
+    });
+
+    it("archives nothing and says so when a PDF's URL answers an HTML page", async () => {
+      // An HTML page with 200 was archived as the combined_pdf and stored as a record
+      // with every content field abstained — "1/1 · 0 failed", no warning.
+      const store = new MemoryStore();
+      const { upstream, engine } = changingUpstream();
+      upstream.mode = "html";
+      const report = await sync({ source: new StubSource(), store, engine });
+      strictEqual(report.stored, 1);
+      ok(
+        report.warnings.some((warning) => warning === `19/10006: ${PDF_URL} answered something that is not a PDF; nothing was archived`),
+        JSON.stringify(report.warnings),
+      );
+      const record = store.getRecord("berlin-19-10006");
+      deepStrictEqual(record?.source_documents, []);
+      ok(record?.extraction.abstained_fields.includes("full_text"));
     });
 
     it("names a 404 for a document it never had", async () => {

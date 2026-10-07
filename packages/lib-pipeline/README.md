@@ -103,8 +103,9 @@ seconds for the rest of the run.
 
 ## A document that goes away
 
-A document that now answers 404, or that robots.txt now disallows, is a gap only for
-a record that never had it. A record that already holds it keeps it: the pipeline
+A document that now answers 404, that robots.txt now disallows, or that answers with
+something that is not a PDF (no `%PDF-` header — an HTML error page served with 200) is
+a gap only for a record that never had it; the HTML is not archived as the paper. A record that already holds it keeps it: the pipeline
 reads the archived bytes again (dated when they were actually retrieved), so an
 unchanged record stays unchanged and the report carries a warning naming the URL. If
 the archived bytes are missing too, the ref fails with an error and the stored record
