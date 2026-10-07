@@ -56,6 +56,13 @@ whole-site block, and that is the reading taken here. But two contradictory grou
 for the same agent look far more like an editing accident than a policy — which
 makes this one worth asking the Landtag about rather than reinterpreting.
 
+Deleting the second group would not open the documents, though: they live under
+`/files/` (the Parlamentsspiegel links them as `/files/drs/wp8/dkl_anfr/k4012ckl.pdf`),
+which the *first* group already disallows. That is why the gate asks robots.txt about
+a document path (`DOCUMENT_PATH`, `/files/drs/`) and not about the search servlet:
+asking about a path no document is served from let discovery run under a file that
+blocked every document, and stored records with no document at all.
+
 ## Public surface
 
 Everything is re-exported from the package root:

@@ -43,9 +43,19 @@ describe("sachsen-anhalt source", () => {
     ok(result.warnings[0]?.includes("the operator's"));
   });
 
+  it("is still blocked by the first group alone: it disallows the documents' path", async () => {
+    // The real file's first `User-agent: *` group is `Disallow: /files/`. Deleting the
+    // second group — the edit the README expects — would not open the documents.
+    const { transport, requests } = landtag("User-agent: *\nDisallow: /files/\n");
+    const result = await new SachsenAnhaltSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(result.refs, []);
+    ok(result.warnings[0]?.includes("/files/drs/"));
+    ok(!requests.some((request) => request.url.includes("/suche")));
+  });
+
   it("needs no override once the Landtag lifts the rule", async () => {
     // robots.txt is read at run time, not baked in, so this corrects itself.
-    const { transport } = landtag("User-agent: *\nDisallow: /files/\n");
+    const { transport } = landtag("User-agent: *\nDisallow: /intern/\n");
     const result = await new SachsenAnhaltSource().discover({ engine: testEngine(transport), state });
     ok(result.refs.length >= 1);
     ok(!result.warnings.some((warning) => warning.includes("--ignore-robots")));
@@ -81,7 +91,7 @@ describe("sachsen-anhalt source", () => {
 
   it("asks the document server, not the aggregator, for permission", () => {
     ok(DOCUMENT_ORIGIN.startsWith("https://"));
-    ok(DOCUMENT_PATH.startsWith("/"));
+    ok(DOCUMENT_PATH.startsWith("/files/"));
     ok(!DOCUMENT_ORIGIN.includes("parlamentsspiegel"));
   });
 });

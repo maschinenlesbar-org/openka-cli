@@ -47,8 +47,15 @@ export const LABEL = "Landtag von Sachsen-Anhalt";
 /** The server the Drucksachen live on, and which disallows every client. */
 export const DOCUMENT_ORIGIN = "https://padoka.landtag.sachsen-anhalt.de";
 
-/** A path under the document server, for the robots.txt question. */
-export const DOCUMENT_PATH = "/starweb/PADOKA/servlet.starweb";
+/**
+ * Where the Drucksachen actually are, for the robots.txt question: the
+ * Parlamentsspiegel links them as `/files/drs/wp8/dkl_anfr/k4012ckl.pdf` (seen live
+ * 2026-10-07). The gate used to ask about `/starweb/PADOKA/servlet.starweb`, which
+ * serves no document — so a file disallowing only `/files/` let discovery run, the
+ * pipeline then refused every document, and records with no document were stored:
+ * the metadata-only corpus this connector exists to avoid.
+ */
+export const DOCUMENT_PATH = "/files/drs/";
 
 /**
  * One request every four seconds. The default is 500 ms; a server that has asked
