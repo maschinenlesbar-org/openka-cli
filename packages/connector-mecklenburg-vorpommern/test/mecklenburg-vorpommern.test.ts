@@ -356,6 +356,13 @@ describe("refs the Parlamentsspiegel found", () => {
     ]);
   });
 
+  it("carry the reference in Parldok's form, so a record does not flip between 8/6344 and 08/6344", () => {
+    // The same paper was `8/6344` via Parldok and `08/6344` via the aggregator, and
+    // every switch between the two paths rewrote the stored record.
+    strictEqual(fromAggregator(aggregatorRef).reference, "8/6344");
+    strictEqual(fromAggregator({ ...aggregatorRef, reference: "8/6344" }).reference, "8/6344");
+  });
+
   it("leave a link to another host alone", () => {
     const other = { ...aggregatorRef, documents: [{ ...aggregatorRef.documents[0]!, url: "http://example.org/x.pdf" }] };
     strictEqual(fromAggregator(other).documents[0]?.url, "http://example.org/x.pdf");

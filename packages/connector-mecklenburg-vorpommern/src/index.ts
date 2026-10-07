@@ -325,10 +325,13 @@ const AGGREGATOR_LINK = /^http:\/\/www\.dokumentation\.landtag-mv\.de\//;
  * aggregator links the Landtag's documents over plain http, and the bytes archived as
  * evidence were fetched in cleartext; the same address answers over https (with a
  * redirect to `/parldok/dokument/<id>`, checked 2026-10-07), as the Parldok path does.
+ * Its reference is zero-padded (`08/6344`) where Parldok's is not (`8/6344`); the record
+ * id is the same, but every switch between the two paths rewrote the stored reference.
  */
 export function fromAggregator(ref: DocRef): DocRef {
   return {
     ...ref,
+    reference: ref.reference.replace(/^0+(?=\d)/, ""),
     documents: ref.documents.map((document) => ({
       ...document,
       url: document.url.replace(AGGREGATOR_LINK, "https://www.dokumentation.landtag-mv.de/"),
