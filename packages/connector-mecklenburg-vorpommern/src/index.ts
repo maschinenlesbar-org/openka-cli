@@ -87,8 +87,12 @@ export function splitAuthors(value: string): string[] {
   return parts.filter((part) => part !== "");
 }
 
-/** An entry naming the government rather than a member. */
-const GOVERNMENT = /^(Landesregierung|Ministerium|Ministerin|Minister|Staatskanzlei|Präsident(in)?)\b/;
+/**
+ * An entry naming the government rather than a member. "Ministerpräsident(in)" comes
+ * before "Minister": `Minister\b` does not match inside the longer word, and the head
+ * of government was read as a second person who asked.
+ */
+const GOVERNMENT = /^(Landesregierung|Ministerium|Ministerpräsident(in)?|Ministerin|Minister|Staatskanzlei|Präsident(in)?)\b/;
 
 export interface ParsedAuthors {
   askers: Asker[];

@@ -50,6 +50,16 @@ describe("MV author fields", () => {
   it("falls back to the government itself when no ressort is named", () => {
     strictEqual(parseAuthors("A B (CDU), Landesregierung").ministry, "Landesregierung");
   });
+
+  it("reads the Ministerpräsident(in) as the answering body, never as an asker", () => {
+    // "Minister\b" does not match inside "Ministerpräsidentin", so the head of
+    // government was stored as a second person who asked.
+    for (const office of ["Ministerpräsidentin", "Ministerpräsident"]) {
+      const parsed = parseAuthors(`Martin Schmidt (AfD), ${office}`);
+      deepStrictEqual(parsed.askers, [{ name: "Martin Schmidt", party: "AfD" }], office);
+      strictEqual(parsed.ministry, office);
+    }
+  });
 });
 
 describe("Mecklenburg-Vorpommern source", () => {
