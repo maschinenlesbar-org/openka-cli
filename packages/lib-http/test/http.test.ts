@@ -131,6 +131,19 @@ describe("fetch engine", () => {
     strictEqual(calls, 3);
   });
 
+  it("takes fewer retries for one request when asked, never more", async () => {
+    let calls = 0;
+    const engine = testEngine(async () => {
+      calls++;
+      return { status: 503, headers: {}, body: Buffer.alloc(0) };
+    }, { maxRetries: 2 });
+    await rejects(() => engine.get("https://example.invalid/robots.txt", { maxRetries: 1 }), OpenKaApiError);
+    strictEqual(calls, 2);
+    calls = 0;
+    await rejects(() => engine.get("https://example.invalid/robots.txt", { maxRetries: 9 }), OpenKaApiError);
+    strictEqual(calls, 3);
+  });
+
   it("does not retry what would fail the same way again, and retries a timeout once", async () => {
     // Every thrown error used to be retried maxRetries (3) times: an over-cap body
     // was downloaded four times, a hanging host cost four timeouts plus backoff.

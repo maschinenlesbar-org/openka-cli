@@ -83,6 +83,13 @@ export interface DiscoverOptions {
    */
   ignoreRobots?: boolean;
   /**
+   * The run's robots.txt policy, when the caller has one. A connector that gates its
+   * discovery on a document server (`robotsGate`) asks this one, so the pipeline's
+   * later per-document checks reuse the same reading of the file: one robots.txt
+   * request per host per run, and no chance of two different answers in one run.
+   */
+  robots?: RobotsPolicy;
+  /**
    * Ignore cached validators and re-read the upstream feed. Without this a source
    * that answers 304 would report "nothing changed" even when the caller asked for
    * a full re-extraction, which makes `ka sync --force` silently do nothing.
@@ -344,6 +351,9 @@ export interface RobotsVerdict {
  */
 export const ROBOTS_OVERRIDE_INTERVAL_MS = 4000;
 
+/** Retries for a robots.txt request: one, against the engine's usual three. */
+export const ROBOTS_MAX_RETRIES = 1;
+
 /**
  * Ask a server's robots.txt whether we may fetch a URL, once per host per run.
  *
@@ -440,7 +450,9 @@ export class RobotsPolicy {
     let pending = this.rules.get(origin);
     if (pending === undefined) {
       pending = this.engine
-        .get(`${origin}/robots.txt`, { headers: { accept: "text/plain" } })
+        // One retry at most: a failing server should not be asked four times for a
+        // file whose failure already means "fetch nothing".
+        .get(`${origin}/robots.txt`, { headers: { accept: "text/plain" }, maxRetries: ROBOTS_MAX_RETRIES })
         .then((response) => ({ rules: parseRobots(response.body.toString("utf8")) }))
         .catch((err: unknown) => {
           // A 4xx other than 429 is "there is no robots.txt": nothing is disallowed,
@@ -458,12 +470,14 @@ export class RobotsPolicy {
 }
 
 /**
- * One-shot form of `RobotsPolicy`, for a connector asking about its document
- * server before it discovers anything.
+ * A connector asking about its document server before it discovers anything. With
+ * the run's `policy` (`DiscoverOptions.robots`) the answer is the one every later
+ * document check of the run gets; without one it is a one-shot policy of its own.
  */
 export async function robotsGate(
   engine: FetchEngine,
-  options: { origin: string; path: string; ignoreRobots?: boolean },
+  options: { origin: string; path: string; ignoreRobots?: boolean; policy?: RobotsPolicy },
 ): Promise<RobotsVerdict> {
-  return new RobotsPolicy(engine, options.ignoreRobots === true).decide(`${options.origin}${options.path}`);
+  const policy = options.policy ?? new RobotsPolicy(engine, options.ignoreRobots === true);
+  return policy.decide(`${options.origin}${options.path}`);
 }

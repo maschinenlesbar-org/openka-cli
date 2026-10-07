@@ -242,7 +242,13 @@ export class FetchEngine {
    */
   async get(
     pathOrUrl: string,
-    options: { params?: QueryParams; headers?: Record<string, string>; validators?: CacheValidators } = {},
+    options: {
+      params?: QueryParams;
+      headers?: Record<string, string>;
+      validators?: CacheValidators;
+      /** Fewer retries than the engine's for this request (never more): robots.txt asks once more at most. */
+      maxRetries?: number;
+    } = {},
   ): Promise<FetchResult> {
     const target = this.url(pathOrUrl, options.params ?? {});
     const headers: Record<string, string> = {
@@ -252,7 +258,8 @@ export class FetchEngine {
     };
     if (options.validators?.etag) headers["if-none-match"] = options.validators.etag;
     if (options.validators?.last_modified) headers["if-modified-since"] = options.validators.last_modified;
-    return this.request("GET", target, headers);
+    const retries = options.maxRetries === undefined ? undefined : Math.min(Math.max(0, Math.trunc(options.maxRetries)), this.maxRetries);
+    return this.request("GET", target, headers, undefined, retries);
   }
 
   /**
@@ -315,6 +322,7 @@ export class FetchEngine {
     startUrl: string,
     headers: Record<string, string>,
     startBody?: string,
+    maxRetries: number = this.maxRetries,
   ): Promise<FetchResult> {
     let url = startUrl;
     let method = startMethod;
@@ -322,7 +330,7 @@ export class FetchEngine {
     let currentHeaders = headers;
 
     for (let hop = 0; ; hop++) {
-      const response = await this.attempt(method, url, currentHeaders, body);
+      const response = await this.attempt(method, url, currentHeaders, body, maxRetries);
       const status = response.status;
 
       if (status >= 300 && status < 400 && status !== 304) {
@@ -388,10 +396,11 @@ export class FetchEngine {
     url: string,
     headers: Record<string, string>,
     body?: string,
+    maxRetries: number = this.maxRetries,
   ): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }> {
     let lastError: unknown;
     let timeouts = 0;
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       await this.throttle(url);
       try {
         const response = await this.transport({
@@ -402,14 +411,14 @@ export class FetchEngine {
           timeoutMs: this.timeoutMs,
           maxResponseBytes: this.maxResponseBytes,
         });
-        if ((response.status === 429 || response.status === 503) && attempt < this.maxRetries) {
+        if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
           await this.sleep(retryDelayMs(response.headers["retry-after"], attempt));
           continue;
         }
         return response;
       } catch (err) {
         lastError = err;
-        if (attempt >= this.maxRetries) break;
+        if (attempt >= maxRetries) break;
         // Every failure used to be retried maxRetries times: an over-size body was
         // downloaded four times (4 × 64 MiB per document on a parliament server)
         // and a hanging host cost four timeouts plus backoff. A size or URL

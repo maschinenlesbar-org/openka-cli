@@ -81,6 +81,7 @@ export class SachsenAnhaltSource implements Source {
       origin: DOCUMENT_ORIGIN,
       path: DOCUMENT_PATH,
       ...(options.ignoreRobots === undefined ? {} : { ignoreRobots: options.ignoreRobots }),
+      ...(options.robots === undefined ? {} : { policy: options.robots }),
     });
     if (!gate.allowed) {
       return { refs: [], warnings: [gate.note as string] };

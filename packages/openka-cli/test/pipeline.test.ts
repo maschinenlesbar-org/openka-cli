@@ -30,7 +30,7 @@ import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import { drucksacheUrl, toRef } from "@maschinenlesbar.org/openka-connector-bayern";
 import { search } from "@maschinenlesbar.org/openka-lib-search";
-import type { DiscoverOptions, DiscoverResult, Source } from "@maschinenlesbar.org/openka-lib-source";
+import { robotsGate, type DiscoverOptions, type DiscoverResult, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { FileStore, catalogGaps, indexRecord, markHumanVerified, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
@@ -79,6 +79,20 @@ class StubSource implements Source {
         },
       ],
     };
+  }
+}
+
+/** A stub that gates its discovery on the document host's robots.txt, as Sachsen-Anhalt does. */
+class GatedSource extends StubSource {
+  override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    const gate = await robotsGate(options.engine, {
+      origin: new URL(PDF_URL).origin,
+      path: "/starweb/adis/",
+      ...(options.ignoreRobots === undefined ? {} : { ignoreRobots: options.ignoreRobots }),
+      ...(options.robots === undefined ? {} : { policy: options.robots }),
+    });
+    if (!gate.allowed) return { refs: [], warnings: [gate.note as string] };
+    return super.discover(options);
   }
 }
 
@@ -137,6 +151,27 @@ describe("sync pipeline", () => {
     const record = store.getRecord("berlin-19-10006");
     deepStrictEqual(record?.source_documents, []);
     ok(record?.extraction.abstained_fields.includes("full_text"));
+  });
+
+  it("reads robots.txt once per run, for the connector's gate and every document check", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", body: "User-agent: *\nDisallow:\n" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const report = await sync({ source: new GatedSource(), store: new MemoryStore(), engine: testEngine(transport) });
+    strictEqual(report.stored, 1);
+    strictEqual(requests.filter((request) => request.url.endsWith("/robots.txt")).length, 1);
+  });
+
+  it("asks a failing robots.txt twice at most, and then fetches nothing", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", status: 503, body: "" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const report = await sync({ source: new GatedSource(), store: new MemoryStore(), engine: testEngine(transport) });
+    strictEqual(report.discovered, 0);
+    strictEqual(requests.filter((request) => request.url.endsWith("/robots.txt")).length, 2);
+    ok(!requests.some((request) => request.url.endsWith(".pdf")));
   });
 
   it("goes no faster than the source's politeness floor, whatever the engine was built with", async () => {

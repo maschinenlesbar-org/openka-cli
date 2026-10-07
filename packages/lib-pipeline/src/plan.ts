@@ -87,6 +87,9 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
 
   // `force` bypasses the feed's own validators: a feed unchanged since the last sync
   // answers 304 and an empty list, which is no answer to "what does this window hold".
+  // One robots.txt reading per host for the plan, shared by the connector's gate and
+  // the HEAD sample.
+  const robots = new RobotsPolicy(engine, options.ignoreRobots === true);
   const discovered = await source.discover({
     engine,
     store,
@@ -95,6 +98,7 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     force: true,
     ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
     ...(options.ignoreRobots === true ? { ignoreRobots: true } : {}),
+    robots,
   });
 
   const plan: SyncPlan = {
@@ -124,7 +128,7 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     plan.estimate = estimate(known, toFetch.length, "corpus");
     return plan;
   }
-  const sampled = await headSample(engine, evenSample(toFetch, options.sample ?? DRY_RUN_SAMPLE), options.ignoreRobots === true, plan.warnings);
+  const sampled = await headSample(engine, evenSample(toFetch, options.sample ?? DRY_RUN_SAMPLE), robots, plan.warnings);
   const sizes = sampled.length > 0 ? sampled : known;
   if (sizes.length > 0) plan.estimate = estimate(sizes, toFetch.length, sampled.length > 0 ? "head-sample" : "corpus");
   return plan;
@@ -158,8 +162,7 @@ function evenSample<T>(items: readonly T[], n: number): T[] {
   return Array.from({ length: n }, (_, i) => items[Math.round(i * step)] as T);
 }
 
-async function headSample(engine: FetchEngine, urls: string[], ignoreRobots: boolean, warnings: string[]): Promise<number[]> {
-  const robots = new RobotsPolicy(engine, ignoreRobots);
+async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPolicy, warnings: string[]): Promise<number[]> {
   const sizes: number[] = [];
   let refused = 0;
   for (const url of urls) {

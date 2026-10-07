@@ -144,6 +144,9 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   };
 
   const startedAt = isoInstant(now());
+  // One reading of each host's robots.txt for the whole run: the connector's gate
+  // (if it has one) and every document check below ask the same policy.
+  const robots = new RobotsPolicy(engine, options.ignoreRobots === true);
   let discovered;
   try {
     const discoverOptions = {
@@ -157,6 +160,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
       ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
       ...(options.force === true ? { force: true } : {}),
       ...(options.ignoreRobots === true ? { ignoreRobots: true } : {}),
+      robots,
     };
     discovered = await source.discover(discoverOptions);
   } catch (err) {
@@ -189,7 +193,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   // that were never stored.
   const httpCache = { ...(discovered.state ?? state).http_cache };
   const run: RunContext = {
-    robots: new RobotsPolicy(engine, options.ignoreRobots === true),
+    robots,
     warnings: report.warnings,
     notedOrigins: new Set(),
   };
