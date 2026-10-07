@@ -58,6 +58,13 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             }
           }
           ctx.deps.io.out(`${report.reproduced}/${report.checked} record(s) reproduced byte-identically.`);
+          // Without this the tally vouched for an edited asker or title, which
+          // re-extraction takes from the record itself (UNCHECKED_FIELDS).
+          ctx.deps.io.err(
+            "Note: verify re-derives the text, the Q/A pairs, the markers and the extraction stamp from the archived " +
+              "documents. Title, askers, answered_by, dates and the documents' URLs come from the record itself and " +
+              "are not checked against anything archived.",
+          );
         }
         // `verify` reads the record files, search the catalog: say where they differ.
         noteCatalogGaps(ctx, catalogGaps(store));

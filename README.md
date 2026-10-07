@@ -100,7 +100,9 @@ the version even when the package version does not.
 
 There is no confidence score, because there is no model guessing. There is
 `abstained_fields`, which names the holes. `ka verify` re-runs the extraction from
-the archived bytes and asserts the output is byte-identical; `ka review` lists the
+the archived bytes and asserts the output is byte-identical — for what is read from
+the documents; the discovery metadata (title, askers, dates, ministry, document URLs)
+is taken from the record and not checked, and `verify` says so. `ka review` lists the
 holes for a human; the archived PDF is the appeal court for any field you doubt.
 
 ## Sources

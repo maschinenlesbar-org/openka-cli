@@ -419,7 +419,13 @@ than aspirational:
    document; it is recorded at fetch time, not observed during extraction.
 3. **`ka verify`** re-runs the extraction from the archived blob and compares. The
    one exception is `review_status: human_verified`, which a person sets and
-   re-extraction cannot reproduce; `verify` carries it across and says so.
+   re-extraction cannot reproduce; `verify` carries it across and says so. Its
+   reach ends at the archive: the discovery metadata (`UNCHECKED_FIELDS` in
+   `lib-verify` — title, askers, `answered_by`, `dates`, the documents' URLs) is not
+   archived and is passed back in from the record, so an edit to it reproduces.
+   `verify` names those fields (stderr note, `unchecked` in the JSON) rather than
+   letting the tally vouch for them. Archiving the feed or aggregator row beside the
+   documents would close the gap; it changes the corpus layout and is not done.
 4. **`extractor_version` names the code that produced the record.** Without it the
    first three are worth little: "same version, different bytes" is the one verdict
    `ka verify` must never have to give, and for a while it did, because the stamp was

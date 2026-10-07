@@ -157,7 +157,15 @@ ka verify --all --json           # everything, machine-readable
 ```
 
 Re-runs the extraction from the archived bytes and asserts the canonical output is
-byte-identical. Exits non-zero if any record does not reproduce. A record that cannot
+byte-identical. Exits non-zero if any record does not reproduce.
+
+What that covers: everything the extractor derives from the archived documents — the
+full text, the Q/A pairs, the markers, the documents' digests and the extraction
+stamp. The metadata a source supplied when the record was discovered (title, askers
+and parties, `answered_by`, `dates`, the documents' URLs) is not archived; re-extraction
+takes it from the record itself, so an edit to it still reproduces. `verify` says so
+on stderr, and `--json` lists those fields as `unchecked`. For them, the archived PDF
+(`ka open`) is the check. A record that cannot
 be read — a corrupt record file, or archived bytes that are missing or no longer hash
 to their name — is reported as a `FAIL` and the rest are still checked; the exit code
 is then 3, the corpus-problem code, as `ka open` gives for the same missing file. The JSON report counts those rows as `unreadable`, and

@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_VERIFY_SAMPLE, assertVerified, diffPaths, evenSample, verifyCorpus, verifyRecord } from "../src/index.js";
+import { DEFAULT_VERIFY_SAMPLE, UNCHECKED_FIELDS, assertVerified, diffPaths, evenSample, verifyCorpus, verifyRecord } from "../src/index.js";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError, OpenKaValidationError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { MemoryStore, questionPaper, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
@@ -43,7 +43,9 @@ describe("verifying a record", () => {
 });
 
 /** A stored record and the exact bytes it was extracted from. */
-async function corpus(): Promise<{ store: MemoryStore; id: string }> {
+async function corpus(
+  metadata: { askers?: { name: string; party?: string }[]; dates?: { submitted?: string } } = {},
+): Promise<{ store: MemoryStore; id: string }> {
   const bytes = questionPaper([
     "Frage 1:",
     "Wie viele Bruecken sind marode?",
@@ -58,9 +60,9 @@ async function corpus(): Promise<{ store: MemoryStore; id: string }> {
       reference: "19/12345",
       legislative_period: 19,
       title: "Zustand der Brueckenbauwerke",
-      askers: [],
+      askers: metadata.askers ?? [],
       answered_by: { ministry: "Senatsverwaltung" },
-      dates: {},
+      dates: metadata.dates ?? {},
     },
     documents: [{ role: "combined_pdf", url: "https://x.invalid/a.pdf", bytes, urlStable: true }],
   });
@@ -104,6 +106,35 @@ describe("verifying a record that is really there", () => {
     store.putRecord({ ...stored!, title: "Ein anderer Titel" });
     const result = await verifyRecord(id, { store });
     strictEqual(result.ok, true);
+  });
+
+  it("says which fields it could not check, and each of them really passes edited", async () => {
+    // The report used to say "reproduced byte-identically" and nothing else, so an
+    // SPD member's question rewritten as asked by "Max Mustermann (AfD)" read as
+    // verified. Every field in UNCHECKED_FIELDS must be one an edit gets past —
+    // otherwise the list overstates the gap.
+    const { store, id } = await corpus({ askers: [{ name: "Eva von Angern", party: "Die Linke" }], dates: { submitted: "2024-03-01" } });
+    const stored = store.getRecord(id);
+    ok(stored !== undefined && stored.source_documents[0] !== undefined);
+    const document = stored.source_documents[0];
+    const edits: Record<(typeof UNCHECKED_FIELDS)[number], Partial<typeof stored>> = {
+      title: { title: "Ein anderer Titel" },
+      askers: { askers: [{ name: "Max Mustermann", party: "AfD" }] },
+      answered_by: { answered_by: { ministry: "Senatsverwaltung für Erfindungen" } },
+      dates: { dates: { ...stored.dates, submitted: "2024-02-01" } },
+      "source_documents[].url": { source_documents: [{ ...document, url: "https://example.org/x.pdf" }] },
+      "source_documents[].role": { source_documents: [{ ...document, role: "combined_pdf" }] },
+      "source_documents[].url_stable": { source_documents: [{ ...document, url_stable: !document.url_stable }] },
+      "source_documents[].retrieved_at": { source_documents: [{ ...document, retrieved_at: "2026-01-02T00:00:00Z" }] },
+    };
+    for (const [field, edit] of Object.entries(edits)) {
+      store.putRecord({ ...stored, ...edit });
+      const result = await verifyRecord(id, { store });
+      strictEqual(result.ok, true, `${field}: ${JSON.stringify(result.differences)}`);
+    }
+    store.putRecord(stored);
+    const report = await verifyCorpus({ store, ids: [id] });
+    deepStrictEqual(report.unchecked, [...UNCHECKED_FIELDS]);
   });
 
   it("reports a blob whose bytes no longer hash to their name", async () => {
@@ -234,9 +265,9 @@ describe("verifying a corpus", () => {
 
   it("gives a verdict: a mismatch fails, a clean report passes", () => {
     const row = { id: "x", differences: [], storedVersion: "v", currentVersion: "v" };
-    throws(() => assertVerified({ checked: 1, reproduced: 0, unreadable: 0, results: [{ ...row, ok: false }] }), (error: unknown) =>
+    throws(() => assertVerified({ checked: 1, reproduced: 0, unreadable: 0, unchecked: [], results: [{ ...row, ok: false }] }), (error: unknown) =>
       error instanceof OpenKaError && !(error instanceof StoreError) && error.message === "1 record(s) did not reproduce");
-    assertVerified({ checked: 1, reproduced: 1, unreadable: 0, results: [{ ...row, ok: true }] });
+    assertVerified({ checked: 1, reproduced: 1, unreadable: 0, unchecked: [], results: [{ ...row, ok: true }] });
   });
 
   it("refuses an empty corpus and a sample size below one", async () => {

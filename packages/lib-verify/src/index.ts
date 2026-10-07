@@ -14,6 +14,34 @@ import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { OpenKaError, StoreError, assertValid, intRangeProblem } from "@maschinenlesbar.org/openka-lib-errors";
 
+/**
+ * The fields `verifyRecord` takes from the stored record itself and hands back to
+ * the extractor, so they reproduce whatever they say: the discovery metadata a
+ * source supplied (a feed row, an aggregator row) is not archived, only the
+ * documents are. What verify does check against archived bytes is everything the
+ * extractor derives from them — `full_text`, `qa`, `markers`, the documents'
+ * `sha256` and the `extraction` stamp — plus the record's validators.
+ *
+ * `answered_by` and `dates` are here even where the extractor first read them from
+ * the paper (a ministry found in the text, Bayern's head): the stored value is
+ * passed in and wins over the text, so an edit to it reproduces too. `reference`
+ * and `legislative_period` are not: they make up the record id, so an edit to one
+ * alone fails.
+ *
+ * An edited title, asker, party, date, ministry or document URL used to pass as
+ * "reproduced byte-identically" with nothing saying these were never compared.
+ */
+export const UNCHECKED_FIELDS = [
+  "title",
+  "askers",
+  "answered_by",
+  "dates",
+  "source_documents[].url",
+  "source_documents[].role",
+  "source_documents[].url_stable",
+  "source_documents[].retrieved_at",
+] as const;
+
 export interface VerifyResult {
   id: string;
   ok: boolean;
@@ -184,12 +212,15 @@ export interface CorpusVerifyReport {
   reproduced: number;
   /** Rows whose stored record could not be read at all. */
   unreadable: number;
+  /** What no row was checked against archived bytes: `UNCHECKED_FIELDS`. */
+  unchecked: string[];
   results: VerifyResult[];
 }
 
 /**
  * Verify a set of records — given ids, every record, or an even sample — and
- * tally the results. A corrupt record is a failed row (`unreadable`), and the run
+ * tally the results; the tally names the fields it could not check
+ * (`unchecked`, see `UNCHECKED_FIELDS`). A corrupt record is a failed row (`unreadable`), and the run
  * carries on past it. A corpus with no records to check is an `OpenKaError`
  * ("No records in …"), never a vacuous pass; a `limit` below 1 is refused with
  * `OpenKaValidationError`. The verdict on the tally is `assertVerified`.
@@ -216,6 +247,7 @@ export async function verifyCorpus(options: VerifyCorpusOptions): Promise<Corpus
     checked: results.length,
     reproduced: results.filter((result) => result.ok).length,
     unreadable: results.filter((result) => result.unreadable === true).length,
+    unchecked: [...UNCHECKED_FIELDS],
     results,
   };
 }

@@ -231,6 +231,9 @@ describe("ka", () => {
     try {
       strictEqual(await run(["--corpus", harness.corpus, "verify", "berlin-19-10006"], harness.deps), EXIT_OK);
       match(harness.stdout(), /1\/1 record\(s\) reproduced byte-identically/);
+      // …and says what that does not cover: the metadata re-extraction takes
+      // from the record itself.
+      match(harness.stderr(), /^Note: verify re-derives .* Title, askers, answered_by, dates and the documents' URLs come from the record itself and are not checked against anything archived\.$/m);
     } finally {
       harness.cleanup();
     }
