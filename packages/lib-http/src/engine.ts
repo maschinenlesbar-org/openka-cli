@@ -365,6 +365,12 @@ export class FetchEngine {
         }
         const next = new URL(location, url);
         assertHttpScheme(next.toString());
+        // An https: request is not followed to http:. The bytes would travel
+        // unprotected, and a record built from them claims to be reproducible from
+        // what the parliament published (exploratory test 2026-10-07).
+        if (new URL(url).protocol === "https:" && next.protocol === "http:") {
+          throw new NetworkError(`Refusing a redirect from https: to http: (${url} → ${next.toString()})`, { failure: "bad_url" });
+        }
         // Credentials never cross an *origin* boundary, whatever the upstream asks
         // for. Comparing origins rather than hosts matters because a same-host
         // redirect from https: to http: is still a credential leak — the API key

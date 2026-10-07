@@ -282,19 +282,22 @@ describe("fetch engine", () => {
     ok(forwarded["user-agent"] !== undefined);
   });
 
-  it("strips credentials when a redirect downgrades https to http on the same host", async () => {
+  it("refuses a redirect that downgrades https to http, so nothing — credentials included — goes out in clear", async () => {
     const { transport, requests } = scriptedTransport([
       { match: "https://example.invalid/from", status: 302, headers: { location: "http://example.invalid/to" } },
       { match: "http://example.invalid/to", body: "arrived" },
     ]);
-    await testEngine(transport).get("https://example.invalid/from", {
-      headers: { authorization: "ApiKey secret", cookie: "session=1", "x-api-key": "k" },
-    });
-    const forwarded = requests[1]?.headers ?? {};
-    strictEqual(forwarded["authorization"], undefined);
-    strictEqual(forwarded["cookie"], undefined);
-    strictEqual(forwarded["x-api-key"], undefined);
-    ok(forwarded["user-agent"] !== undefined);
+    await rejects(
+      () => testEngine(transport).get("https://example.invalid/from", { headers: { authorization: "ApiKey secret" } }),
+      (err: unknown) => err instanceof NetworkError && /from https: to http:/.test(err.message),
+    );
+    strictEqual(requests.length, 1);
+    // http → https (an upgrade) is still followed.
+    const upgrade = scriptedTransport([
+      { match: "http://example.invalid/from", status: 301, headers: { location: "https://example.invalid/to" } },
+      { match: "https://example.invalid/to", body: "arrived" },
+    ]);
+    strictEqual((await testEngine(upgrade.transport).get("http://example.invalid/from")).body.toString(), "arrived");
   });
 
   it("refuses to follow a redirect to a non-http scheme", async () => {

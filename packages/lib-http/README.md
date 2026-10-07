@@ -10,8 +10,9 @@ against a local `http.createServer`.
 The engine is the one place "being a good citizen" lives: retry with backoff that
 honours `Retry-After`, conditional requests via ETag/If-Modified-Since, a response
 size ceiling, per-host rate limiting, and redirect handling that strips credential
-headers on a cross-origin hop. Doing it once here means no adapter has to remember
-any of it.
+headers on a cross-origin hop, refuses an https: → http: downgrade, and asks the
+caller's `onRedirect` hook (the pipeline's robots.txt check) about every hop. Doing it
+once here means no adapter has to remember any of it.
 
 **What is retried.** A 429/503 and a dropped connection get the full `maxRetries`;
 a timeout is retried once (`timeoutMs` is per attempt); a response over
