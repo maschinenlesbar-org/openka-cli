@@ -2,7 +2,7 @@
 // Tests never touch a live parliament; the fixture is a real 01.09–10.09.2026
 // response, 13 combined papers, trimmed to nothing because it is already small.
 
-import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
+import assert, { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   MecklenburgVorpommernParldokSource,
@@ -144,6 +144,43 @@ describe("Mecklenburg-Vorpommern source", () => {
       deepStrictEqual(result.refs, [], `count ${String(count)}`);
       match(result.unreadable ?? "", /page 2 repeated hits already listed/, `count ${String(count)}`);
       strictEqual(searches, 2, `count ${String(count)}`);
+    }
+  });
+
+  it("asks a failed later page once more before giving the listing up", async () => {
+    // One HTTP 500 (or a maintenance page) on page 2 dropped the 200 hits of page 1
+    // and handed the whole run to the aggregator.
+    const first = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(first.data) as { docs: Record<string, unknown>[] };
+    const full = (offset: number) =>
+      Array.from({ length: 200 }, (_, i) => ({ ...(inner.docs[i % inner.docs.length] as Record<string, unknown>), id: 600000 + offset + i, number: String(8000 + offset + i) }));
+    const page = (docs: Record<string, unknown>[]) => JSON.stringify({ ...first, data: JSON.stringify({ ...inner, count: 300, docs }) });
+    for (const [label, failures, refs, unreadable] of [
+      ["fails once", 1, 300, false],
+      ["fails twice", 2, 0, true],
+    ] as const) {
+      let searches = 0;
+      let failed = 0;
+      const transport: Transport = async (request) => {
+        searches += 1;
+        const body = JSON.parse(decodeURIComponent(String(request.body).replace(/^data=/, ""))) as { limit: { Start: number } };
+        if (body.limit.Start === 0) return { status: 200, headers: {}, body: Buffer.from(page(full(0)), "utf8") };
+        if (failed < failures) {
+          failed += 1;
+          return { status: 500, headers: {}, body: Buffer.from("Internal Server Error", "utf8") };
+        }
+        return { status: 200, headers: {}, body: Buffer.from(page(full(200).slice(0, 100)), "utf8") };
+      };
+      const reading = new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(transport), state });
+      if (unreadable) {
+        await reading.then(
+          () => assert.fail(`${label}: expected the listing to be given up`),
+          (err: unknown) => match(String(err), /HTTP 500/, label),
+        );
+      } else {
+        strictEqual((await reading).refs.length, refs, label);
+      }
+      strictEqual(searches, 3, label);
     }
   });
 

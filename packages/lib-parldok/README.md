@@ -33,7 +33,9 @@ than guessed.
 (`Start`, 200 hits each) until the `count` is reached or a page comes back short; a page
 that brings no hit not already listed means the server is ignoring `Start`, and the
 listing is `unrecognised` rather than counted again (that once made 200 papers "600
-discovered", and without a `count` asked 500 times).
+discovered", and without a `count` asked 500 times). A later page that fails (an HTTP 500, a
+maintenance page) is asked once more before the listing is given up — one transient
+error used to drop every page already read and hand the run to the aggregator.
 
 ## Public surface
 

@@ -273,11 +273,25 @@ export async function searchDocuments(
   for (let page = 0; page < MAX_SEARCH_PAGES && hits.length < wanted; page++) {
     const length = Math.min(PAGE_LENGTH, wanted - hits.length);
     const body = searchDocumentsBody({ tags: options.tags, length, start: hits.length });
-    const response = await engine.post(`${api}/Fulltext/Search`, {
-      body: `data=${encodeURIComponent(body)}`,
-      headers: { accept: "application/json" },
-    });
-    const reading = searchResults(response.body.toString("utf8"));
+    const ask = async (): Promise<ApiReading<SearchHits>> => {
+      const response = await engine.post(`${api}/Fulltext/Search`, {
+        body: `data=${encodeURIComponent(body)}`,
+        headers: { accept: "application/json" },
+      });
+      return searchResults(response.body.toString("utf8"));
+    };
+    // A later page that fails — an HTTP 500, a maintenance page — is asked once more
+    // (at the engine's pace) before the listing is given up: one transient error used
+    // to drop every page already read and hand the whole run to the aggregator. The
+    // first page is not retried: nothing has been read that would be lost.
+    let reading: ApiReading<SearchHits>;
+    try {
+      reading = await ask();
+      if (page > 0 && reading.kind === "unrecognised") reading = await ask();
+    } catch (err) {
+      if (page === 0) throw err;
+      reading = await ask();
+    }
     if (reading.kind === "unrecognised") return reading;
     if (reading.kind === "absent") break;
     let added = 0;
