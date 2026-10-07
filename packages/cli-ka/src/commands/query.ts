@@ -7,7 +7,8 @@ import { ReviewStatuses, SourceDocumentRoles, type KaRecord } from "@maschinenle
 import { DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, search } from "@maschinenlesbar.org/openka-lib-search";
 import { searchLike } from "@maschinenlesbar.org/openka-lib-search";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "@maschinenlesbar.org/openka-lib-render";
-import { archivedDocument, documentRoleProblem, type CatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
+import { archivedDocument, catalogGaps, documentRoleProblem, type CatalogEntry, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { noteCatalogGaps } from "./output.js";
 import type { CliDeps } from "../io.js";
 import {
   action,
@@ -110,6 +111,18 @@ export function renderShowLines(record: KaRecord): string[] {
   return lines;
 }
 
+/** Say on stderr when the index cannot have answered: catalog gaps, or no token index at all. */
+function noteIndexGaps(ctx: Parameters<typeof noteCatalogGaps>[0], store: Store): void {
+  noteCatalogGaps(ctx, catalogGaps(store));
+  const catalogued = store.catalog().length;
+  if (catalogued > 0 && store.shardNames().length === 0) {
+    ctx.deps.io.err(
+      `Note: the search index is empty although the catalog lists ${catalogued} record(s), so nothing can match. ` +
+        "`ka reindex` rebuilds it.",
+    );
+  }
+}
+
 export function registerQuery(program: Command, deps: CliDeps): void {
   addFilterOptions(
     program
@@ -168,6 +181,10 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         snippet: ctx.opts["snippet"] === true,
       });
       noteUndated(ctx, result.undated);
+      // Nothing found may mean the index does not cover the corpus — record files the
+      // catalog lacks, or a token index that is gone (an interrupted copy, a partial
+      // backup). "No matches." alone read as an answer (exploratory test of 0.4.0).
+      if (result.total === 0) noteIndexGaps(ctx, store);
       if (ctx.opts["json"] === true) {
         printJson(ctx, result);
         return;

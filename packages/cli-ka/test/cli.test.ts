@@ -605,6 +605,31 @@ describe("ka", () => {
     }
   });
 
+  it("says why search found nothing when the index does not cover the records", async () => {
+    // "No matches." alone read as an answer when the catalog lacked the records or the
+    // token index was gone (exploratory test of 0.4.0).
+    const harness = await seeded();
+    try {
+      writeFileSync(join(harness.corpus, "index", "catalog.json"), "[]");
+      strictEqual(await run(["--corpus", harness.corpus, "search", "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /No matches\./);
+      match(harness.stderr(), /record file\(s\) are not in the catalog.*`ka reindex` adds them/);
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+      rmSync(join(harness.corpus, "index", "tokens"), { recursive: true });
+      harness.out.length = 0;
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "search", "solaranlagen"], harness.deps), EXIT_OK);
+      match(harness.stderr(), /the search index is empty although the catalog lists \d+ record\(s\).*`ka reindex` rebuilds it/);
+      // A real "no match" on a healthy index says nothing extra.
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+      harness.err.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "search", "zzzzqqq"], harness.deps), EXIT_OK);
+      doesNotMatch(harness.stderr(), /Note:/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("names record files the catalog lacks in stats and verify", async () => {
     const harness = await seeded();
     try {
