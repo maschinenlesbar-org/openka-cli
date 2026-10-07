@@ -30,7 +30,7 @@ JSON, a blank title or id as an invalid feed. An omitted title or id is
 Everything is re-exported from the package root:
 
 ```
-RENDER_FORMATS, RenderFormat, renderFormatProblem, renderJson, renderJsonLd, renderJsonLines, renderJsonLdDocument, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, renderText, renderRecord, escapeXml, DEFAULT_FEED_TITLE, DEFAULT_FEED_ID, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
+RENDER_FORMATS, RenderFormat, renderFormatProblem, renderJson, renderJsonLd, renderJsonLines, renderJsonLdDocument, csvCell, CSV_COLUMNS, csvHeader, renderCsvRow, renderMarkdown, stripBidiControls, renderText, renderRecord, escapeXml, DEFAULT_FEED_TITLE, DEFAULT_FEED_ID, FeedOptions, atomEntryUpdated, newestFirst, renderAtom
 ```
 
 ## Depends on

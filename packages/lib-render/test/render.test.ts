@@ -128,6 +128,17 @@ describe("human-facing renderings and control characters", () => {
     strictEqual(renderText(dirty).includes("\u009b"), false);
     strictEqual(renderJson(dirty).includes("\u009b"), true);
   });
+
+  it("strips bidirectional-text controls from markdown and text but not from json", () => {
+    // A title carrying U+202E displayed the rest of its heading reversed — in a
+    // terminal (`ka get --format md`) and in any Markdown viewer — while `ka show`
+    // already removed it.
+    const bidi = sampleRecord({ title: "Titel \u202eesrever\u202c \u2066x\u2069\u200f" });
+    doesNotMatch(renderMarkdown(bidi), /[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/);
+    match(renderMarkdown(bidi), /^# Titel esrever x$/m);
+    doesNotMatch(renderText({ ...bidi, full_text: "a\u202eb" }), /\u202e/);
+    strictEqual(renderJson(bidi).includes("\u202e"), true);
+  });
 });
 
 describe("plain text", () => {

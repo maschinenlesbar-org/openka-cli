@@ -210,6 +210,22 @@ describe("ka", () => {
     }
   });
 
+  it("prints no bidi override from `get --format md`, as `show` does not", async () => {
+    const harness = await seeded();
+    try {
+      const store = harness.deps.createStore(harness.corpus);
+      const record = store.getRecord("berlin-19-10006");
+      ok(record !== undefined);
+      record.title = "Titel \u202eesrever\u202c";
+      store.putRecord(record);
+      strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "--format", "md"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^# Titel esrever$/m);
+      doesNotMatch(harness.stdout(), /[\u202a-\u202e]/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("verifies a synced record byte for byte", async () => {
     const harness = await seeded();
     try {

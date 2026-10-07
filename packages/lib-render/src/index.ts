@@ -176,7 +176,8 @@ export function renderCsvRow(record: KaRecord): string {
 /**
  * A readable rendering for a terminal or a repository.
  *
- * Human-facing renderings strip control characters; `json` and `jsonld` do not,
+ * Human-facing renderings strip control characters (and `md`/`text` the
+ * bidirectional-text controls); `json` and `jsonld` do not,
  * deliberately — those must stay byte-identical to what is on disk, which is what
  * `ka verify` compares.
  *
@@ -232,15 +233,42 @@ export function renderMarkdown(record: KaRecord): string {
   for (const source of record.source_documents) {
     lines.push(`- source (${source.role}): ${source.url}${source.url_stable ? "" : " _(link expires upstream)_"}`);
   }
-  return stripControlCharacters(lines.join("\n")) + "\n";
+  return readable(lines.join("\n")) + "\n";
+}
+
+/**
+ * The bidirectional-text controls: embeddings and overrides (U+202A–U+202E),
+ * isolates (U+2066–U+2069) and the implicit marks (U+200E, U+200F, U+061C). A
+ * terminal or a Markdown viewer obeys them, so a title carrying U+202E displays
+ * the rest of its line reversed. Record text keeps them; only renderings meant
+ * for reading lose them.
+ *
+ * Here rather than in lib-text, which is an extraction source: a change there
+ * moves the extractor digest of every record.
+ */
+const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g;
+
+/** Remove the bidirectional-text controls (see `BIDI_CONTROLS`). */
+export function stripBidiControls(text: string): string {
+  return text.replace(BIDI_CONTROLS, "");
+}
+
+/**
+ * What the reading renderings (`md`, `text`) do to upstream text: control
+ * characters become spaces and the bidirectional-text controls go, as in
+ * `ka show`. A title carrying U+202E otherwise printed the rest of its heading
+ * reversed in a terminal and in any Markdown viewer.
+ */
+function readable(text: string): string {
+  return stripBidiControls(stripControlCharacters(text));
 }
 
 /** A plain-text rendering: the full text if there is one, else the Q/A pairs. */
 export function renderText(record: KaRecord): string {
   if (record.full_text !== undefined && record.full_text !== "") {
-    return stripControlCharacters(record.full_text) + "\n";
+    return readable(record.full_text) + "\n";
   }
-  return stripControlCharacters(
+  return readable(
     record.qa
       .map((pair) => `Frage ${pair.number}:\n${pair.question ?? "(abstained)"}\n\nAntwort zu ${pair.number}:\n${pair.answer ?? "(abstained)"}`)
       .join("\n\n")) + "\n";
