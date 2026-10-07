@@ -20,6 +20,14 @@ export interface SyncOptions {
   source: Source;
   store: Store;
   engine: FetchEngine;
+  /**
+   * The run's robots.txt policy, shared by every source of one `syncSources` run so
+   * a host's file is read once for all of them. Built for this source when absent;
+   * one that is given must have been built with the same `ignoreRobots`.
+   */
+  robots?: RobotsPolicy;
+  /** The run's documents, shared the same way: a URL one source fetched is not fetched again. */
+  documents?: DocumentMemo;
   since?: string;
   until?: string;
   period?: number;
@@ -146,7 +154,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   const startedAt = isoInstant(now());
   // One reading of each host's robots.txt for the whole run: the connector's gate
   // (if it has one) and every document check below ask the same policy.
-  const robots = new RobotsPolicy(engine, options.ignoreRobots === true);
+  const robots = options.robots ?? new RobotsPolicy(engine, options.ignoreRobots === true);
   let discovered;
   try {
     const discoverOptions = {
@@ -196,7 +204,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
     robots,
     warnings: report.warnings,
     notedOrigins: new Set(),
-    fetched: new Map(),
+    fetched: options.documents ?? new DocumentMemo(),
   };
 
   // One catalog write per `CATALOG_CHECKPOINT` refs rather than one per record:
@@ -266,7 +274,29 @@ interface RunContext {
    * and the Parlamentsspiegel rows that point at them); it was downloaded once per
    * role — twice, 4 s apart, from a server that asked not to be crawled.
    */
-  fetched: Map<string, FetchedBytes | FetchGap>;
+  fetched: DocumentMemo;
+}
+
+/**
+ * What each document URL gave during one run — bytes or a gap — shared by the
+ * sources of a `syncSources` run. Two sources that reach the same documents (a Land's
+ * connector and `parlamentsspiegel`) downloaded each one again, only to find it
+ * unchanged. Promises are kept, so two lanes asking for one URL at once share one
+ * download.
+ */
+export class DocumentMemo {
+  private readonly entries = new Map<string, Promise<FetchedBytes | FetchGap>>();
+
+  /** @internal */
+  remember(url: string, fetch: () => Promise<FetchedBytes | FetchGap>): Promise<{ result: FetchedBytes | FetchGap; again: boolean }> {
+    const known = this.entries.get(url);
+    if (known !== undefined) return known.then((result) => ({ result, again: true }));
+    const pending = fetch();
+    this.entries.set(url, pending);
+    // A failed fetch is not remembered: the next source may try it.
+    pending.catch(() => this.entries.delete(url));
+    return pending.then((result) => ({ result, again: false }));
+  }
 }
 
 interface RefOutcome {
@@ -521,14 +551,14 @@ function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: 
   return true;
 }
 
-interface FetchedBytes {
+export interface FetchedBytes {
   bytes: Buffer;
   retrievedAt: string;
   fromCache: boolean;
 }
 
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
-type FetchGap = { gap: "404" | "robots" };
+export type FetchGap = { gap: "404" | "robots" };
 
 function gapText(gap: FetchGap["gap"]): string {
   return gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
@@ -554,11 +584,8 @@ async function fetchDocument(
   httpCache: SourceState["http_cache"],
   run: RunContext,
 ): Promise<FetchedBytes | FetchGap> {
-  const seen = run.fetched.get(url);
-  if (seen !== undefined) return "gap" in seen ? seen : { ...seen, fromCache: true };
-  const result = await fetchDocumentOnce(engine, store, url, now, httpCache, run);
-  run.fetched.set(url, result);
-  return result;
+  const { result, again } = await run.fetched.remember(url, () => fetchDocumentOnce(engine, store, url, now, httpCache, run));
+  return again && !("gap" in result) ? { ...result, fromCache: true } : result;
 }
 
 async function fetchDocumentOnce(

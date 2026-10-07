@@ -115,6 +115,22 @@ export interface EngineOptions {
 export class HostPacer {
   private readonly lastRequestAt = new Map<string, number>();
   private readonly queues = new Map<string, Promise<void>>();
+  /**
+   * Per-host floors raised during the run (`FetchEngine.slowDown`), for every engine
+   * on this pacer. A floor kept per engine let a second source of the same run ask a
+   * host 500 ms after the first source had been slowed to 4 s on it.
+   */
+  private readonly floors = new Map<string, number>();
+
+  /** Never go faster than `ms` on `host` again, whichever engine asks. Only raises. */
+  raiseFloor(host: string, ms: number): void {
+    this.floors.set(host, Math.max(ms, this.floors.get(host) ?? 0));
+  }
+
+  /** The floor raised for `host` so far (0 when none). */
+  floorFor(host: string): number {
+    return this.floors.get(host) ?? 0;
+  }
 
   /**
    * Wait for `host`'s turn: after every earlier caller, and at least `intervalMs`
@@ -452,6 +468,7 @@ export class FetchEngine {
    */
   slowDown(host: string, ms: number): void {
     this.hostIntervals.set(host, Math.max(ms, this.hostIntervals.get(host) ?? 0));
+    this.pacer.raiseFloor(host, ms);
   }
 
   /**
@@ -470,7 +487,7 @@ export class FetchEngine {
   /** Keep at least the host's interval between two requests to the same host. */
   private async throttle(url: string): Promise<void> {
     const host = new URL(url).host;
-    const interval = Math.max(this.minHostIntervalMs, this.hostIntervals.get(host) ?? 0);
+    const interval = Math.max(this.minHostIntervalMs, this.hostIntervals.get(host) ?? 0, this.pacer.floorFor(host));
     await this.pacer.wait(host, interval, { now: this.now, sleep: this.sleep });
   }
 }

@@ -25,9 +25,9 @@
 
 import { OpenKaError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
-import type { Source } from "@maschinenlesbar.org/openka-lib-source";
+import { RobotsPolicy, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import { withCorpusLock } from "@maschinenlesbar.org/openka-lib-store";
-import { sync, type ProgressEvent, type SyncOptions, type SyncReport } from "./index.js";
+import { DocumentMemo, sync, type ProgressEvent, type SyncOptions, type SyncReport } from "./index.js";
 import { normalizeSyncWindow } from "./window.js";
 
 export interface SyncSourcesOptions
@@ -104,6 +104,12 @@ export async function syncSources(options: SyncSourcesOptions): Promise<SourceOu
   const purpose = `sync --source ${sources.map((source) => source.key).join(" --source ")}`;
   return withCorpusLock(options.store, purpose, async () => {
     const outcomes = new Map<string, SourceOutcome>();
+    // One reading of each host's robots.txt and one download of each document for
+    // the whole run, whichever source reaches them first. The policy fetches with an
+    // engine of its own; its slow-downs land on the pacer every engine shares.
+    const first = sources[0] as Source;
+    const robots = shared.robots ?? new RobotsPolicy(engineFor(first), shared.ignoreRobots === true);
+    const documents = shared.documents ?? new DocumentMemo();
     const runOne = async (source: Source): Promise<void> => {
       let outcome: SourceOutcome;
       if (options.signal?.aborted === true) {
@@ -114,6 +120,8 @@ export async function syncSources(options: SyncSourcesOptions): Promise<SourceOu
           const apiKey = apiKeyFor?.(source);
           const report = await sync({
             ...shared,
+            robots,
+            documents,
             source,
             engine: engineFor(source),
             ...(apiKey === undefined ? {} : { apiKey }),

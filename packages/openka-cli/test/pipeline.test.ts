@@ -1098,6 +1098,23 @@ describe("several sources in one run (issue #3)", () => {
     ok(engines.get("berlin") !== engines.get("saarland"));
   });
 
+  it("reads robots.txt and downloads a document once for the whole run, whichever source reaches it", async () => {
+    // A Land's connector and the aggregator reach the same documents; the second
+    // source downloaded each one again only to find it unchanged.
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", status: 404, body: "" },
+      { match: ".pdf", body: PDF },
+    ]);
+    const outcomes = await syncSources({
+      sources: [new StubSource(), new OtherSource("aggregator", undefined)],
+      store: new MemoryStore(),
+      engineFor: () => testEngine(transport),
+    });
+    deepStrictEqual(outcomes.map((outcome) => outcome.status), ["done", "done"]);
+    strictEqual(requests.filter((request) => request.url === PDF_URL).length, 1);
+    strictEqual(requests.filter((request) => request.url.endsWith("/robots.txt")).length, 1);
+  });
+
   it("skips the sources whose turn had not come when the signal is aborted", async () => {
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
     const controller = new AbortController();

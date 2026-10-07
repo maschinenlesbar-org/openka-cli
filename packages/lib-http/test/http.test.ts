@@ -532,6 +532,19 @@ describe("pacing shared between engines (issue #3)", () => {
     deepStrictEqual(world.asked.map(([, at]) => at), [0, 0]);
   });
 
+  it("holds a host one engine slowed down for every engine on the pacer", async () => {
+    // A source run under --ignore-robots slows the host to 4 s; the next source of
+    // the same run asked it 500 ms later.
+    const world = pacedWorld();
+    const pacer = new HostPacer();
+    const a = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep, pacer });
+    const b = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep, pacer });
+    a.slowDown("shared.example.invalid", 4000);
+    await a.get("https://shared.example.invalid/a");
+    await b.get("https://shared.example.invalid/b");
+    deepStrictEqual(world.asked.map(([, at]) => at), [0, 4000]);
+  });
+
   it("keeps engines without a shared pacer independent, as before", async () => {
     const world = pacedWorld();
     const a = new FetchEngine({ transport: world.transport, minHostIntervalMs: 500, now: world.now, sleep: world.sleep });
