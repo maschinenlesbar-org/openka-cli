@@ -255,6 +255,12 @@ export const MAX_SEARCH_PAGES = 500;
  *
  * Each hit keeps the query id of *its* page: `Process/Document` wants the id of the
  * query the document was found by, and a later page is a later query.
+ *
+ * A page that brings nothing new — every hit's id already listed — means the server
+ * is not honouring `Start`. That is a listing this client cannot read, not more of
+ * the same: counting the repeats made 200 papers "600 discovered", and without a
+ * count the loop asked `MAX_SEARCH_PAGES` (500) times. A hit already listed on an
+ * earlier page is dropped.
  */
 export async function searchDocuments(
   engine: FetchEngine,
@@ -262,6 +268,7 @@ export async function searchDocuments(
   options: { tags: SearchTag[]; limit?: number },
 ): Promise<ApiReading<SearchHit[]>> {
   const hits: SearchHit[] = [];
+  const seen = new Set<unknown>();
   const wanted = options.limit ?? Number.POSITIVE_INFINITY;
   for (let page = 0; page < MAX_SEARCH_PAGES && hits.length < wanted; page++) {
     const length = Math.min(PAGE_LENGTH, wanted - hits.length);
@@ -273,7 +280,20 @@ export async function searchDocuments(
     const reading = searchResults(response.body.toString("utf8"));
     if (reading.kind === "unrecognised") return reading;
     if (reading.kind === "absent") break;
-    for (const doc of reading.value.docs) hits.push({ doc, queryId: reading.value.queryId });
+    let added = 0;
+    for (const doc of reading.value.docs) {
+      const id = doc["id"];
+      if (id !== undefined && seen.has(id)) continue;
+      if (id !== undefined) seen.add(id);
+      hits.push({ doc, queryId: reading.value.queryId });
+      added += 1;
+    }
+    if (page > 0 && added === 0) {
+      return {
+        kind: "unrecognised",
+        reason: `page ${page + 1} repeated hits already listed — the search does not honour its paging offset`,
+      };
+    }
     const total = reading.value.total;
     if (total !== undefined && hits.length >= total) break;
     if (total === undefined && reading.value.docs.length < length) break;

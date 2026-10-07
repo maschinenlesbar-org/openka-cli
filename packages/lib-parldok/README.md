@@ -29,6 +29,12 @@ is Drucksache/Protokoll and the question type lives under `Dokumenttyp` (facet 8
 Each connector names its own, read from that installation's facet listing rather
 than guessed.
 
+**A listing is paged and checked for progress.** `searchDocuments` asks page by page
+(`Start`, 200 hits each) until the `count` is reached or a page comes back short; a page
+that brings no hit not already listed means the server is ignoring `Start`, and the
+listing is `unrecognised` rather than counted again (that once made 200 papers "600
+discovered", and without a `count` asked 500 times).
+
 ## Public surface
 
 Everything is re-exported from the package root:

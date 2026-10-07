@@ -123,6 +123,28 @@ describe("Mecklenburg-Vorpommern source", () => {
     strictEqual(new Set(result.refs.map((ref) => ref.key)).size, total);
   });
 
+  it("stops paging when a page repeats the hits it already has, and says the listing cannot be read", async () => {
+    // A server that ignores `Start` answers every page with the first one. With a
+    // count, the duplicates were counted as discoveries ("600 discovered" for 200
+    // papers); without one, the client asked MAX_SEARCH_PAGES (500) times.
+    const first = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(first.data) as { count: number; docs: Record<string, unknown>[] };
+    // One full page of 200 distinct hits, which the server sends whatever `Start` says.
+    const full = Array.from({ length: 200 }, (_, i) => ({ ...(inner.docs[i % inner.docs.length] as Record<string, unknown>), id: 500000 + i, number: String(7000 + i) }));
+    for (const count of [600, undefined]) {
+      const page = JSON.stringify({ ...first, data: JSON.stringify({ ...inner, count, docs: full }) });
+      let searches = 0;
+      const transport: Transport = async (request) => {
+        if (request.url.includes("Fulltext/Search")) searches += 1;
+        return { status: 200, headers: {}, body: Buffer.from(page, "utf8") };
+      };
+      const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(transport), state });
+      deepStrictEqual(result.refs, [], `count ${String(count)}`);
+      match(result.unreadable ?? "", /page 2 repeated hits already listed/, `count ${String(count)}`);
+      strictEqual(searches, 2, `count ${String(count)}`);
+    }
+  });
+
   it("stops paging at --limit", async () => {
     const { transport: scripted, requests } = transport();
     const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(scripted), state: state, limit: 5 });
