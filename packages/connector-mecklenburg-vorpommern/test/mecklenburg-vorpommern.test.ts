@@ -233,6 +233,25 @@ describe("Mecklenburg-Vorpommern source", () => {
     match(none.unreadable ?? "", /13 hit\(s\), none of them a "Kleine Anfrage und Antwort" of Wahlperiode 8/);
   });
 
+  it("keeps one ref per Drucksachennummer and names the duplicate", async () => {
+    // Two rows with one number and two documents were both fetched, reported as
+    // "2/2 · 0 failed", and the second silently replaced the first record.
+    const envelope = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(envelope.data) as { docs: Record<string, unknown>[] };
+    const first = inner.docs[0] as Record<string, unknown>;
+    const docs = [...inner.docs, { ...first, id: 99999, title: "Zweites Dokument, gleiche Nummer" }];
+    const body = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, count: docs.length, docs }) });
+    const { transport: scripted } = scriptedTransport([{ match: "Fulltext/Search", body }]);
+    const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(scripted), state });
+    strictEqual(result.refs.length, 13);
+    const kept = result.refs.filter((ref) => ref.reference === `8/${String(first["number"])}`);
+    strictEqual(kept.length, 1);
+    strictEqual(kept[0]?.title, first["title"]);
+    deepStrictEqual(result.warnings, [
+      `Parldok listed Drucksache 8/${String(first["number"])} twice (documents ${String(first["id"])} and 99999); kept the first`,
+    ]);
+  });
+
   it("skips a hit with no identity rather than inventing one", () => {
     const warnings: string[] = [];
     strictEqual(toRef({ title: "Ohne Nummer" }, warnings), undefined);

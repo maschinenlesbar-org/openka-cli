@@ -170,6 +170,7 @@ export class MecklenburgVorpommernParldokSource implements Source {
     if (reading.kind === "absent") return withDiscoveryState({ refs: [], warnings }, [], warnings);
 
     const refs: DocRef[] = [];
+    const byReference = new Map<string, DocRef>();
     let skipped = 0;
     let foreign = 0;
     for (const { doc } of reading.value) {
@@ -181,8 +182,22 @@ export class MecklenburgVorpommernParldokSource implements Source {
         continue;
       }
       const ref = toRef(doc, []);
-      if (ref === undefined) skipped += 1;
-      else refs.push(ref);
+      if (ref === undefined) {
+        skipped += 1;
+        continue;
+      }
+      // One number, two documents (a reprint?) is one record id: both used to be
+      // fetched and the second silently replaced the first. Which one is right is not
+      // for this adapter to guess, so the first stays and the warning names both.
+      const earlier = byReference.get(ref.reference);
+      if (earlier !== undefined) {
+        warnings.push(
+          `Parldok listed Drucksache ${ref.reference} twice (documents ${documentId(earlier)} and ${documentId(ref)}); kept the first`,
+        );
+        continue;
+      }
+      byReference.set(ref.reference, ref);
+      refs.push(ref);
     }
     const hits = reading.value.length;
     if (foreign === hits) {
@@ -206,6 +221,11 @@ export class MecklenburgVorpommernParldokSource implements Source {
     if (skipped > 0) warnings.push(`Parldok returned ${skipped} of ${hits} hit(s) without a number, id or Wahlperiode; skipped`);
     return withDiscoveryState({ refs, warnings }, refs, warnings);
   }
+}
+
+/** The Parldok document id at the end of a ref's document URL. */
+function documentId(ref: DocRef): string {
+  return ref.documents[0]?.url.split("/").pop() ?? "?";
 }
 
 /** A hit that names a type or Wahlperiode other than the ones asked for. Absent fields are not held against it. */
