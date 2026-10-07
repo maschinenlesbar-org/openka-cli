@@ -14,9 +14,14 @@ extractor then reported, correctly, that it found no text. That is how this Land
 spent a whole classification pass looking like a source of scans when its documents
 are ordinary text-layer PDFs.
 
-So each document URL is rewritten to the `Downloadfile.ashx` endpoint the wrapper
-itself names. The test pins that rewrite, and pins that it is applied to *every*
-document of *every* discovered ref — the bug the first fix missed.
+So each document URL was rewritten to the `Downloadfile.ashx` endpoint the wrapper
+named. **That endpoint was retired:** on 2026-10-07 it answered HTTP 500 for every
+document, and the wrapper URL itself now answers `301 Location:
+/file.ashx?FileName=Af17_2259.pdf`, which serves the PDF. The rewrite now goes to
+`https://www.landtag-saar.de/file.ashx?FileName=<file>` directly — the Landtag's own
+redirect target, one request per document. The test pins that rewrite, and pins that
+it is applied to *every* document of *every* discovered ref — the bug the first fix
+missed. The golden records keep the `Downloadfile.ashx` URLs they were fetched from.
 
 ## Public surface
 

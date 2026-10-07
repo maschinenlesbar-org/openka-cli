@@ -11,8 +11,13 @@
 // spent a whole classification pass looking like a source of scanned PDFs when its
 // documents in fact have a clean text layer.
 //
-// The rewrite below is the template from the wrapper's own markup, so it is the
-// Landtag's statement of where the file is, not a guess.
+// The rewrite below follows the Landtag's own statement of where the file is, not a
+// guess. That statement changed: the wrapper's iframe named
+// `/Downloadfile.ashx?FileId=-1&FileName=…`, which by 2026-10-07 answered HTTP 500 for
+// every document, so a sync stored nothing; the wrapper URL itself now answers
+// `301 Location: /file.ashx?FileName=…` (seen live on Af17_2259.pdf), and that answers
+// 200 with the PDF. The rewrite goes straight there — one request per document, over
+// https, rather than the Parlamentsspiegel's plain-http link and a redirect.
 
 import { withDiscoveryState, type DiscoverOptions, type DiscoverResult, type DocRef, type Source, type CountOptions, type UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
@@ -28,7 +33,7 @@ export const LANDTAG_SAAR_HOST = "www.landtag-saar.de";
 export function saarlandDocumentUrl(url: string): string | undefined {
   const match = /^https?:\/\/(?:www\.)?landtag-saar\.de\/Drucksache\/([A-Za-z0-9_.-]+\.pdf)$/i.exec(url.trim());
   if (match === null) return undefined;
-  return `https://${LANDTAG_SAAR_HOST}/Downloadfile.ashx?FileId=-1&FileName=${match[1]}`;
+  return `https://${LANDTAG_SAAR_HOST}/file.ashx?FileName=${match[1]}`;
 }
 
 export class SaarlandSource implements Source {
@@ -39,7 +44,7 @@ export class SaarlandSource implements Source {
   readonly homepage = "https://www.landtag-saar.de/";
   readonly notes =
     "Discovery runs through the Parlamentsspiegel. The links it carries point at an HTML wrapper " +
-    "whose iframe holds the real file, so each document URL is rewritten to the Downloadfile.ashx " +
+    "that now redirects to the real file, so each document URL is rewritten to the file.ashx " +
     "endpoint the wrapper itself names. Saarland's documents have a text layer; the wrapper was " +
     "the reason they looked like scans.";
 

@@ -15,13 +15,14 @@ describe("Saarland document URLs", () => {
   it("unwraps the iframe page the aggregator links to", () => {
     strictEqual(
       saarlandDocumentUrl("http://landtag-saar.de/Drucksache/Af17_1326.pdf"),
-      "https://www.landtag-saar.de/Downloadfile.ashx?FileId=-1&FileName=Af17_1326.pdf",
+      "https://www.landtag-saar.de/file.ashx?FileName=Af17_1326.pdf",
     );
     // The same page is served from the www host too.
     ok(saarlandDocumentUrl("https://www.landtag-saar.de/Drucksache/Aw17_1407.pdf") !== undefined);
   });
 
   it("leaves a URL that is not a wrapper exactly as it is", () => {
+    strictEqual(saarlandDocumentUrl("https://www.landtag-saar.de/file.ashx?FileName=x.pdf"), undefined);
     strictEqual(saarlandDocumentUrl("https://www.landtag-saar.de/Downloadfile.ashx?FileName=x.pdf"), undefined);
     strictEqual(saarlandDocumentUrl("https://example.invalid/other.pdf"), undefined);
   });
@@ -37,7 +38,8 @@ describe("Saarland document URLs", () => {
     ok(result.refs.length >= 1);
     for (const ref of result.refs) {
       for (const document of ref.documents) {
-        match(document.url, /Downloadfile\.ashx\?FileId=-1&FileName=[A-Za-z0-9_.-]+\.pdf$/);
+        // Not the retired Downloadfile.ashx, which answered 500 for every document (2026-10-07).
+        match(document.url, /^https:\/\/www\.landtag-saar\.de\/file\.ashx\?FileName=[A-Za-z0-9_.-]+\.pdf$/);
         strictEqual(document.urlStable, true);
       }
     }
