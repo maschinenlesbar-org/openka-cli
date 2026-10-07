@@ -1,6 +1,6 @@
 {
   "name": "@maschinenlesbar.org/openka-cli",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "OpenKA — German parliamentary Kleine Anfragen from 17 incompatible systems in one reproducible, machine-readable schema. Deterministic runtime: no generative model on the line.",
   "type": "module",
   "bin": {
