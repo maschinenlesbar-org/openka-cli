@@ -196,6 +196,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
     robots,
     warnings: report.warnings,
     notedOrigins: new Set(),
+    fetched: new Map(),
   };
 
   // One catalog write per `CATALOG_CHECKPOINT` refs rather than one per record:
@@ -259,6 +260,13 @@ interface RunContext {
   warnings: string[];
   /** Hosts already warned about, so a hundred documents on one host warn once. */
   notedOrigins: Set<string>;
+  /**
+   * What each document URL gave this run. A Land that files question and answer
+   * under one Drucksache links the same URL for both roles (Sachsen's viewer links,
+   * and the Parlamentsspiegel rows that point at them); it was downloaded once per
+   * role — twice, 4 s apart, from a server that asked not to be crawled.
+   */
+  fetched: Map<string, FetchedBytes | FetchGap>;
 }
 
 interface RefOutcome {
@@ -539,6 +547,21 @@ function gapText(gap: FetchGap["gap"]): string {
  * re-serve it under several URLs.
  */
 async function fetchDocument(
+  engine: FetchEngine,
+  store: Store,
+  url: string,
+  now: () => Date,
+  httpCache: SourceState["http_cache"],
+  run: RunContext,
+): Promise<FetchedBytes | FetchGap> {
+  const seen = run.fetched.get(url);
+  if (seen !== undefined) return "gap" in seen ? seen : { ...seen, fromCache: true };
+  const result = await fetchDocumentOnce(engine, store, url, now, httpCache, run);
+  run.fetched.set(url, result);
+  return result;
+}
+
+async function fetchDocumentOnce(
   engine: FetchEngine,
   store: Store,
   url: string,

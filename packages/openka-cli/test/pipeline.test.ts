@@ -153,6 +153,30 @@ describe("sync pipeline", () => {
     ok(record?.extraction.abstained_fields.includes("full_text"));
   });
 
+  it("downloads a URL once when it serves two roles of one record", async () => {
+    // Sachsen's viewer links (and the Parlamentsspiegel rows pointing at them) give
+    // question and answer the same URL; it used to be fetched once per role.
+    class TwoRoles extends StubSource {
+      override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+        const result = await super.discover(options);
+        const ref = result.refs[0];
+        ok(ref !== undefined);
+        ref.documents = [
+          { role: "question_pdf", url: PDF_URL, urlStable: true },
+          { role: "answer_pdf", url: PDF_URL, urlStable: true },
+        ];
+        return result;
+      }
+    }
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const report = await sync({ source: new TwoRoles(), store, engine: testEngine(transport) });
+    strictEqual(report.stored, 1);
+    strictEqual(requests.filter((request) => request.url === PDF_URL).length, 1);
+    strictEqual(report.bytesFetched, PDF.length);
+    deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents.map((document) => document.role), ["question_pdf", "answer_pdf"]);
+  });
+
   it("reads robots.txt once per run, for the connector's gate and every document check", async () => {
     const { transport, requests } = scriptedTransport([
       { match: "robots.txt", body: "User-agent: *\nDisallow:\n" },
