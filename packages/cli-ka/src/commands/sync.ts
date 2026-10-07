@@ -58,7 +58,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
     .option(
       "--ignore-robots",
-      "fetch documents from a server whose robots.txt disallows it — your decision, and recorded in every record's warnings",
+      "fetch documents from a server whose robots.txt disallows it — your decision; the run warns once per host (the records do not record it)",
     )
     .addOption(choiceOption("--ocr <mode>", "OCR engine for the ocr tier", OCR_MODES))
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)

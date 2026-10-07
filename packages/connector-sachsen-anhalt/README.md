@@ -24,8 +24,11 @@ on everything it exists to carry — no full text, no question, no answer. A cor
 those is worse than an honest gap.
 
 **The override is the operator's.** `ka sync --source sachsen-anhalt --ignore-robots` fetches
-anyway. It is never inferred and never silent: every record carries a warning saying
-the flag was used and that the decision was the operator's.
+anyway. It is never inferred and never silent: the run warns, once per host, that the
+flag was used and that the decision was the operator's — on stderr, and in `warnings`
+with `--json`. The records themselves do not carry it (their schema has no place for
+it), so a corpus passed on does not show which documents were fetched under the
+override: keep the sync's output if that matters.
 
 **And when it does fetch, it goes slowly.** `minHostIntervalMs` is 4000 — eight times
 the default. A server that asked not to be crawled at all should not then be hit at

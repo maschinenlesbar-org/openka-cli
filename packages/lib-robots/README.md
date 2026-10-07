@@ -28,7 +28,8 @@ Correctness details that decide real cases here:
 
 The operator can override the result. That decision belongs to whoever runs the sync
 and knows what they are doing it for — see `--ignore-robots` — and it is never
-silent: it is a flag they typed and a warning on every record it produced.
+silent: it is a flag they typed and a warning in the run's output, once per host. (The
+records do not carry it; see the gated connectors' READMEs.)
 
 ## Public surface
 

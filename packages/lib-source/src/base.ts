@@ -79,7 +79,8 @@ export interface DiscoverOptions {
    * Off by default, and never inferred: it is a flag the operator typed. Two Länder
    * publish their Drucksachen openly and disallow every client in robots.txt, so
    * this is the switch that decides whether their documents can be read at all. It
-   * is not silent — every ref it produces carries a warning saying it was used.
+   * is not silent — the run warns, once per host, that it was used. The records do
+   * not carry that warning.
    */
   ignoreRobots?: boolean;
   /**

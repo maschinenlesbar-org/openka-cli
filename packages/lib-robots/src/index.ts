@@ -8,7 +8,7 @@
 //
 // The operator can override it. That decision belongs to whoever runs the sync and
 // knows what they are doing it for, not to this library, and it is never silent:
-// the override is a flag they typed and a warning on every record it produced.
+// the override is a flag they typed and a warning in the run's output, once per host.
 
 /** One `User-agent` group's rules, in the order they were written. */
 export interface RobotsGroup {

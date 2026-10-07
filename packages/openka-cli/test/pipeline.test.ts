@@ -365,7 +365,7 @@ describe("sync pipeline", () => {
     strictEqual(store.getRecord("thueringen-8-980")?.reference, "8/980");
   });
 
-  it("fetches under --ignore-robots and records that it did", async () => {
+  it("fetches under --ignore-robots and reports that it did", async () => {
     const store = new MemoryStore();
     const { transport, requests } = scriptedTransport([
       { match: "robots.txt", body: "User-agent: *\nDisallow: /\n" },
