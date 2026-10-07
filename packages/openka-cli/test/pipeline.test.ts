@@ -177,6 +177,47 @@ describe("sync pipeline", () => {
     deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents.map((document) => document.role), ["question_pdf", "answer_pdf"]);
   });
 
+  describe("a document that redirects", () => {
+    // The robots check used to cover the first URL only: a redirect to another host,
+    // or into a disallowed path on the same one, was fetched without a word.
+    it("is not fetched when the target's host disallows it", async () => {
+      const store = new MemoryStore();
+      const { transport, requests } = scriptedTransport([
+        { match: "other.invalid/robots.txt", body: "User-agent: *\nDisallow: /\n" },
+        { match: "other.invalid/x.pdf", body: PDF },
+        { match: ".pdf", status: 302, headers: { location: "https://other.invalid/x.pdf" } },
+      ]);
+      const report = await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+      strictEqual(report.stored, 1);
+      ok(!requests.some((request) => request.url === "https://other.invalid/x.pdf"));
+      ok(report.warnings.some((warning) => warning.includes("https://other.invalid disallows /x.pdf")));
+      deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, []);
+    });
+
+    it("is not fetched when it lands on a disallowed path of the same host", async () => {
+      const host = new URL(PDF_URL).origin;
+      const { transport, requests } = scriptedTransport([
+        { match: "robots.txt", body: "User-agent: *\nDisallow: /files/\n" },
+        { match: "/files/", body: PDF },
+        { match: ".pdf", status: 302, headers: { location: `${host}/files/x.pdf` } },
+      ]);
+      const report = await sync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(transport) });
+      ok(!requests.some((request) => request.url.endsWith("/files/x.pdf")));
+      ok(report.warnings.some((warning) => warning.includes("disallows /files/x.pdf")));
+    });
+
+    it("is fetched under --ignore-robots, with the target host slowed and named", async () => {
+      const { transport, requests } = scriptedTransport([
+        { match: "other.invalid/robots.txt", body: "User-agent: *\nDisallow: /\n" },
+        { match: "other.invalid/x.pdf", body: PDF },
+        { match: ".pdf", status: 302, headers: { location: "https://other.invalid/x.pdf" } },
+      ]);
+      const report = await sync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(transport), ignoreRobots: true });
+      ok(requests.some((request) => request.url === "https://other.invalid/x.pdf"));
+      ok(report.warnings.some((warning) => warning.includes("https://other.invalid disallows /x.pdf") && warning.includes("--ignore-robots was given")));
+    });
+  });
+
   it("reads robots.txt once per run, for the connector's gate and every document check", async () => {
     const { transport, requests } = scriptedTransport([
       { match: "robots.txt", body: "User-agent: *\nDisallow:\n" },

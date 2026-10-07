@@ -172,7 +172,22 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
       continue;
     }
     try {
-      const response = await engine.head(url);
+      let hopRefused = false;
+      const response = await engine.head(url, {
+        onRedirect: async (next) => {
+          if (!(await robots.decide(next)).allowed) {
+            hopRefused = true;
+            throw new Error(`redirect to ${next} is disallowed by its host's robots.txt`);
+          }
+        },
+      }).catch((err: unknown) => {
+        if (hopRefused) return undefined;
+        throw err;
+      });
+      if (response === undefined) {
+        refused++;
+        continue;
+      }
       const length = Number(firstHeader(response.headers["content-length"]));
       if (response.status === 200 && Number.isSafeInteger(length) && length > 0) sizes.push(length);
     } catch {

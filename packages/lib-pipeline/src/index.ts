@@ -572,15 +572,7 @@ async function fetchDocumentOnce(
   // CONCEPT.md §7, at the one place every document URL passes through. A blob
   // already archived under a validator is still re-asked: the rule is about
   // requests, and a 304 is a request.
-  const verdict = await run.robots.decide(url);
-  if (verdict.note !== undefined) {
-    const origin = new URL(url).origin;
-    if (!run.notedOrigins.has(origin)) {
-      run.notedOrigins.add(origin);
-      run.warnings.push(verdict.note);
-    }
-  }
-  if (!verdict.allowed) return { gap: "robots" };
+  if (!(await askRobots(run, url))) return { gap: "robots" };
 
   const cached = httpCache[url];
   const validators: { etag?: string; last_modified?: string } = {};
@@ -590,9 +582,16 @@ async function fetchDocumentOnce(
 
   let response;
   try {
-    response = await engine.get(url, canRevalidate ? { validators } : {});
+    response = await engine.get(url, {
+      ...(canRevalidate ? { validators } : {}),
+      // Every hop is a request too, on whatever host and path it lands.
+      onRedirect: async (next) => {
+        if (!(await askRobots(run, next))) throw new RedirectRefused(next);
+      },
+    });
   } catch (err) {
     if (err instanceof OpenKaApiError && err.status === 404) return { gap: "404" };
+    if (err instanceof RedirectRefused) return { gap: "robots" };
     throw err;
   }
 
@@ -611,6 +610,26 @@ async function fetchDocumentOnce(
   if (response.lastModified !== undefined) entry.last_modified = response.lastModified;
   httpCache[url] = entry;
   return { bytes: store.getBlob(digest), retrievedAt: isoInstant(now()), fromCache: false };
+}
+
+/** May `url` be requested? Asks the run's robots policy and warns once per origin. */
+async function askRobots(run: RunContext, url: string): Promise<boolean> {
+  const verdict = await run.robots.decide(url);
+  if (verdict.note !== undefined) {
+    const origin = new URL(url).origin;
+    if (!run.notedOrigins.has(origin)) {
+      run.notedOrigins.add(origin);
+      run.warnings.push(verdict.note);
+    }
+  }
+  return verdict.allowed;
+}
+
+/** A redirect hop that robots.txt disallows: the document is a gap, as if asked directly. */
+class RedirectRefused extends Error {
+  constructor(readonly url: string) {
+    super(`redirect to ${url} is disallowed by its host's robots.txt`);
+  }
 }
 
 /** ISO-8601 UTC to the second — the precision `retrieved_at` is specified at. */

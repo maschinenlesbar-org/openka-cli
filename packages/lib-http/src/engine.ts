@@ -166,6 +166,9 @@ export function sanitizeServerText(text: string): string {
   return stripControlCharacters(text, { keepWhitespace: false }).trim();
 }
 
+/** Asked before a redirect is followed, with the absolute target; a throw refuses the hop. */
+export type RedirectHook = (url: string) => void | Promise<void>;
+
 /** Conditional-request state a caller can hand back on the next run. */
 export interface CacheValidators {
   etag?: string;
@@ -248,6 +251,8 @@ export class FetchEngine {
       validators?: CacheValidators;
       /** Fewer retries than the engine's for this request (never more): robots.txt asks once more at most. */
       maxRetries?: number;
+      /** Called with each redirect target before it is requested; throw to refuse the hop. */
+      onRedirect?: RedirectHook;
     } = {},
   ): Promise<FetchResult> {
     const target = this.url(pathOrUrl, options.params ?? {});
@@ -259,7 +264,7 @@ export class FetchEngine {
     if (options.validators?.etag) headers["if-none-match"] = options.validators.etag;
     if (options.validators?.last_modified) headers["if-modified-since"] = options.validators.last_modified;
     const retries = options.maxRetries === undefined ? undefined : Math.min(Math.max(0, Math.trunc(options.maxRetries)), this.maxRetries);
-    return this.request("GET", target, headers, undefined, retries);
+    return this.request("GET", target, headers, undefined, retries, options.onRedirect);
   }
 
   /**
@@ -276,7 +281,7 @@ export class FetchEngine {
    */
   async head(
     pathOrUrl: string,
-    options: { params?: QueryParams; headers?: Record<string, string> } = {},
+    options: { params?: QueryParams; headers?: Record<string, string>; onRedirect?: RedirectHook } = {},
   ): Promise<{ status: number; headers: FetchResult["headers"] }> {
     const target = this.url(pathOrUrl, options.params ?? {});
     const headers: Record<string, string> = {
@@ -285,7 +290,7 @@ export class FetchEngine {
       ...(options.headers ?? {}),
     };
     try {
-      const result = await this.request("HEAD", target, headers);
+      const result = await this.request("HEAD", target, headers, undefined, this.maxRetries, options.onRedirect);
       return { status: result.status, headers: result.headers };
     } catch (err) {
       // A 404 is the answer, not a failure: the caller is asking whether the
@@ -323,6 +328,7 @@ export class FetchEngine {
     headers: Record<string, string>,
     startBody?: string,
     maxRetries: number = this.maxRetries,
+    onRedirect?: RedirectHook,
   ): Promise<FetchResult> {
     let url = startUrl;
     let method = startMethod;
@@ -358,6 +364,10 @@ export class FetchEngine {
           currentHeaders = withoutBodyHeaders(currentHeaders);
         }
         url = next.toString();
+        // The caller's rules (robots.txt) are about every URL requested, not just the
+        // first: a redirect into a disallowed path or onto another host was fetched
+        // with no check at all (exploratory test 2026-10-07).
+        if (onRedirect !== undefined) await onRedirect(url);
         continue;
       }
 

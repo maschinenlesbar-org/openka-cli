@@ -216,6 +216,28 @@ describe("fetch engine", () => {
     strictEqual(result.finalUrl, "https://example.invalid/to");
   });
 
+  it("asks onRedirect about every hop before requesting it, and stops when it throws", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "/a", status: 302, headers: { location: "/b" } },
+      { match: "/b", status: 302, headers: { location: "https://other.invalid/c" } },
+      { match: "/c", body: "arrived" },
+    ]);
+    const asked: string[] = [];
+    const result = await testEngine(transport).get("https://example.invalid/a", { onRedirect: (url) => void asked.push(url) });
+    strictEqual(result.body.toString(), "arrived");
+    deepStrictEqual(asked, ["https://example.invalid/b", "https://other.invalid/c"]);
+    const refused = scriptedTransport([
+      { match: "/a", status: 302, headers: { location: "https://other.invalid/c" } },
+      { match: "/c", body: "arrived" },
+    ]);
+    await rejects(
+      () => testEngine(refused.transport).get("https://example.invalid/a", { onRedirect: () => { throw new Error("no"); } }),
+      /no/,
+    );
+    ok(!refused.requests.some((request) => request.url.includes("other.invalid")));
+    ok(requests.length === 3);
+  });
+
   it("follows a 303 (and a 301/302) to a POST with a GET and no body", async () => {
     // A STARWEB servlet may answer a form POST with a redirect to the results
     // page. Re-POSTing the form there is answered with the search form again.
