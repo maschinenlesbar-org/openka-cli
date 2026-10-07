@@ -47,8 +47,15 @@ export const LABEL = "Landtag Brandenburg";
 /** The server the Drucksachen live on, and which disallows every client. */
 export const DOCUMENT_ORIGIN = "https://www.parlamentsdokumentation.brandenburg.de";
 
-/** A path under the document server, for the robots.txt question. */
-export const DOCUMENT_PATH = "/cgi-bin/pardok-cache.pl";
+/**
+ * Where the Drucksachen actually are, for the robots.txt question: the
+ * Parlamentsspiegel links them as `/starweb/LBB/ELVIS/parladoku/w8/drs/ab_3400/3492.pdf`
+ * (recorded 2026-10-07). The gate used to ask about `/cgi-bin/pardok-cache.pl`, which
+ * serves none of them — so a file disallowing only the documents let discovery run,
+ * the pipeline refused every document, and records with no document were stored
+ * (exploratory test of 0.4.0). Sachsen-Anhalt had the same flaw, fixed in 0.4.0.
+ */
+export const DOCUMENT_PATH = "/starweb/LBB/ELVIS/parladoku/";
 
 /**
  * One request every four seconds. The default is 500 ms; a server that has asked

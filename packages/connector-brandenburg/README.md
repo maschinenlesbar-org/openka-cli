@@ -39,7 +39,9 @@ the usual rate.
 
 **The check is live.** robots.txt is read at run time, so if the Landtag lifts the
 rule this connector starts working with no release and no code change. There is a
-test for exactly that.
+test for exactly that. The gate asks about the path the documents are served from
+(`DOCUMENT_PATH`, `/starweb/LBB/ELVIS/parladoku/`), so a rule that keeps only the
+documents disallowed still produces nothing — not records without documents.
 
 **Specific to Brandenburg.** Its Parlamentsdokumentation serves a stateless Perl CGI
 (`/cgi-bin/pardok-cache.pl?id=…`) which would have been the simplest interface of any

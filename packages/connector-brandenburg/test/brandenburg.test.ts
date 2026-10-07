@@ -47,9 +47,19 @@ describe("brandenburg source", () => {
     ok(result.warnings[0]?.includes("the operator's"));
   });
 
+  it("is still blocked when only the documents' path is disallowed", async () => {
+    // The gate used to ask about /cgi-bin/pardok-cache.pl, which serves no document:
+    // discovery ran and records without documents were stored.
+    const { transport, requests } = landtag("User-agent: *\nDisallow: /starweb/\n");
+    const result = await new BrandenburgSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(result.refs, []);
+    ok(result.blocked?.includes("/starweb/LBB/ELVIS/parladoku/"));
+    ok(!requests.some((request) => request.url.includes("/suche")));
+  });
+
   it("needs no override once the Landtag lifts the rule", async () => {
     // robots.txt is read at run time, not baked in, so this corrects itself.
-    const { transport } = landtag("User-agent: *\nDisallow: /files/\n");
+    const { transport } = landtag("User-agent: *\nDisallow: /cgi-bin/\n");
     const result = await new BrandenburgSource().discover({ engine: testEngine(transport), state });
     ok(result.refs.length >= 1);
     ok(!result.warnings.some((warning) => warning.includes("--ignore-robots")));
@@ -72,7 +82,7 @@ describe("brandenburg source", () => {
 
   it("asks the document server, not the aggregator, for permission", () => {
     ok(DOCUMENT_ORIGIN.startsWith("https://"));
-    ok(DOCUMENT_PATH.startsWith("/"));
+    ok(DOCUMENT_PATH.startsWith("/starweb/"));
     ok(!DOCUMENT_ORIGIN.includes("parlamentsspiegel"));
   });
 });
