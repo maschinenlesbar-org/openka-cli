@@ -20,6 +20,10 @@ Everything is re-exported from the package root:
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
 CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
 syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
+syncJobs, SyncJob, SyncJobsOptions, jobListProblem,
+SyncJobSpec, jobLabel, parseJobSpec, jobSpecProblem, withDefaults, windowOf,
+SyncQueue, QueueJob, parseSyncQueue, JOB_KEYS, DEFAULT_KEYS, LOG_PLACEHOLDERS,
+parseToml, TomlDocument, TomlTable, TomlValue,
 planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN, documentsToFetch, corpusEstimate,
 countSources, CountSourcesOptions, SourceCountRow
 ```
@@ -50,6 +54,23 @@ applies to every source and is checked once, up front; a list that is empty or n
 source twice is refused (`sourceListProblem`). A failing source is that source's
 outcome (`{ status: "failed", error }`), not the end of the run; an aborted `signal`
 stops the running ones between refs and marks the rest `skipped`.
+
+**Jobs: a window per source.** `syncJobs({ jobs, … })` is the same run over jobs, each
+a source with a window of its own and a `label` (`jobLabel`: `bund@period=21`, or the
+key alone); `syncSources` is its special case of one job per source over one window.
+One source may be several jobs; they share its lane and run in order. The labels name
+the jobs in the callbacks and in each `SourceOutcome` (`job`), and may not repeat
+(`jobListProblem`). `stopOnFailure` starts no job once one has failed; the rest are
+`skipped` with `reason: "after-failure"` (an aborted signal's are `"interrupted"`).
+`parseJobSpec("bund@2026-01-01..,limit=50")` reads the command-line form, and
+`withDefaults` fills a job's window from shared defaults field by field.
+
+**A plan file.** `parseSyncQueue(text, { where, sourceProblem })` reads a queue of
+`[[job]]` tables and one `[defaults]` (`src/queue.ts`): a list of periods becomes
+one job per period, `log` templates are filled in (`LOG_PLACEHOLDERS`), and an unknown
+key, a bad window, an unknown source or a repeated job is a `UsageError` naming the file,
+the job and the field. The file is read by `parseToml` (`src/toml.ts`), the subset of
+TOML a plan needs: no dependency, and what it does not read is refused by name.
 
 `sync()` checks its window first (`normalizeSyncWindow`, `src/window.ts`): calendar
 dates for `since`/`until` (trimmed), `until` not before `since`, `period` in

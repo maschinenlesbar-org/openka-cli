@@ -7,6 +7,7 @@
 //     index/tokens/<shard>.json         inverted index shards (256 of them)
 //     index/embeddings.json             frozen vectors, only if the factory shipped some
 //     state/<source>.json               per-source sync + conditional-request state
+//     state/queues/<key>.json           a plan file's open round: the jobs done in it
 //     lock                              held while a run writes: pid, host and purpose
 //
 // Everything is plain JSON in canonical form, so a corpus diffs cleanly in git, can
@@ -23,7 +24,7 @@ import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { IndexShard } from "./fts.js";
-import type { CatalogEntry, EmbeddingSet, SourceState, Store } from "./store.js";
+import type { CatalogEntry, EmbeddingSet, QueueProgress, SourceState, Store } from "./store.js";
 
 /** Record ids and source keys reach the filesystem, so they are strictly checked. */
 const SAFE_KEY = /^[a-z0-9][a-z0-9._-]*$/;
@@ -642,6 +643,37 @@ export class FileStore implements Store {
   sourceStateKeys(): string[] {
     return this.listJsonKeys("state");
   }
+
+  // --------------------------------------------------------------- queues
+
+  /** A plan's open round (`queueProgressKey`), or undefined when none is open. */
+  getQueueProgress(key: string): QueueProgress | undefined {
+    assertSafeKey(key, "queue key");
+    const path = this.path("state", "queues", `${key}.json`);
+    const value = this.readJson<unknown>(path, undefined);
+    if (value === undefined) return undefined;
+    const progress = value as Partial<QueueProgress>;
+    if (typeof progress.plan !== "string" || typeof progress.started !== "string" || !Array.isArray(progress.done) || !progress.done.every((label) => typeof label === "string")) {
+      throw new StoreError(`Corrupt queue progress ${path}: delete it, or run the plan with --restart`);
+    }
+    return progress as QueueProgress;
+  }
+
+  /** Record a plan's open round; undefined closes it (the file is removed). Writers hold the lock. */
+  putQueueProgress(key: string, progress: QueueProgress | undefined): void {
+    assertSafeKey(key, "queue key");
+    const path = this.path("state", "queues", `${key}.json`);
+    if (progress === undefined) this.remove(path);
+    else this.writeJson(path, { ...progress, done: [...progress.done].sort() });
+  }
+}
+
+/**
+ * The key a plan file's progress is kept under: a digest of its absolute path, so
+ * the same file run again — from cron, from another directory — finds its round.
+ */
+export function queueProgressKey(planPath: string): string {
+  return `plan-${sha256(Buffer.from(resolve(planPath), "utf8")).slice(0, 16)}`;
 }
 
 interface LockHolder {

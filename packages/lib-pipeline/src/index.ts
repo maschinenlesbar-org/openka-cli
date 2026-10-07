@@ -731,7 +731,20 @@ export function isoInstant(date: Date): string {
 }
 export { sourceStatus, type SourceStatusRow } from "./status.js";
 export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";
-export { planLanes, sourceListProblem, syncSources, type SourceOutcome, type SyncSourcesOptions } from "./many.js";
+export {
+  jobListProblem,
+  planLanes,
+  sourceListProblem,
+  syncJobs,
+  syncSources,
+  type SourceOutcome,
+  type SyncJob,
+  type SyncJobsOptions,
+  type SyncSourcesOptions,
+} from "./many.js";
+export { jobLabel, jobSpecProblem, parseJobSpec, windowOf, withDefaults, type SyncJobSpec } from "./jobs.js";
+export { DEFAULT_KEYS, JOB_KEYS, LOG_PLACEHOLDERS, parseSyncQueue, type QueueJob, type SyncQueue } from "./queue.js";
+export { parseToml, type TomlDocument, type TomlTable, type TomlValue } from "./toml.js";
 export {
   DRY_RUN_SAMPLE,
   ESTIMATE_MIN_KNOWN,

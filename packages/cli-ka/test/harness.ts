@@ -56,6 +56,9 @@ export function cliHarness(
       }
       files.set(path, data);
     },
+    appendFile: (path, text) => {
+      files.set(path, Buffer.concat([files.get(path) ?? Buffer.alloc(0), Buffer.from(text, "utf8")]));
+    },
   };
   const fixedNow = options.now ?? new Date("2026-01-02T03:04:05Z");
   const deps: CliDeps = {

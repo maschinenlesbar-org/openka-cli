@@ -749,6 +749,166 @@ describe("ka", () => {
     }
   });
 
+  it("gives each --source a window of its own after @, the shared flags filling in the rest", async () => {
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", status: 404 },
+      { match: "search.dip.bundestag.de", body: '{"numFound":0,"documents":[]}', headers: { "content-type": "application/json" } },
+    ]);
+    const harness = cliHarness({ transport, env: { DIP_API_KEY: "test-key" } });
+    try {
+      const argv = ["--corpus", harness.corpus, "sync", "--source", "bund@2026-01-01..2026-12-31", "--source", "bund@period=21", "--limit", "5"];
+      strictEqual(await run(argv, harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^bund@2026-01-01\.\.2026-12-31: 0 discovered, 0 stored, 0 unchanged, 0 failed$/m);
+      match(harness.stdout(), /^bund@period=21: 0 discovered, 0 stored, 0 unchanged, 0 failed$/m);
+      const urls = requests.map((request) => request.url);
+      ok(urls.some((url) => /f\.datum\.start=2026-01-01/.test(url) && !/f\.wahlperiode/.test(url)), urls.join("\n"));
+      ok(urls.some((url) => /f\.wahlperiode=21/.test(url) && !/f\.datum\.start/.test(url)), urls.join("\n"));
+
+      for (const [spec, reason] of [
+        ["bund@period=0", /period in "bund@period=0"/],
+        ["narnia@period=1", /narnia/],
+        ["bund@2026", /is not a window/],
+      ] as const) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", spec], harness.deps), EXIT_USAGE, spec);
+        match(harness.stderr(), reason, spec);
+      }
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "bund@period=21", "--source", "bund@period=21"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /"bund@period=21" is named twice\./);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  describe("a plan file (--plan)", () => {
+    const withPlan = async (text: string, body: (plan: string, dir: string) => Promise<void>): Promise<void> => {
+      const dir = mkdtempSync(join(tmpdir(), "openka-plan-"));
+      try {
+        writeFileSync(join(dir, "jobs.toml"), text);
+        await body(join(dir, "jobs.toml"), dir);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    it("runs its jobs, logs each where it says, and ends with a summary", async () => {
+      await withPlan('[[job]]\nsource = "berlin"\nlog = "logs/{source}.log"\n', async (plan, dir) => {
+        const harness = cliHarness({ transport: berlinTransport().transport });
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_OK, harness.stderr());
+          match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m);
+          match(harness.stdout(), /^JOB +STATUS +DISCOVERED +STORED +UNCHANGED +FAILED$/m);
+          match(harness.stdout(), /^berlin +done +\d+ +\d+ +0 +0$/m);
+          match(harness.stderr(), /^Note: every job of the plan is done; its next run starts over\.$/m);
+          const log = harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8") ?? "";
+          match(log, /^2026-01-02T03:04:05\.000Z berlin started$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z berlin \d+ Anfragen discovered$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z berlin 1\/\d+ stored berlin-19-\d+$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z berlin done: \d+ discovered, \d+ stored, 0 unchanged, 0 failed$/m);
+          deepStrictEqual(readdirSync(join(harness.corpus, "state", "queues")), [], "the round is closed");
+
+          // A log is appended to, run after run.
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_OK, harness.stderr());
+          strictEqual(harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8").match(/ berlin started$/gm)?.length, 2);
+        } finally {
+          harness.cleanup();
+        }
+      });
+    });
+
+    it("skips on a rerun the jobs done in its unfinished round, and runs them again with --restart", async () => {
+      // The Bundestag job fails without a DIP key; Berlin's is done.
+      await withPlan('[[job]]\nsource = "berlin"\n\n[[job]]\nsource = "bund"\nperiod = 21\n', async (plan) => {
+        const { transport, requests } = berlinTransport();
+        const harness = cliHarness({ transport });
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_USAGE);
+          match(harness.stdout(), /^bund@period=21 +failed +— +— +— +—$/m);
+          match(harness.stderr(), /^Note: 1 job\(s\) of the plan are not done; run it again to continue \(--restart runs every job\)\.$/m);
+          match(harness.stderr(), /DIP API needs a key/);
+
+          const before = requests.length;
+          harness.out.length = 0;
+          harness.err.length = 0;
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan, "--json"], harness.deps), EXIT_USAGE);
+          match(harness.stderr(), /^Note: skipping 1 job\(s\) done in this plan's unfinished round \(begun 2026-01-02T03:04:05Z\): berlin\. --restart runs them again\.$/m);
+          strictEqual(requests.length, before, "Berlin was not asked again");
+          const json = JSON.parse(harness.stdout()) as { job: string; reason?: string; error?: string }[];
+          deepStrictEqual(json.map((entry) => [entry.job, entry.reason ?? (entry.error === undefined ? "done" : "error")]), [
+            ["berlin", "done-earlier"],
+            ["bund@period=21", "error"],
+          ]);
+
+          harness.err.length = 0;
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan, "--restart"], harness.deps), EXIT_USAGE);
+          doesNotMatch(harness.stderr(), /skipping/);
+          ok(requests.length > before, "Berlin ran again");
+        } finally {
+          harness.cleanup();
+        }
+      });
+    });
+
+    it("starts no job after a failed one when continue_on_error is false", async () => {
+      await withPlan('[defaults]\ncontinue_on_error = false\n\n[[job]]\nsource = "bund"\nperiod = [21, 20]\n', async (plan) => {
+        const harness = cliHarness();
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_USAGE);
+          match(harness.stdout(), /^bund@period=21 +failed/m);
+          match(harness.stdout(), /^bund@period=20 +not started/m);
+          match(harness.stderr(), /^Note: 1 job\(s\) not started, since a job failed and the plan sets continue_on_error = false\.$/m);
+        } finally {
+          harness.cleanup();
+        }
+      });
+    });
+
+    it("sizes the whole queue with --dry-run", async () => {
+      await withPlan('[[job]]\nsource = "berlin"\nsince = 2021-01-01\n\n[[job]]\nsource = "berlin"\nlimit = 1\n', async (plan) => {
+        const { transport } = scriptedTransport([
+          { match: "pardok-wp19.xml", body: PARDOK },
+          { match: "robots.txt", status: 404 },
+          { match: ".pdf", headers: { "content-length": "110000" } },
+        ]);
+        const harness = cliHarness({ transport });
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan, "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+          match(harness.stdout(), /^berlin 2021-01-01\.\.: \d+ Anfragen discovered/m);
+          match(harness.stdout(), /^berlin@limit=1: documents to fetch: 1 /m);
+          match(harness.stdout(), /^total: \d+ Anfragen discovered, 0 already in corpus, \d+ documents to fetch \(≈ [\d.]+ (KB|MB)\)$/m);
+          ok(!existsSync(join(harness.corpus, "state")), "nothing is written");
+        } finally {
+          harness.cleanup();
+        }
+      });
+    });
+
+    it("refuses what does not go with a plan, and a plan it cannot read", async () => {
+      await withPlan('[[job]]\nsource = "berlin"\nperiod = 0\n', async (plan) => {
+        const harness = cliHarness();
+        try {
+          for (const [argv, reason] of [
+            [["--plan", plan, "--source", "berlin"], /--plan names its own jobs; leave out --source and --all\./],
+            [["--plan", plan, "--all"], /--plan names its own jobs/],
+            [["--plan", plan, "--since", "2026-01-01", "--limit", "5"], /put --since, --limit in the plan \(a job, or its \[defaults\]\) instead\./],
+            [["--source", "berlin", "--restart"], /--restart applies to --plan only\./],
+            [["--plan", `${plan}.missing`], /Could not read the plan .*jobs\.toml\.missing/],
+            [["--plan", plan], /jobs\.toml \[\[job\]\] #1 \(berlin\): Invalid period/],
+          ] as const) {
+            harness.err.length = 0;
+            strictEqual(await run(["--corpus", harness.corpus, "sync", ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+            match(harness.stderr(), reason, argv.join(" "));
+          }
+          writeFileSync(plan, "[[job]]\nsource = 'berlin'\nsince = 2026-01-01T00:00:00\n");
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_USAGE);
+          match(harness.stderr(), /jobs\.toml:3: 2026-01-01T00:00:00 is not a value a plan file reads/);
+        } finally {
+          harness.cleanup();
+        }
+      });
+    });
+  });
+
   it("calls a missing archived document a corpus problem in verify, as open does", async () => {
     const harness = await seeded();
     try {

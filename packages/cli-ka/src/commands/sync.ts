@@ -7,7 +7,8 @@ import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import {
   SYNC_LIMIT_MIN,
   planSync,
-  syncSources,
+  syncJobs,
+  windowOf,
   type ProgressEvent,
   type SourceOutcome,
   type SyncPlan,
@@ -15,8 +16,8 @@ import {
 } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
-import { adapterSourceKeys, createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import { FileStore, checkCorpusVolumes, lockCorpus, spaceGuard, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
+import { FileStore, checkCorpusVolumes, lockCorpus, queueProgressKey, spaceGuard, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
 import {
   action,
@@ -27,12 +28,12 @@ import {
   parseIsoDate,
   parseNonEmpty,
   printJson,
-  problemParser,
   toEngineOptions,
   volumeOptionsFrom,
 } from "../shared.js";
 import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
+import { JobLogs, QueueRound, collectJobSpec, finished, printSummary, selectJobs, type CliJob } from "./sync-jobs.js";
 
 /**
  * The most of one warning or error line that is printed. These are this program's own
@@ -43,9 +44,6 @@ import { SyncProgress } from "../progress.js";
 const MESSAGE_WIDTH = 2000;
 
 type Source = ReturnType<typeof createSource>;
-
-/** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
-const parseSourceKey = problemParser(sourceKeyProblem);
 
 /**
  * The most Anfragen one `ka sync` run may take on: a cap on the command, not a
@@ -59,11 +57,15 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .command("sync")
     .description("fetch, extract and store Anfragen from one or more sources")
     .option(
-      "--source <key>",
-      `source to sync, repeatable: several run side by side under one corpus lock (${sourceKeys().join(", ")})`,
-      collectSourceKey,
+      "--source <key[@window]>",
+      "source to sync, repeatable: several run side by side under one corpus lock. A window of its own after @: " +
+        "berlin@2025-01-01..2025-12-31, bund@period=21, bund@2026-01-01..,limit=50 — the shared --since/--until/--period/--limit " +
+        `fill in what it leaves out (${sourceKeys().join(", ")})`,
+      collectJobSpec,
     )
     .option("--all", "every source with an adapter of its own (not the parlamentsspiegel aggregator)")
+    .option("--plan <file>", "run the jobs of a plan file ([[job]] tables: source, since, until, period, limit, log; see Usage.md)", parseNonEmpty)
+    .option("--restart", "with --plan, run every job again, also those done in the plan's unfinished round")
     .option("--wait", "wait while another run holds the corpus, instead of exiting 3")
     .option("--dry-run", "discover only: count the Anfragen and estimate the download, fetching no document and writing nothing")
     .option("--since <date>", "only Anfragen dated on or after this date (YYYY-MM-DD)", parseIsoDate)
@@ -84,34 +86,39 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
     .option("--ocr-traineddata <path>", "traineddata file to hash into the provenance record", parseNonEmpty)
-    .option("--json", "print the sync report as JSON (an array of reports for several sources or --all)");
+    .option("--json", "print the sync report as JSON (an array of reports for several jobs, --all or --plan)");
   addVolumeOptions(command)
     .action(
       action(deps, async (ctx) => {
         const io = ctx.deps.io;
-        const named = ctx.opts["source"] as string[] | undefined;
-        const all = ctx.opts["all"] === true;
-        if (named === undefined && !all) throw new UsageError("Name a source with --source <key>, or sync every one with --all.");
-        if (named !== undefined && all) throw new UsageError("--all already names every source; leave out --source.");
+        const selection = selectJobs(ctx);
+        const queue = selection.queue;
+        let jobs = selection.jobs;
 
         const flagKey = ctx.opts["apiKey"] as string | undefined;
         const keyFor = (source: Source): string | undefined =>
           source.apiKeyEnv === undefined ? undefined : (flagKey ?? nonBlank(ctx.deps.env[source.apiKeyEnv]));
-        let sources = (named ?? adapterSourceKeys()).map((key) => createSource(key));
-        if (all) {
+        if (ctx.opts["all"] === true) {
           // Named on its own, a source without its credential is an error, as it
           // always was. Under --all it is one of many, and failing the whole run
           // for the one source the user never asked for by name would make --all
           // unusable without a DIP key.
-          for (const source of sources.filter((s) => s.apiKeyEnv !== undefined && keyFor(s) === undefined)) {
-            io.err(`Note: skipped ${source.key}: it needs a credential (--api-key or ${source.apiKeyEnv}).`);
+          const missing = (job: CliJob): string | undefined => {
+            const env = createSource(job.spec.source).apiKeyEnv;
+            return env !== undefined && flagKey === undefined && nonBlank(ctx.deps.env[env]) === undefined ? env : undefined;
+          };
+          for (const job of jobs) {
+            const env = missing(job);
+            if (env !== undefined) io.err(`Note: skipped ${job.label}: it needs a credential (--api-key or ${env}).`);
           }
-          sources = sources.filter((s) => s.apiKeyEnv === undefined || keyFor(s) !== undefined);
+          jobs = jobs.filter((job) => missing(job) === undefined);
         }
-        const several = all || sources.length > 1;
+        const several = ctx.opts["all"] === true || queue !== undefined || jobs.length > 1;
         const store = ctx.store();
         if (ctx.opts["dryRun"] === true) {
-          await dryRun(ctx, sources, store, keyFor, several);
+          const skip = queue === undefined || !(store instanceof FileStore) || ctx.opts["restart"] === true ? undefined : doneEarlier(store, queue.path);
+          if (skip !== undefined && skip.done.size > 0) noteDoneEarlier(io, jobs, skip.done, skip.started);
+          await dryRun(ctx, skip === undefined ? jobs : jobs.filter((job) => !skip.done.has(job.label)), store, keyFor, several);
           return;
         }
         // Before anything is written — the lock file is the first write — so a corpus
@@ -143,6 +150,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
 
         const progress = ctx.global.quiet === true ? undefined : new SyncProgress(io, ctx.deps.now);
         const say = (text: string): void => (progress === undefined ? io.err(text) : progress.line(text));
+        const logs = new JobLogs(io, ctx.deps.now, jobs);
 
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
         // ends the process. A kill -9 cannot be caught: the next sync over the
@@ -159,14 +167,16 @@ export function registerSync(program: Command, deps: CliDeps): void {
         });
 
         let outcomes: SourceOutcome[];
+        let round: QueueRound | undefined;
+        let toRun = jobs;
         try {
-          // The command takes the corpus lock itself — syncSources() re-enters it —
+          // The command takes the corpus lock itself — syncJobs() re-enters it —
           // so that it can wait for it (--wait) and, before the first request, knows
           // what kind of volume the corpus is on.
-          const purpose = `sync --source ${sources.map((source) => source.key).join(" --source ")}`;
+          const purpose = `sync ${jobs.map((job) => `--source ${job.label}`).join(" ")}`;
           let release: () => void;
           try {
-            release = await lockCorpus(store, purpose, {
+            release = await lockCorpus(store, queue === undefined ? purpose : `sync --plan ${queue.path}`, {
               wait: ctx.opts["wait"] === true,
               signal: controller.signal,
               onWaiting: (held) => io.err(`Waiting for the corpus: it is in use by another run (${sanitizeForTerminal(held.holder)}).`),
@@ -177,37 +187,54 @@ export function registerSync(program: Command, deps: CliDeps): void {
           }
           try {
             if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
-            // One pacing book for every source's engine: two sources reaching one
-            // host are paced together, so running them side by side never asks a
-            // host for more than one source would. Each engine is its own, since a
-            // source's politeness floor raises its engine's interval for good.
-            const pacer = new HostPacer();
-            outcomes = await syncSources({
-              sources,
-              store,
-              engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
-              apiKeyFor: keyFor,
-              perceiver,
-              now: ctx.deps.now,
-              signal: controller.signal,
-              ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
-              ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
-              ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
-              ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
-              ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
-              ...(ctx.opts["force"] === true ? { force: true } : {}),
-              ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
-              ...(space === undefined ? {} : { space }),
-              // Progress is stderr, so --json (which shapes stdout) keeps it.
-              ...(progress === undefined
-                ? {}
-                : {
-                    onStart: (source: string) => progress.start(source),
-                    onDiscovered: (source: string, count: number) => progress.discovered(source, count),
-                    onProgress: (source: string, event: ProgressEvent) => progress.update(source, event),
-                    onDone: (outcome: SourceOutcome) => progress.finish(outcome.source),
-                  }),
-            });
+            if (queue !== undefined && store instanceof FileStore) {
+              round = new QueueRound(store, queue.path, ctx.deps.now, ctx.opts["restart"] === true);
+              const open = round;
+              if (open.done.size > 0) noteDoneEarlier(io, jobs, open.done, open.started);
+              toRun = jobs.filter((job) => !open.done.has(job.label));
+            }
+            if (toRun.length === 0) {
+              outcomes = [];
+            } else {
+              // One pacing book for every job's engine: two jobs reaching one host
+              // are paced together, so running them side by side never asks a host
+              // for more than one job would. Each engine is its own, since a
+              // source's politeness floor raises its engine's interval for good.
+              const pacer = new HostPacer();
+              outcomes = await syncJobs({
+                jobs: toRun.map((job) => ({ label: job.label, source: createSource(job.spec.source), window: windowOf(job.spec) })),
+                store,
+                engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+                apiKeyFor: keyFor,
+                perceiver,
+                now: ctx.deps.now,
+                signal: controller.signal,
+                ...(queue === undefined ? {} : { stopOnFailure: !queue.continueOnError }),
+                ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
+                ...(ctx.opts["force"] === true ? { force: true } : {}),
+                ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+                ...(space === undefined ? {} : { space }),
+                // Progress is stderr, so --json (which shapes stdout) keeps it.
+                onStart: (job: string) => {
+                  progress?.start(job);
+                  logs.line(job, "started");
+                },
+                onDiscovered: (job: string, count: number) => {
+                  progress?.discovered(job, count);
+                  logs.line(job, `${count} Anfragen discovered`);
+                },
+                onProgress: (job: string, event: ProgressEvent) => {
+                  progress?.update(job, event);
+                  logs.line(job, `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
+                },
+                onDone: (outcome: SourceOutcome) => {
+                  progress?.finish(outcome.job);
+                  logs.outcome(outcome);
+                  // Recorded as each job ends, so a run killed later keeps it.
+                  if (round !== undefined && finished(outcome)) round.markDone(outcome.job);
+                },
+              });
+            }
           } finally {
             release();
           }
@@ -217,94 +244,129 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
 
         const failed = outcomes.filter((outcome) => outcome.status === "failed");
-        const done = outcomes.flatMap((outcome) => (outcome.status === "done" ? [outcome.report] : []));
+        const done = outcomes.flatMap((outcome) => (outcome.status === "done" ? [outcome] : []));
         // A single source keeps the shape it always had: its report, and the error
         // it threw as the command's own.
         if (!several && failed[0] !== undefined) throw failed[0].error;
 
-        const interrupted = done.filter((report) => report.interrupted);
+        const handled = (report: SyncReport): number => report.stored + report.unchanged + report.failed;
+        const interrupted = done.filter((outcome) => outcome.report.interrupted);
+        const notStarted = outcomes.filter((outcome) => outcome.status === "skipped" && outcome.reason === "interrupted");
         const stopped =
-          caught !== undefined && (interrupted.length > 0 || outcomes.some((outcome) => outcome.status === "skipped"))
+          caught !== undefined && (interrupted.length > 0 || notStarted.length > 0)
             ? new InterruptedRunError(
                 caught,
                 interrupted
-                  .map((report) => `${report.source}: stopped after ${report.stored + report.unchanged + report.failed} of ${report.discovered} Anfragen`)
-                  .concat(outcomes.filter((outcome) => outcome.status === "skipped").map((outcome) => `${outcome.source}: not started`))
+                  .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${outcome.report.discovered} Anfragen`)
+                  .concat(notStarted.map((outcome) => `${outcome.job}: not started`))
                   .join("; ") + "; what was stored is catalogued. Run the same sync again to continue.",
               )
             : undefined;
 
         if (ctx.opts["json"] === true) {
-          printJson(ctx, several ? outcomes.map(outcomeJson) : done[0]);
+          const run = new Map(outcomes.map((outcome) => [outcome.job, outcome]));
+          const all = jobs.map((job) => run.get(job.label) ?? { job: job.label, source: job.spec.source, skipped: true, reason: "done-earlier" });
+          printJson(ctx, several ? all.map((entry) => ("status" in entry ? outcomeJson(entry) : entry)) : done[0]?.report);
         } else {
-          for (const report of done) printReport(io, report, several ? `${report.source}: ` : "");
+          for (const outcome of done) printReport(io, outcome.job, outcome.report, several ? `${outcome.job}: ` : "");
+          if (queue !== undefined) printSummary(io, jobs, new Map(outcomes.map((outcome) => [outcome.job, outcome])));
+        }
+        if (round !== undefined && round.closeIfComplete(jobs)) {
+          io.err("Note: every job of the plan is done; its next run starts over.");
+        } else if (round !== undefined && toRun.length > 0) {
+          io.err(`Note: ${jobs.length - round.done.size} job(s) of the plan are not done; run it again to continue (--restart runs every job).`);
+        }
+        const afterFailure = outcomes.filter((outcome) => outcome.status === "skipped" && outcome.reason === "after-failure");
+        if (afterFailure.length > 0) {
+          io.err(`Note: ${afterFailure.length} job(s) not started, since a job failed and the plan sets continue_on_error = false.`);
         }
         for (const outcome of failed.slice(1)) {
-          io.err(`error: ${outcome.source}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
+          io.err(`error: ${outcome.job}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
         }
         if (stopped !== undefined) throw stopped;
-        const low = done.filter((report) => report.lowSpace !== undefined);
+        const low = done.filter((outcome) => outcome.report.lowSpace !== undefined);
         if (low.length > 0) {
           throw new StoreError(
             low
-              .map((report) => `${report.source}: stopped after ${report.stored + report.unchanged + report.failed} of ${report.discovered} Anfragen — ${report.lowSpace}`)
+              .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${outcome.report.discovered} Anfragen — ${outcome.report.lowSpace}`)
               .join("; ") + "; what was stored is catalogued. Free some space, then run the same sync again to continue.",
           );
         }
         if (failed[0] !== undefined) {
-          if (several) io.err(`error: ${failed[0].source} failed:`);
+          if (several) io.err(`error: ${failed[0].job} failed:`);
           throw failed[0].error;
         }
-        const empty = done.filter((report) => report.errors.length > 0 && report.stored === 0).map((report) => report.source);
+        const empty = done.filter((outcome) => outcome.report.errors.length > 0 && outcome.report.stored === 0).map((outcome) => outcome.job);
         if (empty.length > 0) throw new OpenKaError(`${empty.join(", ")}: sync produced no records`);
       }),
     );
 }
 
+/** A plan's open round, read without the lock — for `--dry-run`, which writes nothing. */
+function doneEarlier(store: FileStore, plan: string): { done: Set<string>; started: string } | undefined {
+  const open = store.getQueueProgress(queueProgressKey(plan));
+  return open === undefined ? undefined : { done: new Set(open.done), started: open.started };
+}
+
+function noteDoneEarlier(io: CliIO, jobs: readonly CliJob[], done: ReadonlySet<string>, started: string): void {
+  const skipped = jobs.filter((job) => done.has(job.label)).map((job) => job.label);
+  if (skipped.length === 0) return;
+  io.err(
+    `Note: skipping ${skipped.length} job(s) done in this plan's unfinished round (begun ${started}): ${skipped.join(", ")}. ` +
+      "--restart runs them again.",
+  );
+}
+
 /**
- * `ka sync --dry-run`: what each source's window holds and what a sync would
- * download (`planSync`). No lock, since nothing is written; one source after the
- * other, on one pacing book like a real run.
+ * `ka sync --dry-run`: what each job's window holds and what a sync would download
+ * (`planSync`). No lock, since nothing is written; one job after the other, on one
+ * pacing book like a real run.
  */
 async function dryRun(
   ctx: ActionContext,
-  sources: Source[],
+  jobs: readonly CliJob[],
   store: Store,
   keyFor: (source: Source) => string | undefined,
   several: boolean,
 ): Promise<void> {
   const io = ctx.deps.io;
   const pacer = new HostPacer();
-  const results: { source: string; plan?: SyncPlan; error?: unknown }[] = [];
-  for (const source of sources) {
-    if (ctx.global.quiet !== true) io.err(`${source.key}: discovering (no document is downloaded)…`);
+  const results: { job: string; source: string; plan?: SyncPlan; error?: unknown }[] = [];
+  for (const job of jobs) {
+    if (ctx.global.quiet !== true) io.err(`${job.label}: discovering (no document is downloaded)…`);
+    const source = createSource(job.spec.source);
     const apiKey = keyFor(source);
     try {
       const plan = await planSync({
         source,
         store,
         engine: ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
-        ...(ctx.opts["since"] === undefined ? {} : { since: ctx.opts["since"] as string }),
-        ...(ctx.opts["until"] === undefined ? {} : { until: ctx.opts["until"] as string }),
-        ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
-        ...(ctx.opts["limit"] === undefined ? {} : { limit: ctx.opts["limit"] as number }),
+        ...windowOf(job.spec),
         ...(apiKey === undefined ? {} : { apiKey }),
         ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
         ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
       });
-      results.push({ source: source.key, plan });
+      results.push({ job: job.label, source: source.key, plan });
     } catch (error) {
       if (!several) throw error;
-      results.push({ source: source.key, error });
+      results.push({ job: job.label, source: source.key, error });
     }
   }
+  const plans = results.flatMap((result) => (result.plan === undefined ? [] : [result.plan]));
   if (ctx.opts["json"] === true) {
-    const json = results.map((result) => result.plan ?? { source: result.source, error: errorMessage(result.error) });
+    const json = results.map((result) =>
+      result.plan === undefined
+        ? { job: result.job, source: result.source, error: errorMessage(result.error) }
+        : several
+          ? { job: result.job, ...result.plan }
+          : result.plan,
+    );
     printJson(ctx, several ? json : json[0]);
   } else {
     for (const result of results) {
       if (result.plan === undefined) continue;
       const plan = result.plan;
+      const prefix = several ? `${result.job}: ` : "";
       if (plan.blocked !== undefined) {
         io.out(`${plan.source} ${windowLabel(plan.window)}: blocked — nothing was looked at (see the warning)`);
       } else {
@@ -312,16 +374,26 @@ async function dryRun(
           `${plan.source} ${windowLabel(plan.window)}: ${formatCount(plan.discovered)} Anfragen discovered, ` +
             `${formatCount(plan.in_corpus)} already in corpus`,
         );
-        io.out(`${several ? `${plan.source}: ` : ""}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
+        io.out(`${prefix}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
       }
-      for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, MESSAGE_WIDTH)}`);
+      for (const warning of plan.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+    }
+    if (plans.length > 1) {
+      const sum = (pick: (plan: SyncPlan) => number): number => plans.reduce((total, plan) => total + pick(plan), 0);
+      const bytes = sum((plan) => plan.estimate?.total_bytes ?? 0);
+      const unmeasured = plans.filter((plan) => plan.documents_to_fetch > 0 && plan.estimate === undefined).length;
+      io.out(
+        `total: ${formatCount(sum((plan) => plan.discovered))} Anfragen discovered, ${formatCount(sum((plan) => plan.in_corpus))} already in corpus, ` +
+          `${formatCount(sum((plan) => plan.documents_to_fetch))} documents to fetch` +
+          (bytes > 0 ? ` (≈ ${formatBytes(bytes)}${unmeasured > 0 ? `, ${unmeasured} job(s) unmeasured` : ""})` : ""),
+      );
     }
   }
-  if (store instanceof FileStore) dryRunSpace(ctx, store, results.flatMap((result) => (result.plan === undefined ? [] : [result.plan])));
+  if (store instanceof FileStore) dryRunSpace(ctx, store, plans);
   const failed = results.filter((result) => result.error !== undefined);
-  for (const result of failed.slice(1)) io.err(`error: ${result.source}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
+  for (const result of failed.slice(1)) io.err(`error: ${result.job}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
   if (failed[0] !== undefined) {
-    io.err(`error: ${failed[0].source} failed:`);
+    io.err(`error: ${failed[0].job} failed:`);
     throw failed[0].error;
   }
 }
@@ -381,11 +453,6 @@ function fetchLabel(plan: SyncPlan, metadataOnly: boolean): string {
   return `${count} (≈ ${formatBytes(estimate.total_bytes)} at ${formatBytes(estimate.average_bytes)} avg; ${basis})`;
 }
 
-/** commander accumulator for a repeatable `--source`: each a key the registry knows. */
-function collectSourceKey(value: string, previous: string[] = []): string[] {
-  return previous.concat([parseSourceKey(value)]);
-}
-
 function nonBlank(value: string | undefined): string | undefined {
   return value === undefined || value.trim() === "" ? undefined : value;
 }
@@ -394,28 +461,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** One source's outcome in `--json` output for several sources. */
+/** One job's outcome in `--json` output for several jobs: the report, with the job's label. */
 function outcomeJson(outcome: SourceOutcome): unknown {
-  if (outcome.status === "done") return outcome.report;
-  if (outcome.status === "skipped") return { source: outcome.source, skipped: true };
-  return { source: outcome.source, error: errorMessage(outcome.error) };
+  if (outcome.status === "done") return { job: outcome.job, ...outcome.report };
+  if (outcome.status === "skipped") return { job: outcome.job, source: outcome.source, skipped: true, reason: outcome.reason };
+  return { job: outcome.job, source: outcome.source, error: errorMessage(outcome.error) };
 }
 
-/** The text summary of one report; `prefix` names the source when several ran. */
-function printReport(io: CliIO, report: SyncReport, prefix: string): void {
+/** The text summary of one report, named by its job; `prefix` names it again when several ran. */
+function printReport(io: CliIO, label: string, report: SyncReport, prefix: string): void {
   if (report.upstreamUnchanged) {
-    io.out(`${report.source}: upstream reports no change since the last sync — nothing to do.`);
+    io.out(`${label}: upstream reports no change since the last sync — nothing to do.`);
     return;
   }
   if (report.blocked !== undefined) {
     // Not "0 discovered": nothing was looked at, and a cron job reading this must not
     // take it for a quiet day.
-    io.out(`${report.source}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
+    io.out(`${label}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
     for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
     return;
   }
   io.out(
-    `${report.source}: ${report.discovered} discovered, ${report.stored} stored, ` +
+    `${label}: ${report.discovered} discovered, ${report.stored} stored, ` +
       `${report.unchanged} unchanged, ${report.failed} failed`,
   );
   if (report.needsReview > 0) {

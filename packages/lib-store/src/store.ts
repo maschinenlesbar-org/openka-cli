@@ -50,6 +50,21 @@ export interface SourceState {
 }
 
 /**
+ * How far one plan file's queue has come (`ka sync --plan`): which of its jobs
+ * finished in the round that is still open. A round opens with the first job that
+ * finishes and closes when every job of the plan has; then the next run of the plan
+ * starts a new one. Jobs are named by their label (`jobLabel`, lib-pipeline).
+ */
+export interface QueueProgress {
+  /** The plan file, absolute — what the key is derived from. */
+  plan: string;
+  /** When the open round began, an ISO instant. */
+  started: string;
+  /** Labels of the jobs done in this round, sorted. */
+  done: string[];
+}
+
+/**
  * The corpus, as the roles that make it up.
  *
  * `Store` is their intersection and nothing in the codebase has to change because

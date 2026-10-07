@@ -3,7 +3,8 @@
 // test with a temporary corpus, a mocked transport and captured output — no
 // subprocess, no network, no clock.
 
-import { writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { FileStore, systemVolumes, type FileStoreOptions, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
@@ -24,6 +25,11 @@ export interface CliIO {
    * create, which also never follows a symlink at the path.
    */
   writeFile(path: string, data: Buffer, options?: { overwrite?: boolean }): void;
+  /**
+   * Append to a file, creating it and its directory: a job log of `ka sync --plan`,
+   * which a run adds to rather than replaces. Unset, job logs are not written.
+   */
+  appendFile?(path: string, text: string): void;
 }
 
 export interface CliDeps {
@@ -128,6 +134,10 @@ export const defaultIO: CliIO = {
   errIsTerminal: process.stderr.isTTY === true,
   errPartial: (text) => process.stderr.write(text),
   writeFile: (path, data, options) => writeFileSync(path, data, { flag: options?.overwrite === true ? "w" : "wx" }),
+  appendFile: (path, text) => {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, text);
+  },
 };
 
 export const defaultDeps: CliDeps = {

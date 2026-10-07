@@ -22,39 +22,65 @@
 //   which files under several (`parlamentsspiegel`), runs alone, after them.
 // - **Catalog batches of concurrent runs each flush at their own end**
 //   (`FileStore.batchCatalog`), so the checkpoint promise of `sync()` still holds.
+//
+// The unit is a job (`syncJobs`): a source over a window of its own, so one run can
+// take Berlin 2025 beside the Bundestag 2026, or the Bundestag one Wahlperiode after
+// the other (issue #17). Two jobs of one source share its parliament's lane and run
+// in the order given. `syncSources` is the jobs of several sources over one window.
 
 import { OpenKaError, assertValid, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { RobotsPolicy, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import { withCorpusLock } from "@maschinenlesbar.org/openka-lib-store";
 import { DocumentMemo, sync, type ProgressEvent, type SyncOptions, type SyncReport } from "./index.js";
-import { normalizeSyncWindow } from "./window.js";
+import { normalizeSyncWindow, type SyncWindow } from "./window.js";
 
-export interface SyncSourcesOptions
-  extends Omit<SyncOptions, "source" | "engine" | "apiKey" | "onDiscovered" | "onProgress"> {
-  /** The sources to run, each at most once; outcomes come back in this order. */
-  sources: readonly Source[];
+/** One job of a run: a source over its own window, named by `label` (`jobLabel`). */
+export interface SyncJob {
+  label: string;
+  source: Source;
+  window?: SyncWindow;
+}
+
+type SharedSyncOptions = Omit<SyncOptions, "source" | "engine" | "apiKey" | "onDiscovered" | "onProgress" | keyof SyncWindow>;
+
+export interface SyncJobsOptions extends SharedSyncOptions {
+  /** The jobs to run, no label twice; outcomes come back in this order. */
+  jobs: readonly SyncJob[];
   /**
-   * The engine for one source — a new one per source, best built on one shared
-   * `HostPacer` (`EngineOptions.pacer`), so a host two sources reach is paced once.
+   * The engine for one job — a new one per job, best built on one shared
+   * `HostPacer` (`EngineOptions.pacer`), so a host two jobs reach is paced once.
    */
   engineFor: (source: Source) => FetchEngine;
   /** The credential for a source that takes one (`Source.apiKeyEnv`), if any. */
   apiKeyFor?: (source: Source) => string | undefined;
-  /** A source is about to start. */
-  onStart?: (source: string) => void;
-  onDiscovered?: (source: string, count: number) => void;
-  onProgress?: (source: string, event: ProgressEvent) => void;
-  /** A source has finished, failed or been skipped. */
+  /** Start no job once one has failed: the rest are `skipped` (`reason: "after-failure"`). Default false. */
+  stopOnFailure?: boolean;
+  /** A job is about to start; the callbacks name it by its label. */
+  onStart?: (job: string) => void;
+  onDiscovered?: (job: string, count: number) => void;
+  onProgress?: (job: string, event: ProgressEvent) => void;
+  /** A job has finished, failed or been skipped. */
   onDone?: (outcome: SourceOutcome) => void;
 }
 
-/** What became of one source: its report, the error it threw, or not started at all. */
+export interface SyncSourcesOptions extends Omit<SyncJobsOptions, "jobs">, SyncWindow {
+  /** The sources to run, each at most once, all over the one window; outcomes come back in this order. */
+  sources: readonly Source[];
+}
+
+/**
+ * What became of one job: its report, the error it threw, or not started at all.
+ * `job` is its label — the source key for a job without a window of its own.
+ */
 export type SourceOutcome =
-  | { source: string; status: "done"; report: SyncReport }
-  | { source: string; status: "failed"; error: unknown }
-  /** `signal` was aborted before the source's turn came. */
-  | { source: string; status: "skipped" };
+  | { job: string; source: string; status: "done"; report: SyncReport }
+  | { job: string; source: string; status: "failed"; error: unknown }
+  /**
+   * Not started: `signal` was aborted before its turn came (`interrupted`), or an
+   * earlier job failed under `stopOnFailure` (`after-failure`).
+   */
+  | { job: string; source: string; status: "skipped"; reason: "interrupted" | "after-failure" };
 
 /** A list of sources to sync: at least one, none twice. */
 export const sourceListProblem: Problem<readonly Source[]> = (sources) => {
@@ -67,12 +93,23 @@ export const sourceListProblem: Problem<readonly Source[]> = (sources) => {
   return undefined;
 };
 
+/** A list of jobs: at least one, no label twice — one source over two windows is two jobs. */
+export const jobListProblem: Problem<readonly SyncJob[]> = (jobs) => {
+  if (jobs.length === 0) return "Name at least one source.";
+  const seen = new Set<string>();
+  for (const job of jobs) {
+    if (seen.has(job.label)) return `"${job.label}" is named twice.`;
+    seen.add(job.label);
+  }
+  return undefined;
+};
+
 /**
  * The order sources run in: `concurrent` lanes run side by side, each lane's
  * sources one after another; `after` runs alone once every lane is done. Sources of
  * one parliament share a lane; a source tied to none (an aggregator) goes `after`.
  */
-export function planLanes<S extends Pick<Source, "key" | "parliament">>(sources: readonly S[]): { concurrent: S[][]; after: S[] } {
+export function planLanes<S extends Pick<Source, "parliament">>(sources: readonly S[]): { concurrent: S[][]; after: S[] } {
   const lanes = new Map<string, S[]>();
   const after: S[] = [];
   for (const source of sources) {
@@ -88,64 +125,88 @@ export function planLanes<S extends Pick<Source, "key" | "parliament">>(sources:
 }
 
 /**
- * Sync several sources in one run, under one corpus lock, concurrently where that
- * is safe (`planLanes`). The window (`since`, `until`, `period`, `limit`) applies to
- * every source and is checked once, before the lock is taken or anything is asked.
- *
- * One source failing does not stop the others: its error is its outcome
- * (`status: "failed"`), and the caller decides what the run as a whole exits with.
- * An aborted `signal` stops each running source between two refs, as in `sync()`,
- * and the sources whose turn had not come are `skipped`.
+ * Sync several sources over one window in one run — `syncJobs` with one job per
+ * source, labelled by its key. The sources are checked first (`sourceListProblem`):
+ * none twice.
  */
 export async function syncSources(options: SyncSourcesOptions): Promise<SourceOutcome[]> {
   assertValid("sources", options.sources, sourceListProblem);
-  normalizeSyncWindow(options);
-  const { sources, engineFor, apiKeyFor, onStart, onDiscovered, onProgress, onDone, ...shared } = options;
-  const purpose = `sync --source ${sources.map((source) => source.key).join(" --source ")}`;
+  const { sources, since, until, period, limit, ...rest } = options;
+  const window = normalizeSyncWindow({
+    ...(since === undefined ? {} : { since }),
+    ...(until === undefined ? {} : { until }),
+    ...(period === undefined ? {} : { period }),
+    ...(limit === undefined ? {} : { limit }),
+  });
+  return syncJobs({ ...rest, jobs: sources.map((source) => ({ label: source.key, source, window })) });
+}
+
+/**
+ * Run sync jobs in one run, under one corpus lock, concurrently where that is safe
+ * (`planLanes` on the jobs' parliaments). Every job's window is checked once, before
+ * the lock is taken or anything is asked, and no label may come twice
+ * (`jobListProblem`).
+ *
+ * One job failing does not stop the others, unless `stopOnFailure`: its error is its
+ * outcome (`status: "failed"`), and the caller decides what the run as a whole exits
+ * with. An aborted `signal` stops each running job between two refs, as in `sync()`,
+ * and the jobs whose turn had not come are `skipped`.
+ */
+export async function syncJobs(options: SyncJobsOptions): Promise<SourceOutcome[]> {
+  assertValid("sources", options.jobs, jobListProblem);
+  const jobs = options.jobs.map((job) => ({ ...job, window: normalizeSyncWindow(job.window ?? {}) }));
+  const { engineFor, apiKeyFor, onStart, onDiscovered, onProgress, onDone, stopOnFailure, jobs: _jobs, ...shared } = options;
+  const purpose = `sync ${jobs.map((job) => `--source ${job.label}`).join(" ")}`;
   return withCorpusLock(options.store, purpose, async () => {
     const outcomes = new Map<string, SourceOutcome>();
+    let failedOnce = false;
     // One reading of each host's robots.txt and one download of each document for
-    // the whole run, whichever source reaches them first. The policy fetches with an
+    // the whole run, whichever job reaches them first. The policy fetches with an
     // engine of its own; its slow-downs land on the pacer every engine shares.
-    const first = sources[0] as Source;
+    const first = (jobs[0] as SyncJob).source;
     const robots = shared.robots ?? new RobotsPolicy(engineFor(first), shared.ignoreRobots === true);
     const documents = shared.documents ?? new DocumentMemo();
-    const runOne = async (source: Source): Promise<void> => {
+    const runOne = async (job: SyncJob & { window: SyncWindow }): Promise<void> => {
       let outcome: SourceOutcome;
+      const ids = { job: job.label, source: job.source.key };
       if (options.signal?.aborted === true) {
-        outcome = { source: source.key, status: "skipped" };
+        outcome = { ...ids, status: "skipped", reason: "interrupted" };
+      } else if (stopOnFailure === true && failedOnce) {
+        outcome = { ...ids, status: "skipped", reason: "after-failure" };
       } else {
-        onStart?.(source.key);
+        onStart?.(job.label);
         try {
-          const apiKey = apiKeyFor?.(source);
+          const apiKey = apiKeyFor?.(job.source);
           const report = await sync({
             ...shared,
+            ...job.window,
             robots,
             documents,
-            source,
-            engine: engineFor(source),
+            source: job.source,
+            engine: engineFor(job.source),
             ...(apiKey === undefined ? {} : { apiKey }),
-            ...(onDiscovered === undefined ? {} : { onDiscovered: (count: number) => onDiscovered(source.key, count) }),
-            ...(onProgress === undefined ? {} : { onProgress: (event: ProgressEvent) => onProgress(source.key, event) }),
+            ...(onDiscovered === undefined ? {} : { onDiscovered: (count: number) => onDiscovered(job.label, count) }),
+            ...(onProgress === undefined ? {} : { onProgress: (event: ProgressEvent) => onProgress(job.label, event) }),
           });
-          outcome = { source: source.key, status: "done", report };
+          outcome = { ...ids, status: "done", report };
         } catch (error) {
-          outcome = { source: source.key, status: "failed", error };
+          failedOnce = true;
+          outcome = { ...ids, status: "failed", error };
         }
       }
-      outcomes.set(source.key, outcome);
+      outcomes.set(job.label, outcome);
       onDone?.(outcome);
     };
-    const { concurrent, after } = planLanes(sources);
+    const { concurrent, after } = planLanes(jobs.map((job) => ({ job, parliament: job.source.parliament })));
     await Promise.all(
       concurrent.map(async (lane) => {
-        for (const source of lane) await runOne(source);
+        for (const { job } of lane) await runOne(job);
       }),
     );
-    for (const source of after) await runOne(source);
-    return sources.map((source) => {
-      const outcome = outcomes.get(source.key);
-      if (outcome === undefined) throw new OpenKaError(`internal: ${source.key} was never run`);
+    for (const { job } of after) await runOne(job);
+    return jobs.map((job) => {
+      const outcome = outcomes.get(job.label);
+      if (outcome === undefined) throw new OpenKaError(`internal: ${job.label} was never run`);
       return outcome;
     });
   });

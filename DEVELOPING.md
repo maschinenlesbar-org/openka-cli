@@ -281,6 +281,13 @@ What the library rejects with `OpenKaValidationError`, so far:
   source named twice (`sourceListProblem`, lib-pipeline) and checks the shared window
   once, before the lock is taken or a request sent. `ka sync --source berlin --source
   berlin` is the same usage error (exit 2, `Invalid sources: "berlin" is named twice.`).
+  `syncJobs()` is the general case: jobs with a window each, no label twice
+  (`jobListProblem`). A job spec (`bund@period=21`) is read by `parseJobSpec`, and a
+  window takes its defaults with `withDefaults`. A plan file is read by
+  `parseSyncQueue` (`queue.ts`) through a TOML subset of our own (`toml.ts`), since
+  the line takes no dependency for it. All of these are lib-pipeline's; `ka sync`
+  (`commands/sync-jobs.ts`) only reads flags into them. A plan's progress is
+  `FileStore.getQueueProgress`/`putQueueProgress` (lib-store, `state/queues/`).
 - **Engine options out of bounds** — `new FetchEngine(options)` runs
   `assertEngineOptions` (`lib-http`): `timeoutMs` 0–`MAX_TIMEOUT_MS`, `maxRetries`
   0–`MAX_RETRIES` (10), `maxRedirects` 0–`MAX_REDIRECTS` (10), `minHostIntervalMs`

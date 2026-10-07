@@ -46,6 +46,11 @@ drive (`blobStoreProblem`), `lockStatus()`, `catalogGaps` and a count of the pla
 files anywhere in the corpus (`platformFiles`) into problems and warnings, writing
 nothing. `removePlatformFiles(store)` deletes those files under the corpus lock.
 
+**A plan's progress.** `getQueueProgress(key)`/`putQueueProgress(key, progress)` keep
+which jobs of a plan file (`ka sync --plan`) are done in its open round, under
+`state/queues/<key>.json`; `queueProgressKey(planPath)` derives the key from the plan's
+absolute path, and `undefined` closes the round.
+
 **Abstentions by kind, in the catalog.** A catalog row carries `abstained_fields`: the
 record's abstained paths by kind (`abstainedFieldKind`: `qa[3].answer` → `qa[].answer`)
 with their counts, so `corpusStats` (`abstained_by_field` per parliament) and
@@ -108,7 +113,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles
+FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles, QueueProgress, queueProgressKey
 ```
 
 ## Depends on

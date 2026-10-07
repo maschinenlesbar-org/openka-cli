@@ -1,7 +1,7 @@
 // The pipeline, reproducibility verification and the golden fixtures — the parts
 // that carry the "same input, same bytes, forever" claim.
 
-import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +20,13 @@ import {
   syncSources,
   syncLimitProblem,
   syncPeriodProblem,
+  jobLabel,
+  jobSpecProblem,
+  parseJobSpec,
+  parseSyncQueue,
+  parseToml,
+  syncJobs,
+  withDefaults,
 } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
@@ -1098,34 +1105,34 @@ describe("the sync window", () => {
   });
 });
 
-describe("several sources in one run (issue #3)", () => {
-  /** A source of another parliament (or of none, an aggregator), so it may run beside the Berlin stub. */
-  class OtherSource implements Source {
-    readonly tier = "structured" as const;
-    readonly label = "stub";
-    readonly homepage = "https://example.invalid";
-    readonly notes = "test double";
-    minHostIntervalMs?: number;
-    readonly started: Promise<void>;
-    private markStarted!: () => void;
-    constructor(
-      readonly key: string,
-      readonly parliament: "saarland" | undefined,
-      private readonly fail?: Error,
-    ) {
-      this.started = new Promise((resolve) => (this.markStarted = resolve));
-    }
-    async discover(options: DiscoverOptions): Promise<DiscoverResult> {
-      this.markStarted();
-      if (this.fail !== undefined) throw this.fail;
-      const result = await new StubSource().discover(options);
-      return {
-        ...result,
-        refs: result.refs.map((ref) => ({ ...ref, parliament: "saarland" as const, reference: "17/1", legislative_period: 17 })),
-      };
-    }
+/** A source of another parliament (or of none, an aggregator), so it may run beside the Berlin stub. */
+class OtherSource implements Source {
+  readonly tier = "structured" as const;
+  readonly label = "stub";
+  readonly homepage = "https://example.invalid";
+  readonly notes = "test double";
+  minHostIntervalMs?: number;
+  readonly started: Promise<void>;
+  private markStarted!: () => void;
+  constructor(
+    readonly key: string,
+    readonly parliament: "saarland" | undefined,
+    private readonly fail?: Error,
+  ) {
+    this.started = new Promise((resolve) => (this.markStarted = resolve));
   }
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    this.markStarted();
+    if (this.fail !== undefined) throw this.fail;
+    const result = await new StubSource().discover(options);
+    return {
+      ...result,
+      refs: result.refs.map((ref) => ({ ...ref, parliament: "saarland" as const, reference: "17/1", legislative_period: 17 })),
+    };
+  }
+}
 
+describe("several sources in one run (issue #3)", () => {
   it("puts sources of one parliament in one lane, and an aggregator after all lanes", () => {
     const plan = planLanes([
       { key: "bund", parliament: "bund" },
@@ -1400,5 +1407,207 @@ describe("a metadata-only run over stored records", () => {
     strictEqual(report.failed, 1);
     match(report.errors[0] ?? "", /archived copy the stored record was built from is missing/);
     deepStrictEqual(store.getRecordBytes("berlin-19-10006"), before);
+  });
+});
+
+// Issue #17: a window per source, and a plan file for a queue of jobs.
+describe("sync jobs", () => {
+  const known = (key: string): string | undefined => (["berlin", "bund", "saarland"].includes(key) ? undefined : `Unknown source "${key}".`);
+
+  it("reads a window after @, and names the job by the same text", () => {
+    for (const [text, spec] of [
+      ["berlin", { source: "berlin" }],
+      ["berlin@2025-01-01..2025-12-31", { source: "berlin", since: "2025-01-01", until: "2025-12-31" }],
+      ["bund@period=21", { source: "bund", period: 21 }],
+      ["bund@2026-01-01..,limit=50", { source: "bund", since: "2026-01-01", limit: 50 }],
+      ["bund@..2026-06-30", { source: "bund", until: "2026-06-30" }],
+      ["bund@since=2026-01-01,until=2026-02-01,period=21", { source: "bund", since: "2026-01-01", until: "2026-02-01", period: 21 }],
+    ] as const) {
+      deepStrictEqual(parseJobSpec(text, { sourceProblem: known }), spec, text);
+      strictEqual(jobLabel(parseJobSpec(text)), text.replace("since=2026-01-01,until=2026-02-01", "2026-01-01..2026-02-01"), text);
+    }
+  });
+
+  it("refuses a window it cannot read, saying what one looks like", () => {
+    for (const [text, reason] of [
+      ["narnia@period=1", /Unknown source "narnia"/],
+      ["bund@", /empty window/],
+      ["bund@..", /empty range/],
+      ["bund@period=0", /period in "bund@period=0"/],
+      ["bund@period=x", /Expected an integer/],
+      ["bund@limit=0", /limit in "bund@limit=0"/],
+      ["bund@2026-02-30..", /"2026-02-30"/],
+      ["bund@2026-06-01..2026-01-01", /Must be >= since \(2026-06-01\)/],
+      ["bund@period=21,period=20", /sets period twice/],
+      ["bund@2026", /"2026" in "bund@2026" is not a window\. Expected <source>\[@<window>\]/],
+    ] as const) {
+      throws(() => parseJobSpec(text, { sourceProblem: known }), (err: unknown) => err instanceof OpenKaValidationError && reason.test(err.message), text);
+      match(jobSpecProblem(text, { sourceProblem: known }) ?? "", reason, text);
+    }
+  });
+
+  it("fills in what a job leaves out from the shared window, and checks the result as one", () => {
+    deepStrictEqual(withDefaults({ source: "bund", period: 21 }, { period: 20, limit: 5 }), { source: "bund", period: 21, limit: 5 });
+    throws(() => withDefaults({ source: "bund", until: "2025-01-01" }, { since: "2026-01-01" }), /Must be >= since \(2026-01-01\)/);
+  });
+
+  it("runs two jobs of one source one after the other, each over its own window", async () => {
+    const windows: string[] = [];
+    const source = new (class extends StubSource {
+      override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+        windows.push(`${options.period ?? "-"} ${options.since ?? "-"}`);
+        return super.discover(options);
+      }
+    })();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const outcomes = await syncJobs({
+      jobs: [
+        { label: "berlin@period=19", source, window: { period: 19 } },
+        { label: "berlin@2021-01-01..", source, window: { since: "2021-01-01" } },
+      ],
+      store: new MemoryStore(),
+      engineFor: () => testEngine(transport),
+    });
+    deepStrictEqual(windows, ["19 -", "- 2021-01-01"]);
+    deepStrictEqual(outcomes.map((outcome) => [outcome.job, outcome.source, outcome.status]), [
+      ["berlin@period=19", "berlin", "done"],
+      ["berlin@2021-01-01..", "berlin", "done"],
+    ]);
+    await rejects(
+      syncJobs({ jobs: [{ label: "berlin", source }, { label: "berlin", source }], store: new MemoryStore(), engineFor: () => testEngine(transport) }),
+      /Invalid sources: "berlin" is named twice\./,
+    );
+    await rejects(
+      syncJobs({ jobs: [{ label: "berlin@x", source, window: { period: 0 } }], store: new MemoryStore(), engineFor: () => testEngine(transport) }),
+      OpenKaValidationError,
+    );
+  });
+
+  it("starts no job after one failed under stopOnFailure, and every job without it", async () => {
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const broken = new OtherSource("saarland", "saarland", new UsageError("no such period"));
+    for (const [stopOnFailure, expected] of [
+      [true, ["failed", "skipped:after-failure"]],
+      [false, ["failed", "done"]],
+    ] as const) {
+      const outcomes = await syncJobs({
+        // One lane (both Saarland): the order is the plan's.
+        jobs: [
+          { label: "saarland@period=17", source: broken, window: { period: 17 } },
+          { label: "saarland@period=16", source: new OtherSource("saarland", "saarland"), window: { period: 16 } },
+        ],
+        store: new MemoryStore(),
+        engineFor: () => testEngine(transport),
+        stopOnFailure,
+      });
+      deepStrictEqual(outcomes.map((outcome) => (outcome.status === "skipped" ? `skipped:${outcome.reason}` : outcome.status)), expected);
+    }
+  });
+});
+
+describe("a plan file", () => {
+  const known = (key: string): string | undefined => (["berlin", "bund"].includes(key) ? undefined : `Unknown source "${key}".`);
+  const ISSUE_PLAN = [
+    "# the plan from issue #17",
+    "[[job]]",
+    'source = "berlin"',
+    'since  = "2025-01-01"',
+    'until  = "2025-12-31"',
+    "",
+    "[[job]]",
+    'source = "bund"',
+    "period = [21, 20, 19, 18]",
+    'log    = "logs/sync-bund-wp{period}.log"',
+    "",
+    "[defaults]",
+    "continue_on_error = true",
+  ].join("\n");
+
+  it("reads the plan of the issue: one job per period, each with its log", () => {
+    const queue = parseSyncQueue(ISSUE_PLAN, { where: "jobs.toml", sourceProblem: known });
+    deepStrictEqual(queue.continueOnError, true);
+    deepStrictEqual(
+      queue.jobs.map((job) => [job.label, job.log]),
+      [
+        ["berlin@2025-01-01..2025-12-31", undefined],
+        ["bund@period=21", "logs/sync-bund-wp21.log"],
+        ["bund@period=20", "logs/sync-bund-wp20.log"],
+        ["bund@period=19", "logs/sync-bund-wp19.log"],
+        ["bund@period=18", "logs/sync-bund-wp18.log"],
+      ],
+    );
+  });
+
+  it("gives every job the defaults it does not set itself", () => {
+    const queue = parseSyncQueue(
+      ['[defaults]', "since = 2026-01-01", "limit = 50", 'log = "logs/{source}.log"', "continue_on_error = false", "", "[[job]]", 'source = "berlin"', "", "[[job]]", 'source = "bund"', "limit = 5", 'log = "bund.log"'].join("\n"),
+    );
+    deepStrictEqual(queue.continueOnError, false);
+    deepStrictEqual(
+      queue.jobs.map((job) => [job.label, job.log]),
+      [
+        ["berlin@2026-01-01..,limit=50", "logs/berlin.log"],
+        ["bund@2026-01-01..,limit=5", "bund.log"],
+      ],
+    );
+    deepStrictEqual(parseSyncQueue('[defaults]\nperiod = [2, 1]\n[[job]]\nsource = "bund"').jobs.map((job) => job.label), ["bund@period=2", "bund@period=1"]);
+  });
+
+  it("refuses a plan it cannot read in full, naming the file, the job and the field", () => {
+    for (const [text, reason] of [
+      ["", /jobs\.toml: no \[\[job\]\] in the plan/],
+      ['[[job]]\nsource = "narnia"', /jobs\.toml \[\[job\]\] #1 \(narnia\): source: Unknown source "narnia"/],
+      ["[[job]]\nsince = 2026-01-01", /#1: source is required/],
+      ['[[job]]\nsource = "bund"\nperiods = [21]', /#1 \(bund\): unknown key "periods"; expected source, since, until, period, limit, log/],
+      ['[[job]]\nsource = "bund"\nperiod = 0', /#1 \(bund\): Invalid period/],
+      ['[[job]]\nsource = "bund"\nperiod = []', /period must be an integer or a non-empty list/],
+      ['[[job]]\nsource = "bund"\nsince = "2026-06-01"\nuntil = "2026-01-01"', /Must be >= since/],
+      ['[[job]]\nsource = "bund"\nperiod = 21\n[[job]]\nsource = "bund"\nperiod = [20, 21]', /#2 \(bund\): bund@period=21 is the same job as jobs\.toml \[\[job\]\] #1/],
+      ['[[job]]\nsource = "bund"\nlog = "x-{period}.log"', /log uses \{period\}, but the job has no period/],
+      ['[[job]]\nsource = "bund"\nlog = "x-{wp}.log"', /unknown placeholder \{wp\}/],
+      ['[jobs]\nsource = "bund"', /unknown "jobs"; a plan file has \[\[job\]\] tables and one \[defaults\]/],
+      ['[[job]]\nsource = "bund"\n[defaults]\ncontinue_on_error = "yes"', /continue_on_error must be true or false/],
+    ] as const) {
+      throws(() => parseSyncQueue(text, { where: "jobs.toml", sourceProblem: known }), (err: unknown) => err instanceof UsageError && reason.test(err.message), text);
+    }
+  });
+
+  it("reads the part of TOML a plan needs and refuses the rest by line", () => {
+    deepStrictEqual(
+      parseToml(
+        [
+          "top = 'literal \\n'  # comment",
+          '[t]',
+          's = "a\\"b\\u00e4"',
+          "n = -1_000",
+          "b = false",
+          "d = 2025-01-01",
+          "a = [",
+          "  1, # one",
+          "  2,",
+          "]",
+          "[[r]]",
+          "x = 1",
+          "[[r]]",
+          "x = 2",
+        ].join("\n"),
+      ),
+      { top: "literal \\n", t: { s: 'a"bä', n: -1000, b: false, d: "2025-01-01", a: [1, 2] }, r: [{ x: 1 }, { x: 2 }] },
+    );
+    for (const [text, reason] of [
+      ["x = 1.5", /plan:1: 1\.5 is not a value a plan file reads/],
+      ["\n\nx = {a = 1}", /plan:3: inline tables are not supported/],
+      ['x = """a"""', /multi-line strings are not supported/],
+      ["a.b = 1", /dotted keys are not supported/],
+      ['"a" = 1', /quoted keys are not supported/],
+      ["x = 1\nx = 2", /plan:2: x is set twice/],
+      ["[t]\n[t]", /plan:2: \[t\] is defined twice/],
+      ['x = "open', /unterminated string/],
+      ["x = 1 y = 2", /one statement per line/],
+      ['x = "\\q"', /unknown escape \\q/],
+      ["x = 99999999999999999999", /too large/],
+    ] as const) {
+      throws(() => parseToml(text), (err: unknown) => err instanceof UsageError && reason.test(err.message), text);
+    }
   });
 });

@@ -80,6 +80,13 @@ it warns on a network filesystem. `ka` skips the `._*` and `.DS_Store` files it 
 and `ka doctor --fix` (or `dot_clean <corpus>`) removes them. APFS, HFS+ and ext4 have
 none of these problems.
 
+**A queue of windows.** `--source` takes a window of its own
+(`--source berlin@2025-01-01..2025-12-31 --source bund@period=21`), and `ka sync --plan
+jobs.toml` runs a plan file: one `[[job]]` per source and window, a list of
+Wahlperioden as one job each, a log per job and a summary at the end. A plan that
+stopped part-way — Ctrl-C, a reboot, a full disk — continues with its unfinished jobs
+when run again. See [Usage.md](https://github.com/maschinenlesbar-org/openka-cli/blob/main/Usage.md).
+
 **Not past a full disk.** `ka sync` keeps 1 GB free on each volume it writes to
 (`--min-free 20G` for more, `--min-free 0` to turn it off). It refuses to start below
 that floor, and also when the documents still to fetch would not fit. Their size is

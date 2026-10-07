@@ -31,6 +31,9 @@ ka sync --source berlin --force                         # re-extract unchanged i
 ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /usr/share/tessdata/deu.traineddata
 ka sync --source berlin --source bund --since 2026-01-01  # side by side, one corpus lock
 ka sync --all --since 2026-09-01                        # every source with its own adapter
+ka sync --source berlin@2025-01-01..2025-12-31 --source bund@2026-01-01..2026-12-31   # a window per source
+ka sync --source bund@period=21 --source bund@period=20  # one source, two windows, one after the other
+ka sync --plan jobs.toml --wait                         # a queue of jobs from a plan file
 ka sync --source bund --wait                            # queue behind a run holding the corpus
 ka sync --source berlin --since 2026-01-01 --dry-run    # how many, and how much disk, before committing to it
 ka sync --source berlin --min-free 20G                  # keep 20 GB free (default 1 GB; 0 checks none)
@@ -90,6 +93,67 @@ an error as before. The window and `--limit` apply to each source. The summary i
 block per source; with `--json` an array of reports (`{ "source", "error" }` for a
 source that failed). A failing source does not stop the others; the command exits with
 the first failure's code once all are done.
+
+**A window per source.** A `--source` may carry a window of its own after `@`:
+`berlin@2025-01-01..2025-12-31` (either side of `..` may be empty), `bund@period=21`,
+`bund@2026-01-01..,limit=50`; `since=`, `until=`, `period=` and `limit=` may also be
+written out, separated by commas. What a source leaves out, the shared `--since`,
+`--until`, `--period` and `--limit` fill in, field by field. One source may be named
+several times with different windows (`bund@period=21 --source bund@period=20`): its
+jobs share the source's lane and run one after the other, in the order given. Output,
+progress and `--json` (a `job` field on each entry) name every job by what was typed —
+`bund@period=21`, or just `berlin` for a source without a window of its own.
+
+**A plan file.** `--plan jobs.toml` runs a queue of jobs from a file:
+
+```toml
+[defaults]                       # optional; what every job does not set itself
+continue_on_error = true         # false: start no job after one has failed
+
+[[job]]
+source = "berlin"
+since  = "2025-01-01"
+until  = "2025-12-31"
+
+[[job]]
+source = "bund"
+period = [21, 20, 19, 18]        # one job per period, in this order
+log    = "logs/sync-bund-wp{period}.log"
+```
+
+A `[[job]]` takes `source` (required), `since`, `until`, `period` (a number, or a list
+for one job per period), `limit` and `log`; `[defaults]` takes the same but `source`,
+plus `continue_on_error`. The file is the part of TOML these need: strings, integers,
+`true`/`false`, dates (quoted or not), lists and comments. Anything else, or an unknown
+key, is refused with the file and line, and nothing of the plan runs. The jobs run like
+several `--source`s: different parliaments side by side, one parliament's jobs one
+after the other, all in one process under one corpus lock (`--wait` queues the whole
+plan behind another run). The command line's window flags do not go with `--plan`;
+`--metadata-only`, `--force`, `--ignore-robots`, `--api-key`, the OCR, volume and
+output flags apply to every job.
+
+A job's `log` (a path relative to the plan file; `{source}`, `{period}`, `{since}`,
+`{until}` and `{limit}` are filled in) is appended to with one line per event, each
+stamped with the time and the job's name: `started`, the Anfragen discovered, every
+Anfrage stored, unchanged or failed, every warning and error in full, and how the job
+ended. The run ends with a summary of the plan, one row per job:
+
+```
+JOB                            STATUS       DISCOVERED    STORED UNCHANGED    FAILED
+berlin@2025-01-01..2025-12-31  done             12,904    12,880        24         0
+bund@period=21                 done earlier          —         —         —         —
+bund@period=20                 failed                —         —         —         —
+```
+
+**A plan picks up where it stopped.** The corpus keeps which of the plan's jobs are done
+in its current round (under `state/queues/`, keyed by the plan file's path). A job is
+done when it covered its window — not when it failed, was interrupted, or stopped low on
+space; per-Anfrage errors in a job that ran through do not hold it back. A rerun of the
+plan skips the done jobs, with a note, so a queue stopped by Ctrl-C, a reboot or a full
+disk continues with the job it stopped in. Once every job is done the round closes, and
+the next run of the plan runs them all again — which is how a plan run from cron stays
+current. `--restart` discards an unfinished round and runs every job. `--dry-run` sizes
+the jobs a run would start, and adds a `total:` line over them.
 
 **Waiting instead of failing.** With `--wait`, a sync that finds the corpus held by
 another run says "Waiting for the corpus…" once, tries again every two seconds and
