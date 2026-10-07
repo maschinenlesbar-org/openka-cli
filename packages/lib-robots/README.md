@@ -8,7 +8,11 @@ their documentation servers outright.
 The rule is enforced from the **live file** rather than hard-coded in a connector,
 for one reason: a Land can change its mind. A `Disallow: /` that is lifted stops
 blocking us the same day, and one that appears starts being honoured the same day. A
-server with no robots.txt allows everything, which is what a 404 there means.
+server with no robots.txt allows everything, which is what a 404 there means. A server
+whose robots.txt **cannot be read** — a 5xx, a 429, a timeout, a reset, a name that does
+not resolve — allows nothing until it can be read again: RFC 9309 §2.3.1.4 says to
+"assume complete disallow", and an outage of a server that disallows everything must
+not turn into a crawl of it. (`RobotsPolicy` in `lib-source` applies this.)
 
 Correctness details that decide real cases here:
 

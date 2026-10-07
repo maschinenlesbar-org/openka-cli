@@ -201,6 +201,12 @@ export interface ScriptedTransport {
  * A transport that answers from a fixed script. An unmatched URL throws rather
  * than returning a 404, so a test that accidentally reaches for the network fails
  * loudly instead of exercising an error path it did not mean to.
+ *
+ * The one exception is a `/robots.txt` no route answers: it gets a 404, the common
+ * case of a server without one. Every document fetch asks its host's robots.txt
+ * first, and an unreadable one disallows everything (RFC 9309), so without this
+ * default every script would have to answer robots.txt to fetch anything. A test
+ * about robots.txt scripts it like any other route.
  */
 export function scriptedTransport(routes: ScriptedRoute[]): ScriptedTransport {
   const requests: HttpRequest[] = [];
@@ -209,7 +215,10 @@ export function scriptedTransport(routes: ScriptedRoute[]): ScriptedTransport {
     const route = routes.find((candidate) =>
       typeof candidate.match === "string" ? request.url.includes(candidate.match) : candidate.match.test(request.url),
     );
-    if (route === undefined) throw new Error(`No scripted route for ${request.method} ${request.url}`);
+    if (route === undefined) {
+      if (new URL(request.url).pathname === "/robots.txt") return { status: 404, headers: {}, body: Buffer.alloc(0) };
+      throw new Error(`No scripted route for ${request.method} ${request.url}`);
+    }
     const body = route.body === undefined ? Buffer.alloc(0) : Buffer.isBuffer(route.body) ? route.body : Buffer.from(route.body, "utf8");
     const response: HttpResponse = {
       status: route.status ?? 200,

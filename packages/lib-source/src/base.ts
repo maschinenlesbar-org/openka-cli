@@ -7,7 +7,7 @@
 // one Landtag from turning into a rewrite.
 
 import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
-import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { NO_RULES, isAllowed, parseRobots, type RobotsRules } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
   AnsweredBy,
@@ -360,9 +360,16 @@ export const ROBOTS_OVERRIDE_INTERVAL_MS = 4000;
  * everything, which is what a 404 there means. The rules are matched against the
  * User-Agent the engine actually sends, and a host that is fetched under override
  * is slowed to `ROBOTS_OVERRIDE_INTERVAL_MS` for the rest of the run.
+ *
+ * A robots.txt that cannot be *read* is not a missing one. RFC 9309 §2.3.1.3–4: a
+ * 4xx means there is none (fetch freely), but a 5xx or a network failure means the
+ * file is undefined and the crawler "MUST assume complete disallow". Treating every
+ * failure as permission turned a padoka outage into a full-speed crawl of a server
+ * whose file says `Disallow: /` — silently (exploratory test 2026-10-07). A 429 is
+ * read like a 5xx: it says "not now", not "no file".
  */
 export class RobotsPolicy {
-  private readonly rules = new Map<string, Promise<RobotsRules>>();
+  private readonly rules = new Map<string, Promise<{ rules: RobotsRules; unreadable?: string }>>();
 
   constructor(
     private readonly engine: FetchEngine,
@@ -378,7 +385,8 @@ export class RobotsPolicy {
       return { allowed: true, overridden: false };
     }
     const path = `${parsed.pathname}${parsed.search}`;
-    const rules = await this.rulesFor(parsed.origin);
+    const { rules, unreadable } = await this.rulesFor(parsed.origin);
+    if (unreadable !== undefined) return this.unreadableVerdict(parsed, unreadable);
     if (isAllowed(rules, this.engine.userAgent, path)) return { allowed: true, overridden: false };
     if (this.ignoreRobots) {
       this.engine.slowDown(parsed.host, ROBOTS_OVERRIDE_INTERVAL_MS);
@@ -400,16 +408,49 @@ export class RobotsPolicy {
     };
   }
 
-  /** The origin's rules, fetched once and shared by every URL on it. */
-  private rulesFor(origin: string): Promise<RobotsRules> {
+  /** What to do when the origin's robots.txt could not be read: nothing, unless overridden. */
+  private unreadableVerdict(parsed: URL, why: string): RobotsVerdict {
+    const file = `${parsed.origin}/robots.txt`;
+    if (this.ignoreRobots) {
+      this.engine.slowDown(parsed.host, ROBOTS_OVERRIDE_INTERVAL_MS);
+      return {
+        allowed: true,
+        overridden: true,
+        note:
+          `${file} could not be read (${why}), which RFC 9309 says to treat as disallowing everything; ` +
+          "--ignore-robots was given, so these documents were fetched anyway — the decision and its consequences are the operator's",
+      };
+    }
+    return {
+      allowed: false,
+      overridden: false,
+      note:
+        `${file} could not be read (${why}), and RFC 9309 says an unreadable robots.txt disallows everything, ` +
+        "so its documents were not fetched. Try again later; --ignore-robots fetches them anyway.",
+    };
+  }
+
+  /**
+   * The origin's rules, fetched once and shared by every URL on it. `unreadable`
+   * says why there are none to apply when the file could not be read: a 5xx, a 429,
+   * a redirect without a target or too many of them, a timeout, a reset, a name
+   * that does not resolve.
+   */
+  private rulesFor(origin: string): Promise<{ rules: RobotsRules; unreadable?: string }> {
     let pending = this.rules.get(origin);
     if (pending === undefined) {
       pending = this.engine
         .get(`${origin}/robots.txt`, { headers: { accept: "text/plain" } })
-        .then((response) => parseRobots(response.body.toString("utf8")))
-        // No robots.txt, or it could not be read. Neither is a prohibition, and
-        // inventing one would block a server that never asked to be left alone.
-        .catch(() => NO_RULES);
+        .then((response) => ({ rules: parseRobots(response.body.toString("utf8")) }))
+        .catch((err: unknown) => {
+          // A 4xx other than 429 is "there is no robots.txt": nothing is disallowed,
+          // and inventing a prohibition would block a server that never asked.
+          if (err instanceof OpenKaApiError && err.status >= 400 && err.status < 500 && err.status !== 429) {
+            return { rules: NO_RULES };
+          }
+          const why = err instanceof OpenKaApiError ? `HTTP ${err.status}` : err instanceof Error ? err.message : String(err);
+          return { rules: NO_RULES, unreadable: why };
+        });
       this.rules.set(origin, pending);
     }
     return pending;

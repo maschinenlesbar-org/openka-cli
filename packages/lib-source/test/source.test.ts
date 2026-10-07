@@ -5,6 +5,7 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { applyWindow, blocksWithClass, childText, decodeEntities, decodeHtml, firstHref, parseXml, parseXmlFragment, regionWithClass, spanTexts, streamElements, textOf, visibleTextOf } from "../src/index.js";
 import { scriptedTransport, testEngine } from "@maschinenlesbar.org/openka-lib-testing";
+import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { ROBOTS_OVERRIDE_INTERVAL_MS, RobotsPolicy, robotsGate } from "../src/index.js";
 
 describe("XML reader", () => {
@@ -139,13 +140,45 @@ describe("robots policy", () => {
     deepStrictEqual(slowed, [["land.invalid", ROBOTS_OVERRIDE_INTERVAL_MS]]);
   });
 
-  it("treats a missing or unreadable robots.txt as permission", async () => {
-    const { transport } = scriptedTransport([{ match: "robots.txt", status: 404, body: "" }]);
-    const verdict = await new RobotsPolicy(testEngine(transport)).decide("https://land.invalid/docs/1.pdf");
-    deepStrictEqual(verdict, { allowed: true, overridden: false });
-    // An unmatched host throws in the scripted transport; that is not a prohibition either.
-    const { transport: silent } = scriptedTransport([]);
-    strictEqual((await new RobotsPolicy(testEngine(silent)).decide("https://other.invalid/x")).allowed, true);
+  it("treats a missing robots.txt (a 4xx other than 429) as permission", async () => {
+    for (const status of [404, 410, 401, 403]) {
+      const { transport } = scriptedTransport([{ match: "robots.txt", status, body: "" }]);
+      const verdict = await new RobotsPolicy(testEngine(transport)).decide("https://land.invalid/docs/1.pdf");
+      deepStrictEqual(verdict, { allowed: true, overridden: false }, String(status));
+    }
+  });
+
+  it("treats a robots.txt that cannot be read as disallowing everything (RFC 9309)", async () => {
+    const failing: Transport[] = [
+      scriptedTransport([{ match: "robots.txt", status: 503, body: "maintenance" }]).transport,
+      scriptedTransport([{ match: "robots.txt", status: 500, body: "" }]).transport,
+      scriptedTransport([{ match: "robots.txt", status: 429, body: "" }]).transport,
+      async () => {
+        throw Object.assign(new Error("Request timed out"), { code: "ETIMEDOUT" });
+      },
+      async () => {
+        throw Object.assign(new Error("getaddrinfo ENOTFOUND land.invalid"), { code: "ENOTFOUND" });
+      },
+    ];
+    for (const [i, transport] of failing.entries()) {
+      const verdict = await new RobotsPolicy(testEngine(transport, { maxRetries: 0 })).decide("https://land.invalid/docs/1.pdf");
+      strictEqual(verdict.allowed, false, `case ${i}`);
+      ok(verdict.note?.includes("https://land.invalid/robots.txt could not be read"), `case ${i}: ${verdict.note}`);
+      ok(verdict.note?.includes("--ignore-robots"), `case ${i}`);
+    }
+  });
+
+  it("fetches past an unreadable robots.txt only under override, and says so", async () => {
+    const { transport } = scriptedTransport([{ match: "robots.txt", status: 503, body: "" }]);
+    const engine = testEngine(transport, { maxRetries: 0 });
+    const slowed: [string, number][] = [];
+    engine.slowDown = (host, ms) => slowed.push([host, ms]);
+    const verdict = await new RobotsPolicy(engine, true).decide("https://land.invalid/docs/1.pdf");
+    strictEqual(verdict.allowed, true);
+    strictEqual(verdict.overridden, true);
+    ok(verdict.note?.includes("could not be read (HTTP 503)"));
+    ok(verdict.note?.includes("the operator's"));
+    deepStrictEqual(slowed, [["land.invalid", ROBOTS_OVERRIDE_INTERVAL_MS]]);
   });
 
   it("matches the rules against the User-Agent the engine sends", async () => {

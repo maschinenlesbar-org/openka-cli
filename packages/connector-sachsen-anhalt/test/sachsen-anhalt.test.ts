@@ -60,6 +60,19 @@ describe("sachsen-anhalt source", () => {
     ok(result.refs.length >= 1);
   });
 
+  it("fetches nothing when robots.txt cannot be read — an outage is not permission", async () => {
+    // RFC 9309: a 5xx or a failed connection means "assume complete disallow". A
+    // padoka outage used to read as "no rules" and start a crawl (exploratory test 2026-10-07).
+    const { transport, requests } = scriptedTransport([
+      { match: "robots.txt", body: "maintenance", status: 503 },
+      { match: "/suche", body: RESULTS },
+    ]);
+    const result = await new SachsenAnhaltSource().discover({ engine: testEngine(transport, { maxRetries: 0 }), state });
+    deepStrictEqual(result.refs, []);
+    ok(result.warnings[0]?.includes("could not be read (HTTP 503)"));
+    ok(!requests.some((request) => request.url.includes("/suche")));
+  });
+
   it("goes slowly when it does fetch", () => {
     // A server that asked not to be crawled gets the slowest rate on offer.
     strictEqual(new SachsenAnhaltSource().minHostIntervalMs, POLITE_INTERVAL_MS);
