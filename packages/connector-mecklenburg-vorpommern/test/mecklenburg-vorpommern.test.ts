@@ -179,6 +179,36 @@ describe("Mecklenburg-Vorpommern source", () => {
     deepStrictEqual(ref?.answered_by, { ministry: "Ministerium für Inneres und Bau" });
   });
 
+  it("reports a page none of whose hits it can read as unreadable, so the aggregator is asked", async () => {
+    // Every row with `number` as a JSON number (or `lp` as a string, or `id` renamed)
+    // used to end as a successful, empty sync: each row skipped with one collapsed
+    // warning, exit 0, no fallback — the opposite of the promise above.
+    const envelope = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(envelope.data) as { docs: Record<string, unknown>[] };
+    const changes: [string, (doc: Record<string, unknown>) => Record<string, unknown>][] = [
+      ["number as a number", (doc) => ({ ...doc, number: Number(doc["number"]) })],
+      ["lp as a string", (doc) => ({ ...doc, lp: String(doc["lp"]) })],
+    ];
+    for (const [label, change] of changes) {
+      const body = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, docs: inner.docs.map(change) }) });
+      const { transport: scripted } = scriptedTransport([{ match: "Fulltext/Search", body }]);
+      const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(scripted), state });
+      deepStrictEqual(result.refs, [], label);
+      match(result.unreadable ?? "", /13 hit\(s\), none of which carries a number, id and Wahlperiode/, label);
+    }
+  });
+
+  it("counts the hits it skipped in one warning when others are readable", async () => {
+    const envelope = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(envelope.data) as { docs: Record<string, unknown>[] };
+    const docs = inner.docs.map((doc, i) => (i < 2 ? { ...doc, number: 1 } : doc));
+    const body = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, docs }) });
+    const { transport: scripted } = scriptedTransport([{ match: "Fulltext/Search", body }]);
+    const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(scripted), state });
+    strictEqual(result.refs.length, 11);
+    deepStrictEqual(result.warnings, ["Parldok returned 2 of 13 hit(s) without a number, id or Wahlperiode; skipped"]);
+  });
+
   it("skips a hit with no identity rather than inventing one", () => {
     const warnings: string[] = [];
     strictEqual(toRef({ title: "Ohne Nummer" }, warnings), undefined);
