@@ -17,7 +17,10 @@ Disallow: /
 
 So this connector discovers through the aggregator and then asks that server's own
 robots.txt whether its documents may be fetched. By default the answer is no, and it
-produces **nothing**, with a warning saying why and naming the flag.
+produces **nothing**, with a warning saying why and naming the flag. `ka sync` prints
+`brandenburg: blocked — nothing was looked at` (and `"blocked"` with the reason in `--json`),
+exits 0, and does not record the run as a sync — so a scheduled job can tell "blocked"
+from "nothing new".
 
 **Why nothing rather than metadata-only records.** A record with no document abstains
 on everything it exists to carry — no full text, no question, no answer. A corpus of

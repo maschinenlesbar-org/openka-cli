@@ -26,6 +26,8 @@ describe("brandenburg source", () => {
     const { transport, requests } = landtag(DISALLOW_ALL);
     const result = await new BrandenburgSource().discover({ engine: testEngine(transport), state });
     deepStrictEqual(result.refs, []);
+    // Blocked, not empty: the run is told so it can say so.
+    ok(result.blocked?.includes("robots.txt"));
     ok(result.warnings[0]?.includes("robots.txt"));
     ok(result.warnings[0]?.includes("--ignore-robots"));
     // ...and it does not go on to search the aggregator for records it cannot use.

@@ -62,6 +62,8 @@ export interface SyncPlan {
   documents_to_fetch: number;
   /** Absent when nothing is to be fetched or nothing could be measured. */
   estimate?: SizeEstimate;
+  /** Why the source did not look at all (`DiscoverResult.blocked`); the counts are then 0 by refusal, not by finding nothing. */
+  blocked?: string;
   warnings: string[];
 }
 
@@ -107,6 +109,7 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     discovered: discovered.refs.length,
     in_corpus: 0,
     documents_to_fetch: 0,
+    ...(discovered.blocked === undefined ? {} : { blocked: discovered.blocked }),
     warnings: [...discovered.warnings],
   };
   for (const ref of discovered.refs) if (isInCorpus(ref, source, store)) plan.in_corpus++;

@@ -47,6 +47,30 @@ async function seeded(): Promise<ReturnType<typeof cliHarness>> {
   return harness;
 }
 
+describe("a source blocked by robots.txt", () => {
+  // A daily `ka sync --source sachsen-anhalt` could not tell "blocked" from "nothing
+  // new": both printed "0 discovered", exited 0, and stamped the source as synced.
+  it("says blocked, puts it in --json, and is not recorded as a sync", async () => {
+    const harness = cliHarness({
+      transport: scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]).transport,
+    });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "sachsen-anhalt"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^sachsen-anhalt: blocked — nothing was looked at/m);
+      doesNotMatch(harness.stdout(), /0 discovered/);
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "sachsen-anhalt", "--json"], harness.deps), EXIT_OK);
+      const report = JSON.parse(harness.stdout()) as { blocked?: string };
+      ok(report.blocked?.includes("robots.txt"));
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sources", "list"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^sachsen-anhalt\s+\S+\s+0\s+never$/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("option parsers", () => {
   it("rejects a blank filter rather than silently dropping it", () => {
     let threw = false;

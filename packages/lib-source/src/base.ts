@@ -115,6 +115,13 @@ export interface DiscoverResult {
    * somewhere else is warranted rather than a way of papering over a quiet month.
    */
   unreadable?: string;
+  /**
+   * Set when the source did not look at all, and why — a gated connector whose
+   * documents its host's robots.txt disallows, without --ignore-robots. Not an empty
+   * window either: a daily `ka sync` has to be able to tell "blocked" from "nothing
+   * new", and the run is not recorded as a sync.
+   */
+  blocked?: string;
 }
 
 export interface Source {

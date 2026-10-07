@@ -96,6 +96,12 @@ export interface SyncReport {
   bytesFetched: number;
   warnings: string[];
   errors: string[];
+  /**
+   * Why the source did not look at all (`DiscoverResult.blocked`), when it did not:
+   * its documents are disallowed and --ignore-robots was not given. Such a run is not
+   * an empty one, and is not recorded as a sync in the source's state.
+   */
+  blocked?: string;
   /** True when the upstream said nothing changed and no work was done. */
   upstreamUnchanged: boolean;
   /**
@@ -183,6 +189,12 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
 
   report.warnings.push(...discovered.warnings);
   report.discovered = discovered.refs.length;
+  if (discovered.blocked !== undefined) {
+    // Nothing was looked at: no state is written, so `ka sources list` does not show
+    // a sync that never happened.
+    report.blocked = discovered.blocked;
+    return report;
+  }
   if (options.since !== undefined || options.until !== undefined) {
     const placed = discovered.refs.filter((ref) => ref.dates.submitted === undefined && ref.dates.answered !== undefined).length;
     if (placed > 0) {

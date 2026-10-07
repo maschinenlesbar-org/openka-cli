@@ -272,11 +272,15 @@ async function dryRun(
     for (const result of results) {
       if (result.plan === undefined) continue;
       const plan = result.plan;
-      io.out(
-        `${plan.source} ${windowLabel(plan.window)}: ${formatCount(plan.discovered)} Anfragen discovered, ` +
-          `${formatCount(plan.in_corpus)} already in corpus`,
-      );
-      io.out(`${several ? `${plan.source}: ` : ""}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
+      if (plan.blocked !== undefined) {
+        io.out(`${plan.source} ${windowLabel(plan.window)}: blocked — nothing was looked at (see the warning)`);
+      } else {
+        io.out(
+          `${plan.source} ${windowLabel(plan.window)}: ${formatCount(plan.discovered)} Anfragen discovered, ` +
+            `${formatCount(plan.in_corpus)} already in corpus`,
+        );
+        io.out(`${several ? `${plan.source}: ` : ""}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
+      }
       for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, 200)}`);
     }
   }
@@ -331,6 +335,13 @@ function outcomeJson(outcome: SourceOutcome): unknown {
 function printReport(io: CliIO, report: SyncReport, prefix: string): void {
   if (report.upstreamUnchanged) {
     io.out(`${report.source}: upstream reports no change since the last sync — nothing to do.`);
+    return;
+  }
+  if (report.blocked !== undefined) {
+    // Not "0 discovered": nothing was looked at, and a cron job reading this must not
+    // take it for a quiet day.
+    io.out(`${report.source}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
+    for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, 200)}`);
     return;
   }
   io.out(

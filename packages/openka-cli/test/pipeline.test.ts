@@ -91,7 +91,7 @@ class GatedSource extends StubSource {
       ...(options.ignoreRobots === undefined ? {} : { ignoreRobots: options.ignoreRobots }),
       ...(options.robots === undefined ? {} : { policy: options.robots }),
     });
-    if (!gate.allowed) return { refs: [], warnings: [gate.note as string] };
+    if (!gate.allowed) return { refs: [], warnings: [gate.note as string], blocked: gate.note as string };
     return super.discover(options);
   }
 }
@@ -226,6 +226,20 @@ describe("sync pipeline", () => {
     const report = await sync({ source: new GatedSource(), store: new MemoryStore(), engine: testEngine(transport) });
     strictEqual(report.stored, 1);
     strictEqual(requests.filter((request) => request.url.endsWith("/robots.txt")).length, 1);
+  });
+
+  it("reports a gated source that did not look as blocked, and records no sync", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]);
+    const report = await sync({ source: new GatedSource(), store, engine: testEngine(transport) });
+    ok(report.blocked?.includes("robots.txt"));
+    strictEqual(report.discovered, 0);
+    strictEqual(store.getSourceState("berlin").last_sync, undefined);
+    // An allowed run that finds something is not blocked, and is recorded.
+    const open = scriptedTransport([{ match: "robots.txt", status: 404, body: "" }, { match: ".pdf", body: PDF }]);
+    const done = await sync({ source: new GatedSource(), store, engine: testEngine(open.transport) });
+    strictEqual(done.blocked, undefined);
+    ok(store.getSourceState("berlin").last_sync !== undefined);
   });
 
   it("asks a failing robots.txt twice at most, and then fetches nothing", async () => {

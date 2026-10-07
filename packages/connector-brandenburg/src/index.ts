@@ -84,7 +84,7 @@ export class BrandenburgSource implements Source {
       ...(options.robots === undefined ? {} : { policy: options.robots }),
     });
     if (!gate.allowed) {
-      return { refs: [], warnings: [gate.note as string] };
+      return { refs: [], warnings: [gate.note as string], blocked: gate.note as string };
     }
     const discovered = await this.aggregator.discover(options);
     const warnings = [...discovered.warnings];
