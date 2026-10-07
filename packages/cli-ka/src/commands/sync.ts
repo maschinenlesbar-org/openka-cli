@@ -22,6 +22,14 @@ import { action, choiceOption, type ActionContext, parseBoundedInt, parseIsoDate
 import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
 
+/**
+ * The most of one warning or error line that is printed. These are this program's own
+ * sentences, often with an upstream reason or URL inside; at 200 characters the part
+ * that explained them was cut ("… from the aggregator rather …"). The cap stays only
+ * to bound upstream text.
+ */
+const MESSAGE_WIDTH = 2000;
+
 type Source = ReturnType<typeof createSource>;
 
 /** commander value-parser: a source key the registry knows — the library's `sourceKeyProblem`. */
@@ -215,7 +223,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           for (const report of done) printReport(io, report, several ? `${report.source}: ` : "");
         }
         for (const outcome of failed.slice(1)) {
-          io.err(`error: ${outcome.source}: ${truncate(errorMessage(outcome.error), 200)}`);
+          io.err(`error: ${outcome.source}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
         }
         if (stopped !== undefined) throw stopped;
         if (failed[0] !== undefined) {
@@ -281,11 +289,11 @@ async function dryRun(
         );
         io.out(`${several ? `${plan.source}: ` : ""}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
       }
-      for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, 200)}`);
+      for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, MESSAGE_WIDTH)}`);
     }
   }
   const failed = results.filter((result) => result.error !== undefined);
-  for (const result of failed.slice(1)) io.err(`error: ${result.source}: ${truncate(errorMessage(result.error), 200)}`);
+  for (const result of failed.slice(1)) io.err(`error: ${result.source}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
   if (failed[0] !== undefined) {
     io.err(`error: ${failed[0].source} failed:`);
     throw failed[0].error;
@@ -341,7 +349,7 @@ function printReport(io: CliIO, report: SyncReport, prefix: string): void {
     // Not "0 discovered": nothing was looked at, and a cron job reading this must not
     // take it for a quiet day.
     io.out(`${report.source}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
-    for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, 200)}`);
+    for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
     return;
   }
   io.out(
@@ -357,8 +365,8 @@ function printReport(io: CliIO, report: SyncReport, prefix: string): void {
         "(left by an interrupted run) and are searchable again.",
     );
   }
-  for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, 200)}`);
-  for (const error of report.errors.slice(0, 10)) io.err(`error: ${prefix}${truncate(error, 200)}`);
+  for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+  for (const error of report.errors.slice(0, 10)) io.err(`error: ${prefix}${truncate(error, MESSAGE_WIDTH)}`);
   if (report.errors.length > 10) io.err(`… and ${report.errors.length - 10} more errors`);
 }
 

@@ -78,6 +78,8 @@ describe("FallbackSource", () => {
     const result = await composed.discover(options);
     deepStrictEqual(result.refs.map((r) => r.reference), ["8/999"]);
     ok(result.warnings[0]?.includes("getaddrinfo ENOTFOUND"));
+    // Named by its label: the aggregator source carries the Land's own key.
+    ok(result.warnings[0]?.includes("fell back to aggregator label,"), result.warnings[0] ?? "no warning");
     ok(result.warnings[0]?.includes("came from the aggregator"));
     // The fallback's own warnings survive.
     ok(result.warnings.includes("aggregator note"));

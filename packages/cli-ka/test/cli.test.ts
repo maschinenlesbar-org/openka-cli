@@ -1264,3 +1264,26 @@ describe("a closed output pipe", () => {
     }
   });
 });
+
+describe("sync warnings", () => {
+  it("prints a fallback warning whole and names the aggregator it fell back to", async () => {
+    // It read "… — fell back to mecklenburg-vorpommern, so these records came from the
+    // aggregator rather …": the aggregator carries the Land's own key, and every warning
+    // was cut at 200 characters.
+    const { transport } = scriptedTransport([
+      { match: "Fulltext/Search", body: "<html>Wartungsarbeiten</html>" },
+      { match: "robots.txt", status: 404, body: "" },
+      { match: "parlamentsspiegel.de", body: "<html><body><div id=\"iTreffer\"></div></body></html>" },
+    ]);
+    const harness = cliHarness({ transport });
+    try {
+      await run(["--corpus", harness.corpus, "sync", "--source", "mecklenburg-vorpommern", "--limit", "1"], harness.deps);
+      match(
+        harness.stderr(),
+        /^warning: mecklenburg-vorpommern: Parldok answered in a form this adapter does not know \(not a Parldok success envelope\) — fell back to Parlamentsspiegel \(Landtag Mecklenburg-Vorpommern\), so these records came from the aggregator rather than from the parliament itself$/m,
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+});

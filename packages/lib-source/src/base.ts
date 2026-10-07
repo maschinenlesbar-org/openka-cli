@@ -334,7 +334,9 @@ export class FallbackSource implements Source {
     return {
       ...result,
       warnings: [
-        `${this.primary.key}: ${reason} — fell back to ${this.fallback.key}, ` +
+        // Named by its label: the aggregator source carries the Land's own key (state is
+        // stored under it), so "fell back to mecklenburg-vorpommern" named nothing.
+        `${this.primary.key}: ${reason} — fell back to ${this.fallback.label}, ` +
           "so these records came from the aggregator rather than from the parliament itself",
         ...result.warnings,
       ],
