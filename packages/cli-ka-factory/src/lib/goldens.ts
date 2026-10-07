@@ -114,6 +114,24 @@ export function goldenRootFor(source: string, ws: string = workspaceRoot()): str
  */
 export const DEFAULT_FIXTURES = "every package's fixtures/";
 
+/**
+ * Why a set of goldens came out empty, as one sentence without the full stop.
+ *
+ * For a named directory that is all there is to say. For the default set it
+ * names where the search started and where goldens live: they are fixtures of
+ * the repository's packages and do not ship in the npm package, so an installed
+ * `ka-factory` run outside a checkout used to print "No goldens in every
+ * package's fixtures/" — the label read as a path.
+ */
+export function noGoldensMessage(dir?: string, workspace: string = workspaceRoot()): string {
+  if (dir !== undefined) return `No goldens in ${dir}`;
+  return (
+    `No goldens found from ${workspace}: they live in an openka-cli repository checkout ` +
+    "(packages/*/fixtures/) and are not part of the npm package. Run this inside a checkout, " +
+    "or name the fixture directory"
+  );
+}
+
 /** Every golden in the workspace, ordered by package, then source, then id. */
 export function listAllGoldens(root: string = workspaceRoot()): Golden[] {
   assertValid("root", root, nonBlankProblem);
@@ -322,7 +340,7 @@ export async function verifyGoldens(options: VerifyGoldensOptions = {}): Promise
   assertValid("workspace", options.workspace, nonBlankProblem);
   const dir = options.dir === undefined ? undefined : resolve(options.dir);
   const found = dir === undefined ? listAllGoldens(options.workspace ?? workspaceRoot()) : listGoldens(dir);
-  if (found.length === 0) throw new OpenKaError(`No goldens in ${dir ?? DEFAULT_FIXTURES} — nothing to verify.`);
+  if (found.length === 0) throw new OpenKaError(`${noGoldensMessage(dir, options.workspace)} — nothing to verify.`);
   const results: GoldenResult[] = [];
   for (const golden of found) results.push(await verifyGolden(golden, options.perceiver));
   return { checked: results.length, passed: results.filter((result) => result.ok).length, results };

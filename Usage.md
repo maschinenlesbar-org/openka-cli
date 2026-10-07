@@ -268,6 +268,10 @@ ka-factory embed --from vectors.jsonl --model bge-m3 --model-sha256 <hex>
 `goldens verify` read; the source is the record's parliament unless `--source` says
 otherwise.
 
+Goldens are fixtures of the repository's packages and are not part of the npm package:
+run the `goldens` commands inside a checkout, or name a fixture directory with `--dir`.
+Both `goldens list` and `goldens verify` exit 1 when the set they read is empty.
+
 ## Exit codes
 
 | Code | Meaning |

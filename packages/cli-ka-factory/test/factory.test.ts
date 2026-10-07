@@ -1,7 +1,7 @@
 // The factory plane: the guardrail lint, the health metrics, drift classification
 // and the frozen embeddings.
 
-import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ import { after, describe, it } from "node:test";
 import { FORBIDDEN_HOSTS, FORBIDDEN_MODULES, ciNodeVersions, enginesFloor, lineFiles, lineRoots, lintLine, workflowCommands, lintSource, stripComments } from "../src/lib/lint.js";
 import { BASELINE_FILE, baselinePath, baselinePathProblem, detectDrift, measureHealth, loadBaseline, loadCorpusBaseline, saveBaseline } from "../src/lib/health.js";
 import { HASHED_TFIDF, MAX_DIMENSIONS, MIN_DIMENSIONS, buildEmbeddings, dimensionsProblem, importEmbeddings, modelSha256Problem } from "../src/lib/embed.js";
-import { goldenKeyProblem, goldenRootFor } from "../src/lib/goldens.js";
+import { goldenKeyProblem, goldenRootFor, noGoldensMessage, verifyGoldens } from "../src/lib/goldens.js";
 import { DRUCKSACHE_RANGE, SWEEP_PERIOD_RANGE, assertSweepRange, drucksacheProblem, sweepPeriodProblem } from "../src/lib/answer-index.js";
 import { cosine } from "@maschinenlesbar.org/openka-lib-search";
 import { indexRecord } from "@maschinenlesbar.org/openka-lib-store";
@@ -460,6 +460,27 @@ describe("the factory's input rules", () => {
     for (const hash of ["abc", "z".repeat(64), "a".repeat(65), ` ${"a".repeat(64)}`]) {
       strictEqual(modelSha256Problem(hash), "Expected a sha256 as 64 hexadecimal digits.", hash);
     }
+  });
+});
+
+describe("an empty set of goldens", () => {
+  it("says where goldens live when the default set is empty, not a label read as a path", async () => {
+    // An installed ka-factory outside a repository checkout: the goldens are
+    // fixtures of the repository's packages and do not ship in the npm package.
+    const outside = mkdtempSync(join(tmpdir(), "openka-no-ws-"));
+    try {
+      const message = noGoldensMessage(undefined, outside);
+      match(message, new RegExp(`^No goldens found from ${outside.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: `));
+      match(message, /packages\/\*\/fixtures\/\) and are not part of the npm package/);
+      doesNotMatch(message, /every package's fixtures/);
+      await rejects(verifyGoldens({ workspace: outside }), { name: "OpenKaError", message: `${message} — nothing to verify.` });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("names a chosen directory as it is", () => {
+    strictEqual(noGoldensMessage("/x/fixtures"), "No goldens in /x/fixtures");
   });
 });
 

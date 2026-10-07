@@ -29,6 +29,7 @@ import { truncate } from "@maschinenlesbar.org/openka-cli-ka";
 import { lintLine } from "../lib/lint.js";
 import {
   DEFAULT_FIXTURES,
+  noGoldensMessage,
   addGolden,
   assertGoldensPass,
   goldenKeyProblem,
@@ -148,12 +149,11 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         const chosen = ctx.opts["dir"] as string | undefined;
         const dir = chosen === undefined ? DEFAULT_FIXTURES : resolve(chosen);
         const found = chosen === undefined ? listAllGoldens() : listGoldens(resolve(chosen));
+        // An empty set fails like `goldens verify` does: listed nothing and
+        // exit 0 here, "nothing to verify" and exit 1 there, for the same cwd.
+        if (found.length === 0) throw new OpenKaError(`${noGoldensMessage(chosen === undefined ? undefined : dir)}.`);
         if (ctx.opts["json"] === true) {
           printJson(ctx, found.map((golden) => golden.meta));
-          return;
-        }
-        if (found.length === 0) {
-          ctx.deps.io.out(`No goldens in ${dir}.`);
           return;
         }
         for (const golden of found) {

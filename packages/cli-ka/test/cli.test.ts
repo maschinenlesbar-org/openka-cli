@@ -1020,6 +1020,22 @@ describe("ka-factory", () => {
     harness.cleanup();
   });
 
+  it("fails `goldens list` on an empty set, as `goldens verify` does", async () => {
+    // list used to print "No goldens in …" and exit 0 where verify exited 1.
+    const empty = mkdtempSync(join(tmpdir(), "openka-goldens-"));
+    try {
+      for (const [command, tail] of [["list", "."], ["verify", " — nothing to verify."]] as const) {
+        const harness = cliHarness();
+        strictEqual(await runFactory(["goldens", command, "--dir", empty], harness.deps), EXIT_ERROR, command);
+        strictEqual(harness.stderr().trim(), `Error: No goldens in ${empty}${tail}`, command);
+        strictEqual(harness.stdout(), "", command);
+        harness.cleanup();
+      }
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it("measures health, builds embeddings and then finds similar records", async () => {
     const harness = await seeded();
     try {
