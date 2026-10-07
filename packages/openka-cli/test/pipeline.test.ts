@@ -373,6 +373,19 @@ describe("sync pipeline", () => {
       ok(record?.extraction.abstained_fields.includes("full_text"));
     });
 
+    it("stores nothing when the source says the document is not the paper the ref names", async () => {
+      const store = new MemoryStore();
+      const { engine } = changingUpstream();
+      const source = Object.assign(new StubSource(), {
+        checkRecord: () => "the document is Drucksache 19/1, not 19/10006",
+      });
+      const report = await sync({ source, store, engine });
+      strictEqual(report.stored, 0);
+      strictEqual(report.failed, 1);
+      deepStrictEqual(report.errors, ["19/10006: the document is Drucksache 19/1, not 19/10006; the record was not stored"]);
+      strictEqual(store.getRecord("berlin-19-10006"), undefined);
+    });
+
     it("names a 404 for a document it never had", async () => {
       const store = new MemoryStore();
       const { upstream, engine } = changingUpstream();

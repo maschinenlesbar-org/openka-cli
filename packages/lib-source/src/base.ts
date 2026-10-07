@@ -6,7 +6,7 @@
 // tier the source declares. Keeping adapters this thin is what stops a redesign at
 // one Landtag from turning into a rewrite.
 
-import type { ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
+import type { KaRecord, ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
 import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { NO_RULES, isAllowed, parseRobots, type RobotsRules } from "@maschinenlesbar.org/openka-lib-robots";
 import type {
@@ -159,6 +159,14 @@ export interface Source {
    * upstream cannot count by is a `UsageError`, not a number for something else.
    */
   count?(options: CountOptions): Promise<UpstreamCount>;
+  /**
+   * Whether an extracted record is the paper its ref names: a reason when it is not,
+   * else `undefined`. The pipeline then stores nothing for the ref and reports the
+   * reason. Optional, because only some Länder print their Drucksachennummer in one
+   * form a source can rely on; a record is never changed by it, so `ka verify` and the
+   * extractor version are untouched.
+   */
+  checkRecord?(ref: DocRef, record: KaRecord): string | undefined;
 }
 
 export interface CountOptions {
@@ -300,6 +308,10 @@ export class FallbackSource implements Source {
   }
   get notes(): string {
     return `${this.primary.notes} Falls back to ${this.fallback.label} when this interface cannot be read.`;
+  }
+  /** The Land's papers are the same papers whichever path found them. */
+  checkRecord(ref: DocRef, record: KaRecord): string | undefined {
+    return this.primary.checkRecord?.(ref, record) ?? this.fallback.checkRecord?.(ref, record);
   }
   get apiKeyEnv(): string | undefined {
     return this.primary.apiKeyEnv;

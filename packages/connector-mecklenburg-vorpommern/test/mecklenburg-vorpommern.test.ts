@@ -6,6 +6,7 @@ import { deepStrictEqual, match, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   MecklenburgVorpommernParldokSource,
+  checkRecord,
   PARLDOK,
   TYPE_KLEINE_ANFRAGE_UND_ANTWORT,
   createSource,
@@ -292,5 +293,41 @@ describe("what createSource returns", () => {
     // The Parlamentsspiegel is not even asked while the Land's own API answers.
     ok(!requests.some((request) => request.url.includes("parlamentsspiegel")));
     deepStrictEqual(result.warnings, []);
+  });
+});
+
+describe("whether a document is the paper its row names", () => {
+  const head = (text: string) => ({ full_text: text }) as Parameters<typeof checkRecord>[1];
+  const row = { reference: "8/6809" } as Parameters<typeof checkRecord>[0];
+
+  it("accepts the paper the row names, whatever the zero-padding", () => {
+    strictEqual(checkRecord(row, head("LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6809\n8. Wahlperiode 08.09.2026")), undefined);
+    strictEqual(checkRecord({ reference: "08/6344" } as typeof row, head("LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6344\n")), undefined);
+  });
+
+  it("names another Drucksache printed on the paper", () => {
+    // Row 8/6809 with the PDF of 8/6344 was stored as 8/6809, with 6344's text and
+    // seven Q/A pairs, and `verify` confirmed it.
+    strictEqual(
+      checkRecord(row, head("LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6344\n8. Wahlperiode 17.04.2026")),
+      "the document is Drucksache 8/6344, not 8/6809",
+    );
+  });
+
+  it("names a paper of another Landtag", () => {
+    strictEqual(
+      checkRecord(row, head("Thüringer Landtag 13.06.2025\n8. Wahlperiode\nKleine Anfrage 8/980\n")),
+      'the document is not a paper of the Landtag Mecklenburg-Vorpommern (its head reads "Thüringer Landtag 13.06.2025")',
+    );
+  });
+
+  it("says nothing when there is no text to compare", () => {
+    strictEqual(checkRecord(row, head("")), undefined);
+    strictEqual(checkRecord(row, {} as Parameters<typeof checkRecord>[1]), undefined);
+  });
+
+  it("is what createSource checks, through the fallback too", () => {
+    const source = createSource();
+    strictEqual(source.checkRecord?.(row as never, head("LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6344\n") as never), "the document is Drucksache 8/6344, not 8/6809");
   });
 });

@@ -41,7 +41,7 @@ import {
   searchDocuments,
   type ParldokEndpoint,
 } from "@maschinenlesbar.org/openka-lib-parldok";
-import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
+import type { Asker, KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 
 export const PARLIAMENT = "mecklenburg-vorpommern" as const;
 export const LABEL = "Landtag Mecklenburg-Vorpommern";
@@ -147,6 +147,10 @@ export class MecklenburgVorpommernParldokSource implements Source {
     "API is undocumented, so a response in an unfamiliar shape is reported as unreadable rather " +
     "than as an empty Land.";
 
+  checkRecord(ref: DocRef, record: KaRecord): string | undefined {
+    return checkRecord(ref, record);
+  }
+
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const warnings: string[] = [];
     const period = options.period ?? MV_LATEST_PERIOD;
@@ -233,6 +237,31 @@ function isForeign(doc: Record<string, unknown>, period: number): boolean {
   const typeid = doc["typeid"];
   const lp = doc["lp"];
   return (typeof typeid === "number" && String(typeid) !== TYPE_KLEINE_ANFRAGE_UND_ANTWORT) || (typeof lp === "number" && lp !== period);
+}
+
+/**
+ * Whether a record's text is the paper its row names. Every MV paper opens with
+ * "LANDTAG MECKLENBURG-VORPOMMERN Drucksache 8/6344"; the row and the PDF are joined
+ * only by the document id, and a row for 8/6809 served the PDF of 8/6344 used to be
+ * stored as 8/6809 with 6344's text. A head that names another Drucksache, or another
+ * Landtag, is a reason; no text, or a head that names neither, is not.
+ */
+export function checkRecord(ref: Pick<DocRef, "reference">, record: Pick<KaRecord, "full_text">): string | undefined {
+  const lines = (record.full_text ?? "").split("\n").map((line) => line.trim()).filter((line) => line !== "").slice(0, 3);
+  if (lines.length === 0) return undefined;
+  const head = lines.join(" ");
+  const printed = /Drucksache\s+(\d{1,2})\s*\/\s*(\d+)/.exec(head);
+  if (printed !== null) {
+    const [period, number] = ref.reference.split("/").map((part) => String(Number(part)));
+    if (`${Number(printed[1])}/${Number(printed[2])}` !== `${period}/${number}`) {
+      return `the document is Drucksache ${Number(printed[1])}/${Number(printed[2])}, not ${ref.reference}`;
+    }
+    return undefined;
+  }
+  if (/landtag/i.test(head) && !/mecklenburg-vorpommern/i.test(head)) {
+    return `the document is not a paper of the Landtag Mecklenburg-Vorpommern (its head reads "${lines[0]}")`;
+  }
+  return undefined;
 }
 
 /** `since`/`until` become the same `datefrom`/`dateto` tags the search page sends. */

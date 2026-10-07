@@ -37,6 +37,14 @@ political party out of half a ministry's name in Schleswig-Holstein. Both `autho
 characters, runs of whitespace) — a title with Word's line break, U+000B, used to fail
 the whole record.
 
+**The paper is checked against its row.** Every MV paper opens with "LANDTAG
+MECKLENBURG-VORPOMMERN Drucksache 8/6344". The row and the PDF are joined only by the
+document id, so after extraction `checkRecord` compares that head with the row: a paper
+naming another Drucksache, or another Landtag, is not stored and the sync reports why
+("the document is Drucksache 8/6344, not 8/6809; the record was not stored"). The record
+itself is never changed by the check, so `ka verify` and the extractor version are not
+affected.
+
 **robots.txt**: `https://www.dokumentation.landtag-mv.de/robots.txt` is a 404, so
 nothing here is disallowed. The requests this makes are the ones the site's own
 search page makes.
@@ -46,7 +54,7 @@ search page makes.
 Everything is re-exported from the package root:
 
 ```
-PARLIAMENT, LABEL, PARLDOK, TYPE_KLEINE_ANFRAGE_UND_ANTWORT, MV_LATEST_PERIOD, splitAuthors, ParsedAuthors, parseAuthors, MecklenburgVorpommernParldokSource, toRef, createSource, ENTRY
+PARLIAMENT, LABEL, PARLDOK, TYPE_KLEINE_ANFRAGE_UND_ANTWORT, MV_LATEST_PERIOD, splitAuthors, ParsedAuthors, parseAuthors, MecklenburgVorpommernParldokSource, checkRecord, toRef, createSource, ENTRY
 ```
 
 ## Depends on

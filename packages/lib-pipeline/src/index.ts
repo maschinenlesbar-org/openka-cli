@@ -456,6 +456,11 @@ async function syncRef(
   }
 
   const { record } = await extract(request);
+  // A source that can tell whether the document is the paper the ref names says so
+  // here; a mismatch stores nothing. A row and its PDF are joined only by a URL, and a
+  // record that paired one paper's metadata with another's text verified fine.
+  const mismatch = source.checkRecord?.(ref, record);
+  if (mismatch !== undefined) throw new OpenKaError(`${mismatch}; the record was not stored`);
   // A person's `human_verified` mark is the one thing re-extraction cannot
   // reproduce. It survives a re-extraction that changed nothing a person checked
   // (`--force` over the same bytes and extractor); when the content did change,
