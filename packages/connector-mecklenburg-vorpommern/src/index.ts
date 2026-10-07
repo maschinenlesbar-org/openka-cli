@@ -171,12 +171,28 @@ export class MecklenburgVorpommernParldokSource implements Source {
 
     const refs: DocRef[] = [];
     let skipped = 0;
+    let foreign = 0;
     for (const { doc } of reading.value) {
+      // The type and period filters run on the server of an undocumented API; a row
+      // that says it is something else (type 44, the unanswered "Kleine Anfrage", a
+      // Protokoll, another Wahlperiode) is not stored as what was asked for.
+      if (isForeign(doc, period)) {
+        foreign += 1;
+        continue;
+      }
       const ref = toRef(doc, []);
       if (ref === undefined) skipped += 1;
       else refs.push(ref);
     }
     const hits = reading.value.length;
+    if (foreign === hits) {
+      return {
+        refs: [],
+        warnings,
+        unreadable: `Parldok answered ${hits} hit(s), none of them a "Kleine Anfrage und Antwort" of Wahlperiode ${period}: its search filter no longer means what this adapter sends`,
+      };
+    }
+    if (foreign > 0) warnings.push(`Parldok returned ${foreign} of ${hits} hit(s) of another Dokumenttyp or Wahlperiode than asked for; skipped`);
     if (refs.length === 0) {
       // Hits that all lack what a record needs are not an empty Land: the rows changed
       // shape (a number sent as a number, an id renamed). Counting it as a found page
@@ -190,6 +206,13 @@ export class MecklenburgVorpommernParldokSource implements Source {
     if (skipped > 0) warnings.push(`Parldok returned ${skipped} of ${hits} hit(s) without a number, id or Wahlperiode; skipped`);
     return withDiscoveryState({ refs, warnings }, refs, warnings);
   }
+}
+
+/** A hit that names a type or Wahlperiode other than the ones asked for. Absent fields are not held against it. */
+function isForeign(doc: Record<string, unknown>, period: number): boolean {
+  const typeid = doc["typeid"];
+  const lp = doc["lp"];
+  return (typeof typeid === "number" && String(typeid) !== TYPE_KLEINE_ANFRAGE_UND_ANTWORT) || (typeof lp === "number" && lp !== period);
 }
 
 /** `since`/`until` become the same `datefrom`/`dateto` tags the search page sends. */

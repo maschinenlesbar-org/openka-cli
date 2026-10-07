@@ -209,6 +209,30 @@ describe("Mecklenburg-Vorpommern source", () => {
     deepStrictEqual(result.warnings, ["Parldok returned 2 of 13 hit(s) without a number, id or Wahlperiode; skipped"]);
   });
 
+  it("keeps only the Dokumenttyp and Wahlperiode it asked for", async () => {
+    // The filter runs on the server of an undocumented API. A row of type 44 (the
+    // unanswered "Kleine Anfrage"), a Protokoll or a row of another Wahlperiode used
+    // to be stored as an answered Kleine Anfrage of the period asked for.
+    const envelope = JSON.parse(SEARCH) as { data: string };
+    const inner = JSON.parse(envelope.data) as { docs: Record<string, unknown>[] };
+    const docs = inner.docs.map((doc, i) =>
+      i === 0 ? { ...doc, typeid: 44, type: "Kleine Anfrage" } : i === 1 ? { ...doc, typeid: 3, kind: "Protokoll" } : i === 2 ? { ...doc, lp: 7 } : doc,
+    );
+    const body = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, docs }) });
+    const { transport: scripted } = scriptedTransport([{ match: "Fulltext/Search", body }]);
+    const result = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(scripted), state, period: 8 });
+    strictEqual(result.refs.length, 10);
+    ok(result.refs.every((ref) => ref.legislative_period === 8));
+    deepStrictEqual(result.warnings, ["Parldok returned 3 of 13 hit(s) of another Dokumenttyp or Wahlperiode than asked for; skipped"]);
+
+    // When nothing it asked for comes back, the filter itself has stopped working.
+    const foreign = JSON.stringify({ ...envelope, data: JSON.stringify({ ...inner, docs: inner.docs.map((doc) => ({ ...doc, typeid: 44 })) }) });
+    const { transport: all } = scriptedTransport([{ match: "Fulltext/Search", body: foreign }]);
+    const none = await new MecklenburgVorpommernParldokSource().discover({ engine: testEngine(all), state });
+    deepStrictEqual(none.refs, []);
+    match(none.unreadable ?? "", /13 hit\(s\), none of them a "Kleine Anfrage und Antwort" of Wahlperiode 8/);
+  });
+
   it("skips a hit with no identity rather than inventing one", () => {
     const warnings: string[] = [];
     strictEqual(toRef({ title: "Ohne Nummer" }, warnings), undefined);
