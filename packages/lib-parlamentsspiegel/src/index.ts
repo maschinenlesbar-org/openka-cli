@@ -66,10 +66,16 @@ export const KLEINE_ANFRAGE_FILTER = "KlAnfr";
 async function discoverFromPortal(
 options: DiscoverOptions,
 herkunft: string | undefined,
+only?: ParliamentKey,
 ): Promise<DiscoverResult> {
   const warnings: string[] = [];
   const refs: DocRef[] = [];
   const seen = new Set<string>();
+  // Rows of another Land that came back although the search was pinned to `only`
+  // (`qyHerk`). Each row names its own Land, so they would be filed correctly — but
+  // under this source's run, counted as its own, past those Länder's connectors and
+  // their rules. Left out, and counted for the warning.
+  const foreign = new Map<string, number>();
 
   for (let page = FIRST_PAGE; page < FIRST_PAGE + MAX_PAGES; page++) {
     // No free-text `query`: the portal's own quick link sends `query=Anfrage`,
@@ -110,8 +116,14 @@ herkunft: string | undefined,
       const ref = parseVorgangBlock(block, warnings);
       if (ref === undefined || seen.has(ref.key)) continue;
       seen.add(ref.key);
-      refs.push(ref);
+      // A foreign row still moves the page on: it counts for the loop guard below.
       added++;
+      if (only !== undefined && ref.parliament !== only) {
+        const land = ref.parliament ?? "unknown";
+        foreign.set(land, (foreign.get(land) ?? 0) + 1);
+        continue;
+      }
+      refs.push(ref);
     }
     // A page that adds nothing new means the pagination parameter did not move;
     // stopping here is what keeps a changed parameter name from looping forever.
@@ -119,6 +131,14 @@ herkunft: string | undefined,
     if (options.limit !== undefined && refs.length >= options.limit) break;
   }
 
+  if (foreign.size > 0) {
+    const total = [...foreign.values()].reduce((sum, n) => sum + n, 0);
+    const which = [...foreign].map(([land, n]) => `${land} ${n}`).join(", ");
+    warnings.push(
+      `the search for ${herkunft as string} also returned ${total} row(s) of other Länder (${which}); they were left ` +
+        "out — they belong to those Länder's own sources",
+    );
+  }
   return { refs: applyWindow(refs, options), warnings };
 }
 
@@ -201,7 +221,7 @@ export class ParlamentsspiegelSource implements Source {
   }
 
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
-    return discoverFromPortal(options, this.herkunft);
+    return discoverFromPortal(options, this.herkunft, this.parliament);
   }
 
   async count(options: CountOptions): Promise<UpstreamCount> {

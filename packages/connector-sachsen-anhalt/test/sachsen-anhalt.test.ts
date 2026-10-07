@@ -8,7 +8,9 @@ import { SachsenAnhaltSource, DOCUMENT_ORIGIN, DOCUMENT_PATH, POLITE_INTERVAL_MS
 import { scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url);
-const RESULTS = readFixtureText("payloads", "parlamentsspiegel-results.html");
+// The live answer to qyHerk=SACA, recorded 2026-10-07. These tests used to run on an
+// NRW-only page, so the override passed on refs that were not Sachsen-Anhalt's at all.
+const RESULTS = readFixtureText("payloads", "parlamentsspiegel-sachsen-anhalt.html");
 const DISALLOW_ALL = "User-agent: *\nDisallow: /\n";
 const state = { source: "sachsen-anhalt", http_cache: {} };
 
@@ -37,7 +39,7 @@ describe("sachsen-anhalt source", () => {
       state,
       ignoreRobots: true,
     });
-    ok(result.refs.length >= 1);
+    deepStrictEqual(result.refs.map((ref) => ref.parliament), ["sachsen-anhalt", "sachsen-anhalt", "sachsen-anhalt"]);
     // The override is never silent.
     ok(result.warnings[0]?.includes("--ignore-robots was given"));
     ok(result.warnings[0]?.includes("the operator's"));

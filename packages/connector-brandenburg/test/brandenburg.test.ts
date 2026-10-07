@@ -8,7 +8,9 @@ import { BrandenburgSource, DOCUMENT_ORIGIN, DOCUMENT_PATH, POLITE_INTERVAL_MS, 
 import { scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url);
-const RESULTS = readFixtureText("payloads", "parlamentsspiegel-results.html");
+// The live answer to qyHerk=BRA, recorded 2026-10-07. These tests used to run on an
+// NRW-only page, so the override passed on refs that were not Brandenburg's at all.
+const RESULTS = readFixtureText("payloads", "parlamentsspiegel-brandenburg.html");
 const DISALLOW_ALL = "User-agent: *\nDisallow: /\n";
 const state = { source: "brandenburg", http_cache: {} };
 

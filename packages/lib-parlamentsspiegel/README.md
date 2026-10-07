@@ -74,10 +74,17 @@ npm test -w @maschinenlesbar.org/openka-lib-parlamentsspiegel
   result 05) and trimmed to the ones that showed the Urheber bugs: "Staatsministerium"
   as an asker, BÜNDNIS 90/DIE GRÜNEN inside a name, an asker with a "(FH)" degree
   dropped
+- `fixtures/payloads/parlamentsspiegel-brandenburg.html` — the live answer to `qyHerk=BRA`
+  of 2026-10-07, trimmed to three rows (08/3480, 08/3486, 08/3492); documents on
+  `www.parlamentsdokumentation.brandenburg.de/starweb/LBB/ELVIS/parladoku/`
 - `fixtures/payloads/parlamentsspiegel-niedersachsen.html`
 - `fixtures/payloads/parlamentsspiegel-nrw.html`
 - `fixtures/payloads/parlamentsspiegel-results.html`
 - `fixtures/payloads/parlamentsspiegel-saarland.html`
 - `fixtures/payloads/parlamentsspiegel-sachsen.html`
+- `fixtures/payloads/parlamentsspiegel-sachsen-anhalt.html` — the live answer to
+  `qyHerk=SACA` of 2026-10-07 (exploratory review, result 05), trimmed to three
+  unanswered rows: 08/4004 and 08/4010 (one asker), 08/4011 (two Grünen askers);
+  documents under `/files/drs/wp8/dkl_anfr/`
 - `fixtures/payloads/parlamentsspiegel-sh.html`
 - `fixtures/payloads/parlamentsspiegel-thueringen.html`

@@ -108,6 +108,42 @@ describe("Parlamentsspiegel source", () => {
     });
     match(requests[0]?.url ?? "", /qyHerk=HH/);
   });
+
+  it("reads the recorded Sachsen-Anhalt rows: SACA, the Drucksache, the askers, the document under /files/", async () => {
+    const page = readFixtureText("payloads", "parlamentsspiegel-sachsen-anhalt.html");
+    const { transport } = scriptedTransport([{ match: "page=0", body: page }, { match: "/suche", body: "<html></html>" }]);
+    const result = await new ParlamentsspiegelSource("sachsen-anhalt").discover({
+      engine: testEngine(transport),
+      state: { source: "sachsen-anhalt", http_cache: {} },
+    });
+    deepStrictEqual(result.refs.map((ref) => [ref.reference, ref.parliament]), [
+      ["08/4004", "sachsen-anhalt"],
+      ["08/4010", "sachsen-anhalt"],
+      ["08/4011", "sachsen-anhalt"],
+    ]);
+    const greens = result.refs.find((ref) => ref.reference === "08/4011");
+    deepStrictEqual(greens?.askers.map((asker) => asker.name), ["Olaf Meister", "Wolfgang Aldag"]);
+    match(greens?.documents[0]?.url ?? "", /^https:\/\/padoka\.landtag\.sachsen-anhalt\.de\/files\/drs\//);
+  });
+
+  it("leaves out rows of other Länder when pinned to one, and says so", async () => {
+    // The search is pinned with qyHerk, but each row names its own Land. Rows of
+    // another Land were stored under the pinned source's run and counted as its own.
+    const nrwOnly = readFixtureText("payloads", "parlamentsspiegel-results.html");
+    const { transport } = scriptedTransport([{ match: "page=0", body: nrwOnly }, { match: "/suche", body: "<html></html>" }]);
+    const result = await new ParlamentsspiegelSource("sachsen-anhalt").discover({
+      engine: testEngine(transport),
+      state: { source: "sachsen-anhalt", http_cache: {} },
+    });
+    deepStrictEqual(result.refs, []);
+    ok(result.warnings.some((warning) => /returned \d+ row\(s\) of other Länder \(nordrhein-westfalen \d+\)/.test(warning)));
+    // The all-Länder source keeps them: it is not pinned.
+    const all = await new ParlamentsspiegelAllLaender().discover({
+      engine: testEngine(scriptedTransport([{ match: "page=0", body: nrwOnly }, { match: "/suche", body: "<html></html>" }]).transport),
+      state: { source: "parlamentsspiegel", http_cache: {} },
+    });
+    ok(all.refs.length > 0);
+  });
 });
 
 describe("document roles in a result row", () => {
