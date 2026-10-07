@@ -175,8 +175,10 @@ export function registerOutput(program: Command, deps: CliDeps): void {
           io.out("Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
           return;
         }
-        const rate = ((summary.parse_complete / summary.records) * 100).toFixed(1);
-        io.out(`${summary.parse_complete} parse-complete (${rate}%), ${summary.needs_review} with abstained fields`);
+        // No catalogued record (only uncatalogued files, noted above): there is no rate to
+        // give — dividing by zero printed "NaN%".
+        const rate = summary.records === 0 ? "" : ` (${((summary.parse_complete / summary.records) * 100).toFixed(1)}%)`;
+        io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields`);
         for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
           io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
         }

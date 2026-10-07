@@ -611,6 +611,9 @@ describe("ka", () => {
       rmSync(join(harness.corpus, "index", "catalog.json"));
       strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
       match(harness.stderr(), /record file\(s\) are not in the catalog.*`ka reindex` adds them/);
+      // No catalogued record, so no rate — it printed "0 parse-complete (NaN%)".
+      match(harness.stdout(), /^0 parse-complete, 0 with abstained fields$/m);
+      doesNotMatch(harness.stdout(), /NaN/);
       harness.err.length = 0;
       strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_OK);
       match(harness.stderr(), /not in the catalog/);
