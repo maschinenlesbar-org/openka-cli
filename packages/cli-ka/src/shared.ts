@@ -28,7 +28,23 @@ import {
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
 import type { CliDeps } from "./io.js";
-import { BLOBS_ENV, CORPUS_DEFAULT_TEXT, FileStore, recordIdProblem, resolveBlobRoot, resolveCorpusRoot, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import {
+  BLOBS_ENV,
+  CORPUS_DEFAULT_TEXT,
+  DEFAULT_MIN_FREE_BYTES,
+  FileStore,
+  REFUSED_FILESYSTEMS,
+  byteSizeProblem,
+  formatBytes,
+  parseByteSize,
+  recordIdProblem,
+  resolveBlobRoot,
+  resolveCorpusRoot,
+  systemVolumes,
+  type RefusedFilesystem,
+  type Store,
+  type VolumeCheckOptions,
+} from "@maschinenlesbar.org/openka-lib-store";
 
 /** Environment variable naming the corpus directory (lib-store's). */
 export { CORPUS_ENV } from "@maschinenlesbar.org/openka-lib-store";
@@ -163,6 +179,8 @@ export interface ActionContext {
 export function action(
   deps: CliDeps,
   fn: (ctx: ActionContext, positionals: string[]) => Promise<void>,
+  /** `noteIgnored: false` for a command that reports the platform files itself (`ka doctor`). */
+  options: { noteIgnored?: boolean } = {},
 ): (...args: unknown[]) => Promise<void> {
   return async (...args: unknown[]) => {
     const command = args[args.length - 1] as Command;
@@ -197,7 +215,7 @@ export function action(
     try {
       await fn(ctx, positionals);
     } finally {
-      if (store instanceof FileStore) noteIgnoredFiles(deps, store);
+      if (store instanceof FileStore && options.noteIgnored !== false) noteIgnoredFiles(deps, store);
     }
   };
 }
@@ -214,7 +232,7 @@ function noteIgnoredFiles(deps: CliDeps, store: FileStore): void {
   if (ignored.length === 0) return;
   deps.io.err(
     `Note: ignored ${ignored.length} macOS AppleDouble/.DS_Store file(s) in the corpus; ` +
-      `\`dot_clean ${sanitizeForTerminal(store.root)}\` removes them.`,
+      `\`ka doctor --fix\` or \`dot_clean ${sanitizeForTerminal(store.root)}\` removes them.`,
   );
 }
 
@@ -321,6 +339,48 @@ export function corpusFiltersFrom(opts: Record<string, unknown>): SearchFilters 
   if (opts["reviewStatus"] !== undefined) filters.reviewStatus = [opts["reviewStatus"] as string];
   if (opts["needsReview"] === true) filters.onlyAbstained = true;
   return filters;
+}
+
+/** commander value-parser: a size such as "500M" or "2G" — the library's `parseByteSize`. */
+export function parseSize(value: string): number {
+  const reason = byteSizeProblem(value);
+  if (reason !== undefined) throw new InvalidArgumentError(reason);
+  return parseByteSize(value) as number;
+}
+
+/** commander accumulator for a repeatable `--allow-fs`: each one of `REFUSED_FILESYSTEMS`. */
+function collectAllowedFilesystem(value: string, previous: RefusedFilesystem[] = []): RefusedFilesystem[] {
+  const kind = REFUSED_FILESYSTEMS.find((known) => known === value);
+  if (kind === undefined) throw new InvalidArgumentError(`Allowed choices are ${REFUSED_FILESYSTEMS.join(", ")}.`);
+  return previous.concat([kind]);
+}
+
+/**
+ * The volume options `ka sync` and `ka doctor` share, so the doctor's verdict is the
+ * one a sync with the same flags would reach.
+ */
+export function addVolumeOptions(command: Command): Command {
+  return command
+    .option(
+      "--allow-fs <type>",
+      `write to a corpus on this filesystem anyway (repeatable: ${REFUSED_FILESYSTEMS.join(", ")}); both are refused by default`,
+      collectAllowedFilesystem,
+    )
+    .option(
+      "--min-free <size>",
+      `free space to keep on the corpus and blob volumes, e.g. 500M or 20G; 0 checks none (default: ${formatBytes(DEFAULT_MIN_FREE_BYTES)})`,
+      parseSize,
+    );
+}
+
+/** Those options, read back for the library, with the deps' volume probe. */
+export function volumeOptionsFrom(ctx: ActionContext): VolumeCheckOptions & { minFreeBytes: number } {
+  const allow = ctx.opts["allowFs"] as RefusedFilesystem[] | undefined;
+  return {
+    ...(allow === undefined ? {} : { allowFilesystems: allow }),
+    minFreeBytes: (ctx.opts["minFree"] as number | undefined) ?? DEFAULT_MIN_FREE_BYTES,
+    probe: ctx.deps.volumes ?? systemVolumes,
+  };
 }
 
 /** An Option constrained to a fixed set of choices. */

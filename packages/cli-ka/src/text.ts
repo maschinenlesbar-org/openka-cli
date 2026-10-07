@@ -44,18 +44,8 @@ export function pad(text: string, width: number): string {
   return text.length >= width ? text : text + " ".repeat(width - text.length);
 }
 
-/** A byte count for people, in decimal units: "110 KB", "270 MB", "1.2 GB". */
-export function formatBytes(bytes: number): string {
-  const units = ["bytes", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit++;
-  }
-  const shown = unit === 0 || value >= 10 ? Math.round(value).toString() : value.toFixed(1);
-  return `${shown} ${units[unit]}`;
-}
+/** A byte count for people, in decimal units — the library's, so `ka` and its messages agree. */
+export { formatBytes } from "@maschinenlesbar.org/openka-lib-store";
 
 /** A count with thousands separators: "2,471". */
 export function formatCount(n: number): string {

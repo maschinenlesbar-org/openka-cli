@@ -29,6 +29,23 @@ other record file that is not a record id is still a `StoreError`. After `lock()
 `writesAppleDouble` says whether this is such a volume — the lock file's own `._lock`
 companion is the probe.
 
+**What the corpus is on.** `checkCorpusVolumes(location, { allowFilesystems,
+minFreeBytes, probe })` reports per volume — the root, and the blob directory when it is
+apart — the filesystem (`FilesystemInfo`: the system's name and a `FilesystemKind`),
+the free space, and `problems` (FAT32/exFAT unless allowed; less than `minFreeBytes`,
+default `DEFAULT_MIN_FREE_BYTES` = 1 GB) and `warnings` (a network filesystem).
+`spaceGuard(location, minFreeBytes, probe)` is the `SpaceGuard` a sync checks as it goes:
+`fitProblem(bytes)` before the first download, `lowProblem()` before each Anfrage.
+`systemVolumes` is the real `VolumeProbe` (statfs for space; `mount` on macOS, the
+statfs magic on Linux for the type); a path not created yet is answered for its
+nearest existing ancestor. `parseByteSize`/`byteSizeProblem` read `--min-free`, and
+`formatBytes` prints sizes in the same decimal units.
+
+**The doctor.** `diagnoseCorpus(store, options)` combines the volume check, the blob
+drive (`blobStoreProblem`), `lockStatus()`, `catalogGaps` and a count of the platform
+files anywhere in the corpus (`platformFiles`) into problems and warnings, writing
+nothing. `removePlatformFiles(store)` deletes those files under the corpus lock.
+
 **Abstentions by kind, in the catalog.** A catalog row carries `abstained_fields`: the
 record's abstained paths by kind (`abstainedFieldKind`: `qa[3].answer` → `qa[].answer`)
 with their counts, so `corpusStats` (`abstained_by_field` per parliament) and
@@ -81,6 +98,8 @@ and catalog rows whose file is gone.
 - **`src/file-store.ts`** — The corpus on disk:  <root>/ blobs/<sha[0:2]>/<sha>.bin        content-addressed source documents records/<id>.json                 canonical records, one file each index/catalog.json                denormalised rows for filtering + listing index/tokens/<shard>.json         inverted index shards (256 of them) index/embeddings.json             frozen vectors, only if the factory shipped some state/<source>.json               per-source sync + conditional-request state  Everything is plain JSON in canonical form, so a corpus diffs cleanly in git, can be inspected with `cat`, and — crucially for
 - **`src/fts.ts`** — The full-text index: tokenizer, scoring and sharding — all pure functions, so the ranking of a search result is reproducible and unit-testable without touching a filesystem.
 - **`src/indexer.ts`** — Keeping the catalog and the inverted index in step with the records.
+- **`src/volume.ts`** — What a corpus is stored on: the filesystem and the free space of its volumes, and the refusals a sync makes before it writes.
+- **`src/doctor.ts`** — `ka doctor`: the volumes, the lock, the catalog against the record files, and the macOS files beside them.
 - **`src/stats.ts`** — `corpusStats`: what is in a corpus, counted from its catalog — the numbers `ka stats` prints; `corpusDiskUsage`: what it takes on disk (`ka stats --disk`).
 - **`src/store.ts`** — The corpus seam.
 
@@ -89,7 +108,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet
+FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles
 ```
 
 ## Depends on

@@ -181,7 +181,8 @@ a subprocess, touches the network, or reads the clock.
   implementation; `MemoryStore` in `test/helpers.ts` is the test double.
 - **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factories (`createStore` for a
   command that writes, `openStore` for one that only reads an existing corpus), the
-  engine factory, the environment and **the clock**. `run()` returns an exit code rather than calling
+  engine factory, the environment, **the clock** and the volume probe (`volumes`:
+  filesystem and free space). `run()` returns an exit code rather than calling
   `process.exit`.
 
 A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
@@ -333,7 +334,22 @@ What the library now computes that a `ka` action used to compute on its own:
   `withCorpusLock`: `sync()`, `reindexAll` and `markHumanVerified` hold `<corpus>/lock`
   while they write, and a second writer gets `CorpusLockedError` (exit 3). Two syncs
   on one corpus used to lose postings and catalog rows while both reported success.
-  A lock whose process on this host is gone is taken over.
+  A lock whose process on this host is gone is taken over. `lockStatus()` reads it
+  without taking it (`ka doctor`).
+- **Where a corpus may be written, and how full** — `checkCorpusVolumes` (`lib-store`)
+  asks a `VolumeProbe` about the corpus and a separate blob directory: FAT32/exFAT is a
+  problem unless allowed, a network filesystem a warning, less than `minFreeBytes`
+  (`DEFAULT_MIN_FREE_BYTES`, 1 GB) a problem. `ka sync` runs it before taking the lock
+  and refuses on a problem (exit 3). `spaceGuard` is what `sync()` takes as
+  `SyncOptions.space`: after discovery it refuses a download that would not fit
+  (`corpusEstimate`, the same corpus-average estimate `planSync` uses, no requests), and
+  before each ref it stops the run on a volume below the floor (`SyncReport.lowSpace`,
+  kept like an interrupted run). `diagnoseCorpus` adds the lock, `catalogGaps`, the blob
+  drive and the platform files for `ka doctor`; `removePlatformFiles` is `--fix`.
+  `systemVolumes` reads `statfs` for space and the filesystem from `mount` on macOS
+  (where statfs's type number is a slot assigned at driver load, not a constant) and
+  from statfs's magic number on Linux. `CliDeps.volumes` injects it; the CLI harness
+  passes a roomy local disk, so no test depends on the machine's.
 - **Which date a record has** — the question's (`dates.submitted`), nothing else:
   the catalog's `year`, `matchesFilters` and the listing use it, a record without it
   is in no `--year`/`--from`/`--to` window, and `search()`/`selectRecords()` count those

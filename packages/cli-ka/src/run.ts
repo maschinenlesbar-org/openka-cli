@@ -13,7 +13,8 @@ import { InterruptedRunError, type CliDeps } from "./io.js";
  *   0  success (including `--help` and `--version`)
  *   1  an error — an upstream failure, a missing record, a failed verification
  *   2  a usage error (commander's parse failures are remapped to this)
- *   3  the corpus is missing or unreadable
+ *   3  a corpus problem: missing or unreadable, held by another run, on a refused
+ *      filesystem or short of space (`ka sync`), or a problem `ka doctor` found
  *   4  the requested record or resource does not exist upstream (HTTP 404)
  *   130 / 143  `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog
  *

@@ -33,6 +33,8 @@ ka sync --source berlin --source bund --since 2026-01-01  # side by side, one co
 ka sync --all --since 2026-09-01                        # every source with its own adapter
 ka sync --source bund --wait                            # queue behind a run holding the corpus
 ka sync --source berlin --since 2026-01-01 --dry-run    # how many, and how much disk, before committing to it
+ka sync --source berlin --min-free 20G                  # keep 20 GB free (default 1 GB; 0 checks none)
+ka --corpus /Volumes/STICK/openka sync --source berlin --allow-fs exfat   # a corpus on exFAT, on purpose
 ```
 
 **Look before you sync.** `--dry-run` runs discovery only — no document is downloaded,
@@ -42,6 +44,7 @@ would do:
 ```
 berlin 2026-01-01..: 2,471 Anfragen discovered, 0 already in corpus
 documents to fetch: 2,471 (≈ 270 MB at 110 KB avg; HEAD-sampled n=20)
+space: ≈ 270 MB to fetch, 85 GB free for /Users/me/.local/share/openka
 ```
 
 "Documents to fetch" are the document URLs whose bytes the corpus does not hold yet,
@@ -50,7 +53,31 @@ source once it holds at least 20 documents (`ka stats --disk` shows it), and oth
 the `Content-Length` of a HEAD request to up to 20 of the documents, spread over the
 list — asked under the same robots.txt rules and pacing as a sync. Discovery itself is
 not free: Berlin's is a 50+ MB feed. With `--json` the plan is an object (an array for
-several sources).
+several sources). When the download would not fit beside `--min-free`, or a sync would
+refuse the volume, a `warning:` line on stderr says so in place of the `space:` line.
+
+**Where the corpus may live.** Before it writes anything — the lock file is the first
+write — `ka sync` checks the volume of the corpus and, when it is named apart, of
+`--blobs`, and exits 3 with nothing written when:
+
+- the volume is **FAT32 or exFAT**. Neither has a journal or extended attributes (macOS
+  writes a `._` file beside every file), and FAT32 adds a 4 GB file limit and 65,534
+  entries per directory. `--allow-fs fat32` / `--allow-fs exfat` (repeatable) accepts
+  it anyway. A **network filesystem** (SMB, NFS, AFP, WebDAV) is a warning, not a refusal;
+- the volume has less free space than **`--min-free`** (default 1 GB; sizes such as
+  `500M`, `20G`, in decimal units; `0` checks none);
+- the documents still to fetch would not fit beside that floor. The estimate is the
+  average of what the source already archived, once it holds at least 20 documents.
+  A sync sends no HEAD requests to guess, so a source's first sync is guarded by the
+  floor alone. Its exit is 3 with nothing downloaded.
+
+While it runs, a sync checks the free space before each Anfrage. Below the floor it
+stops the way Ctrl-C does: the Anfrage in hand is finished, the catalog saved, and the
+run exits 3 with `berlin: stopped after 812 of 2,471 Anfragen — only 900 MB free…`.
+Free some space and run the same sync again to continue.
+
+The filesystem comes from `mount` on macOS and from `statfs` on Linux. Elsewhere it is
+unknown, and only the free space is checked.
 
 **Several sources at once.** `--source` is repeatable: the sources run side by side in
 one process, under one corpus lock, each paced on its own — and a host two of them
@@ -230,6 +257,37 @@ A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here
 `-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
 An existing file is not replaced unless `--force` is given.
 
+## `ka doctor`
+
+```bash
+ka doctor                     # filesystem, free space, lock, catalog against records, ._* files
+ka doctor --fix               # …and remove the macOS ._* and .DS_Store files
+ka doctor --json
+ka --corpus /Volumes/STICK/openka doctor --allow-fs exfat --min-free 5G
+```
+
+```
+corpus        /Users/me/.local/share/openka
+  filesystem  apfs (local)
+  free        85 GB of 494 GB
+blobs         in the corpus
+lock          free
+catalog       2,471 record(s), all catalogued
+platform      no macOS ._* / .DS_Store files
+No problems found.
+```
+
+The doctor checks what a sync with the same `--allow-fs` and `--min-free` would check,
+and also: who holds the corpus lock (a `stale` one, left by a run on this host that is
+gone, is taken over by the next writer); whether the catalog and the record files agree
+(`ka reindex` repairs that); whether a `--blobs` drive is reachable; and how many macOS
+`._*` and `.DS_Store` files lie anywhere in the corpus. Problems go to stderr as
+`problem:` lines and exit 3; warnings (a network filesystem, platform files, a stale
+lock) do not change the exit code. A corpus that does not exist yet is checked for its
+volume only, and nothing is created. `--fix` takes the corpus lock, so it exits 3 while
+a sync is writing, and removes only `._*` and `.DS_Store` files — names the corpus never
+writes.
+
 ## `ka sources` / `ka stats` / `ka schema` / `ka reindex`
 
 ```bash
@@ -287,6 +345,6 @@ Both `goldens list` and `goldens verify` exit 1 when the set they read is empty.
 | 0 | success (including `--help` and `--version`) |
 | 1 | an error: an upstream failure, a failed verification, a missing record |
 | 2 | a usage error (a rejected option value, a malformed record id, an unknown command) |
-| 3 | the corpus is missing or unreadable (a `--corpus` that does not exist included) |
+| 3 | a corpus problem: missing or unreadable (a `--corpus` that does not exist included), held by another run, on a refused filesystem or short of free space (`ka sync`), or anything `ka doctor` calls a problem |
 | 4 | the upstream returned 404 |
 | 130 / 143 | `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog |

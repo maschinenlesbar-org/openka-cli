@@ -20,7 +20,7 @@ Everything is re-exported from the package root:
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
 CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
 syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
-planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN,
+planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN, documentsToFetch, corpusEstimate,
 countSources, CountSourcesOptions, SourceCountRow
 ```
 
@@ -74,6 +74,16 @@ finished, the catalog saved, and the report says `interrupted: true`; the source
 what an interrupted run left behind, before the checkpoints — is indexed again and
 counted in `recatalogued`, so the next sync over the window repairs it; before, every
 later run called it "unchanged" and it stayed invisible to search, stats and export.
+
+## A run that runs out of room
+
+`space` (a `SpaceGuard`, `spaceGuard` in lib-store) guards the disk. After discovery,
+before the first download, a run whose documents to fetch (`documentsToFetch`) would
+not fit beside the floor is refused with `StoreError`. The size is
+`corpusEstimate`: the average of what the source already archived, so no request is
+made and a first sync is not estimated. Before each ref, a volume below the floor
+stops the run the way `signal` does — the catalog saved, `last_success` and
+`last_error` left as they were — and the report says why in `lowSpace`.
 
 ## Progress
 

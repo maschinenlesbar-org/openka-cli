@@ -18,7 +18,7 @@
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, referenceSlug } from "@maschinenlesbar.org/openka-lib-models";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
-import type { Store } from "@maschinenlesbar.org/openka-lib-store";
+import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
 import { statSync } from "node:fs";
 import { normalizeSyncWindow, type SyncWindow } from "./window.js";
 
@@ -116,25 +116,50 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
   if (options.metadataOnly === true) return plan;
 
   const cache = state.http_cache;
-  const held = (url: string): boolean => {
-    const digest = cache[url]?.sha256;
-    return digest !== undefined && store.hasBlob(digest);
-  };
-  const toFetch = [...new Set(discovered.refs.flatMap((ref) => ref.documents.map((document) => document.url)))].filter(
-    (url) => !held(url),
-  );
+  const toFetch = documentsToFetch(discovered.refs, cache, store);
   plan.documents_to_fetch = toFetch.length;
   if (toFetch.length === 0) return plan;
 
-  const known = knownSizes(store, Object.values(cache).map((entry) => entry.sha256));
-  if (known.length >= ESTIMATE_MIN_KNOWN) {
-    plan.estimate = estimate(known, toFetch.length, "corpus");
+  const fromCorpus = corpusEstimate(store, cache, toFetch.length);
+  if (fromCorpus !== undefined) {
+    plan.estimate = fromCorpus;
     return plan;
   }
+  const known = knownSizes(store, Object.values(cache).map((entry) => entry.sha256));
   const sampled = await headSample(engine, evenSample(toFetch, options.sample ?? DRY_RUN_SAMPLE), robots, plan.warnings);
   const sizes = sampled.length > 0 ? sampled : known;
   if (sizes.length > 0) plan.estimate = estimate(sizes, toFetch.length, sampled.length > 0 ? "head-sample" : "corpus");
   return plan;
+}
+
+/**
+ * The document URLs of `refs` whose bytes the corpus does not hold under a validator,
+ * once each: what a sync would download.
+ */
+export function documentsToFetch(
+  refs: readonly DocRef[],
+  cache: SourceState["http_cache"],
+  store: Pick<Store, "hasBlob">,
+): string[] {
+  const held = (url: string): boolean => {
+    const digest = cache[url]?.sha256;
+    return digest !== undefined && store.hasBlob(digest);
+  };
+  return [...new Set(refs.flatMap((ref) => ref.documents.map((document) => document.url)))].filter((url) => !held(url));
+}
+
+/**
+ * The size of `documents` downloads, from the average of what this source already
+ * archived (`cache`) — undefined until it holds `ESTIMATE_MIN_KNOWN` documents. Costs
+ * a `stat` per archived document, and no request.
+ */
+export function corpusEstimate(
+  store: Pick<Store, "hasBlob" | "blobPath">,
+  cache: SourceState["http_cache"],
+  documents: number,
+): SizeEstimate | undefined {
+  const known = knownSizes(store, Object.values(cache).map((entry) => entry.sha256));
+  return known.length >= ESTIMATE_MIN_KNOWN ? estimate(known, documents, "corpus") : undefined;
 }
 
 function isInCorpus(ref: DocRef, source: Source, store: Pick<Store, "hasRecord">): boolean {

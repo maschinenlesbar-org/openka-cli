@@ -8,6 +8,7 @@ import { registerSync } from "./commands/sync.js";
 import { registerQuery } from "./commands/query.js";
 import { registerMaintain } from "./commands/maintain.js";
 import { registerOutput } from "./commands/output.js";
+import { registerDoctor } from "./commands/doctor.js";
 
 export { defaultDeps } from "./io.js";
 
@@ -28,6 +29,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   registerQuery(program, deps);
   registerMaintain(program, deps);
   registerOutput(program, deps);
+  registerDoctor(program, deps);
 
   program.addHelpText(
     "after",
@@ -39,6 +41,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
       "  ka get berlin-19-10006 --format md",
       "  ka verify berlin-19-10006",
       "  ka review",
+      "  ka doctor",
       "  ka export --format csv --out corpus.csv",
       "",
       "A record may publish with holes. `abstained_fields` names them, `ka review` lists them,",

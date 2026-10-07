@@ -200,6 +200,18 @@ export class FileStore implements Store {
     return this.releaseOnce();
   }
 
+  /**
+   * Who holds the corpus, read without taking it: undefined when nobody does. A
+   * `stale` lock names this host and a process that is gone — the next writer takes
+   * it over; a lock from another host is never stale here, since it cannot be checked.
+   */
+  lockStatus(): { holder: string; stale: boolean } | undefined {
+    const path = this.path("lock");
+    if (!existsSync(path)) return undefined;
+    const holder = readLock(path);
+    return { holder: describeHolder(holder), stale: holder !== undefined && isStale(holder) };
+  }
+
   private appleDouble = false;
 
   /**

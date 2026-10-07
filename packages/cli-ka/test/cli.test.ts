@@ -3,13 +3,13 @@
 
 import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { FileStore, resolveCorpusRoot, toCatalogEntry } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
@@ -35,6 +35,11 @@ function berlinTransport(): ReturnType<typeof scriptedTransport> {
     { match: "pardok-wp19.xml", body: PARDOK, headers: { etag: '"feed-v1"' } },
     { match: ".pdf", body: PDF, headers: { etag: '"pdf-v1"' } },
   ]);
+}
+
+/** A volume of this filesystem with `free` bytes free, wherever the path. */
+function volumesOf(filesystem: FilesystemInfo, free: number): VolumeProbe {
+  return { space: () => ({ free, total: 64e9 }), filesystem: () => filesystem };
 }
 
 /** Sync the Berlin fixture feed into a fresh corpus and return the harness. */
@@ -352,7 +357,7 @@ describe("ka", () => {
         harness.err.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, argv.join(" "));
         if (argv[0] !== "search") {
-          match(harness.stderr(), /^Note: ignored 2 macOS AppleDouble\/\.DS_Store file\(s\) in the corpus; `dot_clean .*` removes them\.$/m);
+          match(harness.stderr(), /^Note: ignored 2 macOS AppleDouble\/\.DS_Store file\(s\) in the corpus; `ka doctor --fix` or `dot_clean .*` removes them\.$/m);
         }
       }
       // A name the store would never write still stops: that is the guard against path tricks.
@@ -588,6 +593,157 @@ describe("ka", () => {
       } finally {
         clean.cleanup();
       }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("refuses to sync onto FAT32 or exFAT before writing anything, unless --allow-fs", async () => {
+    for (const [name, kind] of [["msdos", "fat32"], ["exfat", "exfat"]] as const) {
+      const { transport, requests } = berlinTransport();
+      const harness = cliHarness({ transport, volumes: volumesOf({ name, kind }, 100e9) });
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE, kind);
+        match(harness.stderr(), new RegExp(`^Error: the corpus .* is on (FAT32|exFAT) \\(${name}\\).*--allow-fs ${kind} to use it anyway\\. Nothing was synced\\.$`, "m"));
+        strictEqual(requests.length, 0);
+        deepStrictEqual(readdirSync(harness.corpus), [], "not even the lock file");
+
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--allow-fs", kind], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m);
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+
+  it("refuses to sync with less free space than --min-free, and warns on a network filesystem", async () => {
+    const harness = cliHarness({ transport: berlinTransport().transport, volumes: volumesOf({ name: "smbfs", kind: "network" }, 800e6) });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /^Error: only 800 MB free for the corpus .*, less than the 1\.0 GB to keep \(--min-free\)\. Nothing was synced\.$/m);
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--min-free", "500M"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stderr(), /^warning: the corpus .* is on a network filesystem \(smbfs\)/m);
+      for (const bad of ["lots", "-1", ""]) {
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--min-free", bad], harness.deps), EXIT_USAGE, bad);
+      }
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--allow-fs", "ntfs"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /Allowed choices are fat32, exfat\./);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("stops a sync whose disk runs low, keeps what it stored, and exits 3", async () => {
+    let asked = 0;
+    const draining: VolumeProbe = {
+      // The preflight asks once, then the run before each Anfrage: low from the second.
+      space: () => ({ free: ++asked > 2 ? 200e6 : 100e9, total: 500e9 }),
+      filesystem: () => ({ name: "apfs", kind: "local" }),
+    };
+    const harness = cliHarness({ transport: berlinTransport().transport, volumes: draining });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
+      match(harness.stdout(), /^berlin: \d+ discovered, 1 stored, 0 unchanged, 0 failed$/m);
+      match(harness.stderr(), /^Error: berlin: stopped after 1 of \d+ Anfragen — only 200 MB free for the corpus .*; what was stored is catalogued\. Free some space, then run the same sync again to continue\.$/m);
+      strictEqual(new FileStore(harness.corpus).catalog().length, 1);
+      ok(!existsSync(join(harness.corpus, "lock")));
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("says in --dry-run whether the download fits and what a sync would refuse", async () => {
+    const responses = (): ReturnType<typeof scriptedTransport> =>
+      scriptedTransport([
+        { match: "pardok-wp19.xml", body: PARDOK },
+        { match: "robots.txt", status: 404 },
+        { match: ".pdf", headers: { "content-length": "110000" } },
+      ]);
+    const roomy = cliHarness({ transport: responses().transport });
+    try {
+      strictEqual(await run(["--corpus", roomy.corpus, "sync", "--source", "berlin", "--dry-run"], roomy.deps), EXIT_OK, roomy.stderr());
+      match(roomy.stdout(), /^space: ≈ [\d.]+ (KB|MB) to fetch, 500 GB free for .*$/m);
+    } finally {
+      roomy.cleanup();
+    }
+    const tight = cliHarness({ transport: responses().transport, volumes: volumesOf({ name: "msdos", kind: "fat32" }, 1.0001e9) });
+    try {
+      strictEqual(await run(["--corpus", tight.corpus, "sync", "--source", "berlin", "--dry-run"], tight.deps), EXIT_OK, tight.stderr());
+      match(tight.stderr(), /^warning: a sync would refuse: the corpus .* is on FAT32 \(msdos\)/m);
+      match(tight.stderr(), /^warning: the documents to fetch \(≈ [\d.]+ (KB|MB)\) do not fit: 1\.0 GB is free for the corpus .*, and 1\.0 GB of it is to be kept \(--min-free\)$/m);
+      doesNotMatch(tight.stdout(), /^space:/m);
+    } finally {
+      tight.cleanup();
+    }
+  });
+
+  it("checks the corpus with ka doctor, and exits 3 on a problem", async () => {
+    const harness = await seeded();
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^corpus +\S+$/m);
+      match(harness.stdout(), /^ {2}filesystem +apfs \(local\)$/m);
+      match(harness.stdout(), /^ {2}free +500 GB of 1\.0 TB$/m);
+      match(harness.stdout(), /^blobs +in the corpus$/m);
+      match(harness.stdout(), /^lock +free$/m);
+      match(harness.stdout(), /^catalog +\d+ record\(s\), all catalogued$/m);
+      match(harness.stdout(), /^No problems found\.$/m);
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "doctor", "--json"], harness.deps), EXIT_OK);
+      const diagnosis = JSON.parse(harness.stdout()) as { exists: boolean; lock: { state: string }; problems: string[]; volumes: { role: string }[] };
+      deepStrictEqual([diagnosis.exists, diagnosis.lock.state, diagnosis.problems, diagnosis.volumes.map((volume) => volume.role)], [true, "free", [], ["corpus"]]);
+
+      // The doctor's verdict is the one sync would reach with the same flags.
+      harness.out.length = 0;
+      harness.err.length = 0;
+      harness.deps.volumes = volumesOf({ name: "msdos", kind: "fat32" }, 100e9);
+      strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /^problem: the corpus .* is on FAT32 \(msdos\)/m);
+      match(harness.stderr(), /^Error: 1 problem\(s\) with the corpus at /m);
+      strictEqual(await run(["--corpus", harness.corpus, "doctor", "--allow-fs", "fat32"], harness.deps), EXIT_OK);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("counts the macOS files with ka doctor and removes them with --fix", async () => {
+    const harness = await seeded();
+    try {
+      writeFileSync(join(harness.corpus, "records", "._berlin-19-10006.json"), "\0\u0005\u0016\u0007");
+      writeFileSync(join(harness.corpus, ".DS_Store"), "");
+      strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^platform +2 macOS \._\* \/ \.DS_Store file\(s\)$/m);
+      match(harness.stderr(), /^warning: 2 macOS \._\* \/ \.DS_Store file\(s\) lie in the corpus; `ka doctor --fix` removes them$/m);
+      doesNotMatch(harness.stderr(), /dot_clean/, "one remedy, not two");
+
+      const release = new FileStore(harness.corpus).lock("sync --source bund");
+      strictEqual(await run(["--corpus", harness.corpus, "doctor", "--fix"], harness.deps), EXIT_STORE, "not under a running sync");
+      release();
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "doctor", "--fix"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^removed +2 macOS \._\* \/ \.DS_Store file\(s\)$/m);
+      match(harness.stdout(), /^platform +no macOS \._\* \/ \.DS_Store files$/m);
+      ok(!existsSync(join(harness.corpus, ".DS_Store")) && existsSync(join(harness.corpus, "records", "berlin-19-10006.json")));
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("names a catalog apart from the record files in ka doctor", async () => {
+    const harness = await seeded();
+    try {
+      rmSync(join(harness.corpus, "index", "catalog.json"));
+      strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_STORE);
+      match(harness.stdout(), /^catalog +\d+ record file\(s\), 0 catalog row\(s\): \d+ uncatalogued, 0 without a file$/m);
+      match(harness.stderr(), /^problem: the catalog and the record files disagree: .* `ka reindex` rebuilds the catalog from the records$/m);
+      strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+      strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_OK);
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", join(harness.corpus, "later"), "doctor"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^corpus +.*later \(not created yet\)$/m);
+      ok(!existsSync(join(harness.corpus, "later")));
     } finally {
       harness.cleanup();
     }

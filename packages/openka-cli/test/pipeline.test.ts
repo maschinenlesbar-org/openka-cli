@@ -24,7 +24,7 @@ import {
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { CorpusLockedError, OpenKaValidationError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, OpenKaValidationError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
@@ -649,6 +649,68 @@ describe("sync pipeline", () => {
     strictEqual(store.catalog().length, 1);
     strictEqual(store.getSourceState("berlin").last_success, undefined);
     ok(store.getSourceState("berlin").last_sync !== undefined);
+  });
+
+  it("stops between refs when a volume runs low on space, and keeps what it stored", async () => {
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    let checks = 0;
+    const report = await sync({
+      source: new ManySource(3),
+      store,
+      engine: testEngine(transport),
+      space: { fitProblem: () => undefined, lowProblem: () => (++checks > 1 ? "only 900 MB free for the corpus /c" : undefined) },
+    });
+    deepStrictEqual([report.lowSpace, report.stored, report.interrupted], ["only 900 MB free for the corpus /c", 1, false]);
+    strictEqual(store.catalog().length, 1);
+    strictEqual(store.getSourceState("berlin").last_success, undefined, "not a success: the window was not covered");
+    strictEqual(store.getSourceState("berlin").last_error, undefined, "nor a degraded source");
+  });
+
+  it("refuses before the first download when the documents to fetch would not fit", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-space-"));
+    try {
+      const store = new FileStore(root);
+      // What the source archived before: enough documents for an average, 1 MB each.
+      const http_cache: Record<string, { sha256: string }> = {};
+      for (let i = 0; i < ESTIMATE_MIN_KNOWN; i++) {
+        http_cache[`https://example.invalid/${i}.pdf`] = { sha256: store.putBlob(Buffer.alloc(1_000_000, i)) };
+      }
+      store.putSourceState({ source: "berlin", http_cache });
+      const { transport, requests } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+      const asked: number[] = [];
+      await rejects(
+        sync({
+          source: new StubSource(),
+          store,
+          engine: testEngine(transport),
+          space: {
+            fitProblem: (bytes) => (asked.push(bytes), "they do not fit"),
+            lowProblem: () => undefined,
+          },
+        }),
+        (err: unknown) => err instanceof StoreError && /^berlin: 1 document\(s\) to fetch, and they do not fit\. Nothing was downloaded\.$/.test((err as Error).message),
+      );
+      deepStrictEqual(asked, [1_000_000]);
+      strictEqual(requests.length, 0);
+      strictEqual(store.getSourceState("berlin").last_error, undefined, "the disk, not the source");
+
+      // Without an estimate the archive supports — a source's first sync — only the floor applies.
+      const fresh = new FileStore(mkdtempSync(join(tmpdir(), "openka-space-")));
+      try {
+        const report = await sync({
+          source: new StubSource(),
+          store: fresh,
+          engine: testEngine(transport),
+          space: { fitProblem: () => "never asked", lowProblem: () => undefined },
+        });
+        strictEqual(report.stored, 1);
+      } finally {
+        rmSync(fresh.root, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("reports the discovered count before the first record, for a progress display", async () => {

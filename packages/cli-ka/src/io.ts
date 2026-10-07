@@ -4,7 +4,7 @@
 // subprocess, no network, no clock.
 
 import { writeFileSync } from "node:fs";
-import { FileStore, type FileStoreOptions } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, systemVolumes, type FileStoreOptions, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
@@ -43,6 +43,11 @@ export interface CliDeps {
    * the process as usual. Optional: a test harness without it cannot interrupt.
    */
   onInterrupt?(handler: (signal: InterruptSignal) => void): () => void;
+  /**
+   * What the corpus is stored on: filesystem and free space (`ka sync`'s preflight,
+   * its space guard and `ka doctor`). Unset, the machine's own (`systemVolumes`).
+   */
+  volumes?: VolumeProbe;
 }
 
 /** The signals `ka sync` stops early on. */
@@ -133,4 +138,5 @@ export const defaultDeps: CliDeps = {
   env: process.env,
   now: () => new Date(),
   onInterrupt: listenForInterrupts,
+  volumes: systemVolumes,
 };

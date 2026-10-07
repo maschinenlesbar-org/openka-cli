@@ -2,7 +2,7 @@
 // with conditional requests, the declared tier, then store and index.
 
 import type { Command } from "commander";
-import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import {
   SYNC_LIMIT_MIN,
@@ -16,9 +16,21 @@ import {
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { adapterSourceKeys, createSource, sourceKeyProblem, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import { FileStore, lockCorpus, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, checkCorpusVolumes, lockCorpus, spaceGuard, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
-import { action, choiceOption, type ActionContext, parseBoundedInt, parseIsoDate, parseNonEmpty, printJson, problemParser, toEngineOptions } from "../shared.js";
+import {
+  action,
+  addVolumeOptions,
+  choiceOption,
+  type ActionContext,
+  parseBoundedInt,
+  parseIsoDate,
+  parseNonEmpty,
+  printJson,
+  problemParser,
+  toEngineOptions,
+  volumeOptionsFrom,
+} from "../shared.js";
 import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
 
@@ -43,7 +55,7 @@ const parseSourceKey = problemParser(sourceKeyProblem);
 const SYNC_LIMIT_CAP = 100_000;
 
 export function registerSync(program: Command, deps: CliDeps): void {
-  program
+  const command = program
     .command("sync")
     .description("fetch, extract and store Anfragen from one or more sources")
     .option(
@@ -72,7 +84,8 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
     .option("--ocr-traineddata <path>", "traineddata file to hash into the provenance record", parseNonEmpty)
-    .option("--json", "print the sync report as JSON (an array of reports for several sources or --all)")
+    .option("--json", "print the sync report as JSON (an array of reports for several sources or --all)");
+  addVolumeOptions(command)
     .action(
       action(deps, async (ctx) => {
         const io = ctx.deps.io;
@@ -101,6 +114,9 @@ export function registerSync(program: Command, deps: CliDeps): void {
           await dryRun(ctx, sources, store, keyFor, several);
           return;
         }
+        // Before anything is written — the lock file is the first write — so a corpus
+        // on a FAT32 stick or a full disk is refused, not discovered by the run.
+        const space = store instanceof FileStore ? preflight(ctx, store) : undefined;
 
         // The three OCR sub-options describe a model that only runs with --ocr.
         // Accepting them without it ran strict mode and said nothing, so a
@@ -181,6 +197,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
               ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
               ...(ctx.opts["force"] === true ? { force: true } : {}),
               ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+              ...(space === undefined ? {} : { space }),
               // Progress is stderr, so --json (which shapes stdout) keeps it.
               ...(progress === undefined
                 ? {}
@@ -226,6 +243,14 @@ export function registerSync(program: Command, deps: CliDeps): void {
           io.err(`error: ${outcome.source}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
         }
         if (stopped !== undefined) throw stopped;
+        const low = done.filter((report) => report.lowSpace !== undefined);
+        if (low.length > 0) {
+          throw new StoreError(
+            low
+              .map((report) => `${report.source}: stopped after ${report.stored + report.unchanged + report.failed} of ${report.discovered} Anfragen — ${report.lowSpace}`)
+              .join("; ") + "; what was stored is catalogued. Free some space, then run the same sync again to continue.",
+          );
+        }
         if (failed[0] !== undefined) {
           if (several) io.err(`error: ${failed[0].source} failed:`);
           throw failed[0].error;
@@ -292,11 +317,48 @@ async function dryRun(
       for (const warning of plan.warnings) io.err(`warning: ${several ? `${plan.source}: ` : ""}${truncate(warning, MESSAGE_WIDTH)}`);
     }
   }
+  if (store instanceof FileStore) dryRunSpace(ctx, store, results.flatMap((result) => (result.plan === undefined ? [] : [result.plan])));
   const failed = results.filter((result) => result.error !== undefined);
   for (const result of failed.slice(1)) io.err(`error: ${result.source}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
   if (failed[0] !== undefined) {
     io.err(`error: ${failed[0].source} failed:`);
     throw failed[0].error;
+  }
+}
+
+/**
+ * The volumes a sync is about to write to: a refused filesystem or less free space
+ * than `--min-free` is a `StoreError` (exit 3) before the lock is taken; a network
+ * filesystem is a warning. Returns the guard the run checks as it goes.
+ */
+function preflight(ctx: ActionContext, store: FileStore): SpaceGuard {
+  const options = volumeOptionsFrom(ctx);
+  const reports = checkCorpusVolumes(store, options);
+  for (const warning of reports.flatMap((report) => report.warnings)) ctx.deps.io.err(`warning: ${sanitizeForTerminal(warning)}`);
+  const problems = reports.flatMap((report) => report.problems);
+  if (problems.length > 0) throw new StoreError(`${problems.map((problem) => problem.replace(/\.$/, "")).join("; ")}. Nothing was synced.`);
+  return spaceGuard(store, options.minFreeBytes, options.probe);
+}
+
+/**
+ * What `--dry-run` says about space: what a real sync would refuse, as warnings, and
+ * whether the estimated documents fit beside the free space it keeps.
+ */
+function dryRunSpace(ctx: ActionContext, store: FileStore, plans: readonly SyncPlan[]): void {
+  const io = ctx.deps.io;
+  const options = volumeOptionsFrom(ctx);
+  const reports = checkCorpusVolumes(store, options);
+  for (const problem of reports.flatMap((report) => report.problems)) io.err(`warning: a sync would refuse: ${sanitizeForTerminal(problem)}`);
+  for (const warning of reports.flatMap((report) => report.warnings)) io.err(`warning: ${sanitizeForTerminal(warning)}`);
+  if (ctx.opts["metadataOnly"] === true) return;
+  const bytes = plans.reduce((sum, plan) => sum + (plan.estimate?.total_bytes ?? 0), 0);
+  const blobs = reports[reports.length - 1];
+  if (bytes === 0 || blobs?.space === undefined) return;
+  const problem = spaceGuard(store, options.minFreeBytes, options.probe).fitProblem(bytes);
+  if (problem !== undefined) {
+    io.err(`warning: ${sanitizeForTerminal(problem)}`);
+  } else if (ctx.opts["json"] !== true) {
+    io.out(`space: ≈ ${formatBytes(bytes)} to fetch, ${formatBytes(blobs.space.free)} free for ${sanitizeForTerminal(blobs.path)}`);
   }
 }
 
@@ -379,7 +441,7 @@ function printReport(io: CliIO, report: SyncReport, prefix: string): void {
 function warnAppleDouble(deps: CliDeps, store: FileStore): void {
   deps.io.err(
     `warning: ${sanitizeForTerminal(store.root)} is on a volume without extended attributes (FAT32 or exFAT), so macOS ` +
-      "writes a ._ companion file beside every file of the corpus. ka ignores them, and `dot_clean` removes them. " +
+      "writes a ._ companion file beside every file of the corpus. ka ignores them, and `ka doctor --fix` removes them. " +
       "FAT32 also caps a directory at 65,534 entries, and a long file name takes several, so records/ tops out at " +
       "roughly 8,000–16,000 records there; APFS, HFS+ or ext4 have neither problem.",
   );

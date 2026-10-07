@@ -71,12 +71,23 @@ Without it, `sync`, `open` and `verify` exit 3 ("blob store … is not available
 `get`, `show`, `export`, `feed`, `stats` and `review` work as before. A symlinked
 `<corpus>/blobs` works too.
 
-**On a USB stick formatted FAT32 or exFAT**, macOS writes a `._<name>` companion
-beside every file (and `cp -R` onto such a drive does the same). `ka` skips those and
-`.DS_Store`, says how many it skipped, and `dot_clean <corpus>` removes them; `ka sync`
-warns when it starts on such a volume. FAT32 also caps a directory at 65,534 entries,
-and a long file name takes several, so `records/` holds roughly 8,000–16,000 records
-there. APFS, HFS+ and ext4 have neither limit.
+**Not on FAT32 or exFAT.** The corpus is often the only copy of what it archived, and
+these filesystems have no journal and no extended attributes — macOS writes a `._<name>`
+companion beside every file — and FAT32 caps a directory at 65,534 entries, about
+8,000–16,000 records. `ka sync` refuses a corpus or `--blobs` directory on either before
+it writes anything (exit 3), unless you pass `--allow-fs fat32` or `--allow-fs exfat`;
+it warns on a network filesystem. `ka` skips the `._*` and `.DS_Store` files it finds,
+and `ka doctor --fix` (or `dot_clean <corpus>`) removes them. APFS, HFS+ and ext4 have
+none of these problems.
+
+**Not past a full disk.** `ka sync` keeps 1 GB free on each volume it writes to
+(`--min-free 20G` for more, `--min-free 0` to turn it off). It refuses to start below
+that floor, and also when the documents still to fetch would not fit. Their size is
+estimated from what the source already archived. While it runs, it checks before each
+Anfrage and stops cleanly once a volume drops below the floor, keeping what it stored
+(exit 3). `ka sync --dry-run` says whether a window's download fits, and `ka doctor`
+shows the filesystem, the free space, the lock and whether the catalog matches the
+records.
 
 ## What makes a record trustworthy
 

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CliDeps, CliIO } from "../src/io.js";
 import type { EngineOptions, Transport } from "@maschinenlesbar.org/openka-lib-http";
-import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 
 export interface CliHarness {
@@ -38,6 +38,8 @@ export function cliHarness(
      * engine keeps the CLI's own interval; unset, it has none and never sleeps.
      */
     pacing?: Pick<EngineOptions, "now" | "sleep">;
+    /** What the corpus is stored on. Unset, a local disk with 500 GB free — never the machine's own. */
+    volumes?: VolumeProbe;
   } = {},
 ): CliHarness {
   const corpus = mkdtempSync(join(tmpdir(), "openka-test-"));
@@ -70,6 +72,7 @@ export function cliHarness(
       }),
     env: options.env ?? {},
     now: () => fixedNow,
+    volumes: options.volumes ?? roomyVolumes,
   };
   return {
     deps,
@@ -82,5 +85,11 @@ export function cliHarness(
     cleanup: () => rmSync(corpus, { recursive: true, force: true }),
   };
 }
+
+/** A local disk with room to spare: what every test that is not about volumes runs on. */
+export const roomyVolumes: VolumeProbe = {
+  space: () => ({ free: 500e9, total: 1e12 }),
+  filesystem: () => ({ name: "apfs", kind: "local" }),
+};
 
 /** A minimal valid record, for tests that need one without building it by hand. */

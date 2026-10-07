@@ -5,3 +5,5 @@ export * from "./stats.js";
 export * from "./store.js";
 export * from "./corpus-root.js";
 export * from "./archive.js";
+export * from "./volume.js";
+export * from "./doctor.js";

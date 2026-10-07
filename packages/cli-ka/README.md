@@ -3,8 +3,8 @@
 > `ka` — the read/write CLI over a corpus.
 
 `sync` ingests, `search`/`get`/`show`/`open` read, `export`/`feed`/`schema` get data
-out in bulk, and `verify`/`review`/`reindex`/`sources` keep the corpus honest about
-itself.
+out in bulk, `verify`/`review`/`reindex`/`sources` keep the corpus honest about
+itself, and `doctor` checks what it is stored on.
 
 **Nothing here touches the world directly.** Everything the CLI reads or writes goes
 through a deps object — store factory, engine factory, `out`/`err`, `env`, `now` —
@@ -25,6 +25,7 @@ use them.
 
 ## What is in here
 
+- **`src/commands/doctor.ts`** — `ka doctor` — whether the corpus is safe to write to and complete to read from.
 - **`src/commands/maintain.ts`** — `verify`, `review`, `reindex` and `sources` — the commands that keep the corpus honest about itself.
 - **`src/commands/output.ts`** — `export`, `feed` and `schema` — getting the corpus out in bulk.
 - **`src/commands/query.ts`** — The read side: `search`, `get`, `show` and `open`.

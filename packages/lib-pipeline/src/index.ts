@@ -6,15 +6,16 @@
 // window that has not moved therefore does nothing, costs one conditional request
 // per feed, and leaves the corpus byte-identical.
 
-import { OpenKaApiError, OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import { indexRecord, withCorpusLock, type SourceState, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { indexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import { normalizeSyncWindow } from "./window.js";
+import { corpusEstimate, documentsToFetch } from "./plan.js";
 
 export interface SyncOptions {
   source: Source;
@@ -66,6 +67,14 @@ export interface SyncOptions {
    * first Ctrl-C or SIGTERM.
    */
   signal?: AbortSignal;
+  /**
+   * The disk-space guard (`spaceGuard` from lib-store). Given, a run whose documents
+   * to fetch would not fit — estimated from what the source already archived — is
+   * refused with `StoreError` after discovery and before the first download, and a
+   * run stops between two refs, like an aborted one, once a volume drops below the
+   * floor (`SyncReport.lowSpace`).
+   */
+  space?: SpaceGuard;
 }
 
 /**
@@ -111,6 +120,12 @@ export interface SyncReport {
   recatalogued: number;
   /** True when `signal` stopped the run before every ref was handled. */
   interrupted: boolean;
+  /**
+   * Why the run stopped before every ref was handled because a volume ran low on
+   * space (`SyncOptions.space`). Like an interrupted run, it keeps what it stored and
+   * counts neither as a success nor as a degraded source.
+   */
+  lowSpace?: string;
 }
 
 /**
@@ -206,6 +221,19 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
     }
   }
   report.upstreamUnchanged = discovered.unchanged === true;
+
+  // Before the first download: will it fit? Only an estimate this source's own
+  // archive supports is used — a sync makes no HEAD requests to guess — so a
+  // source's first sync is guarded by the floor alone (and `--dry-run` samples).
+  if (options.space !== undefined && options.metadataOnly !== true) {
+    const cache = (discovered.state ?? state).http_cache;
+    const toFetch = documentsToFetch(discovered.refs, cache, store);
+    const estimate = toFetch.length === 0 ? undefined : corpusEstimate(store, cache, toFetch.length);
+    const problem = estimate === undefined ? undefined : options.space.fitProblem(estimate.total_bytes);
+    if (problem !== undefined) {
+      throw new StoreError(`${source.key}: ${toFetch.length} document(s) to fetch, and ${problem}. Nothing was downloaded.`);
+    }
+  }
   options.onDiscovered?.(discovered.refs.length);
 
   // Conditional-request state travels through the run and is persisted once at
@@ -246,11 +274,18 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
       options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message });
     }
   };
-  for (let start = 0; start < refs.length && !report.interrupted; start += CATALOG_CHECKPOINT) {
+  for (let start = 0; start < refs.length && !report.interrupted && report.lowSpace === undefined; start += CATALOG_CHECKPOINT) {
     await store.batchCatalog(async () => {
       for (const ref of refs.slice(start, start + CATALOG_CHECKPOINT)) {
         if (options.signal?.aborted === true) {
           report.interrupted = true;
+          return;
+        }
+        // One statfs per volume and ref: cheap beside a download, and the only way
+        // to stop with room left for the catalog rather than at the first ENOSPC.
+        const low = options.space?.lowProblem();
+        if (low !== undefined) {
+          report.lowSpace = low;
           return;
         }
         await handle(ref);
@@ -262,7 +297,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   // of them belongs to bytes that are in the blob store. It does not count as a
   // success, since the window was not covered.
   const nextState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
-  if (report.interrupted) {
+  if (report.interrupted || report.lowSpace !== undefined) {
     // Neither a success nor a degraded source: last_success and last_error stay.
   } else if (report.errors.length === 0) {
     nextState.last_success = startedAt;
@@ -697,5 +732,14 @@ export function isoInstant(date: Date): string {
 export { sourceStatus, type SourceStatusRow } from "./status.js";
 export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";
 export { planLanes, sourceListProblem, syncSources, type SourceOutcome, type SyncSourcesOptions } from "./many.js";
-export { DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN, planSync, type SizeEstimate, type SyncPlan, type SyncPlanOptions } from "./plan.js";
+export {
+  DRY_RUN_SAMPLE,
+  ESTIMATE_MIN_KNOWN,
+  corpusEstimate,
+  documentsToFetch,
+  planSync,
+  type SizeEstimate,
+  type SyncPlan,
+  type SyncPlanOptions,
+} from "./plan.js";
 export { countSources, type CountSourcesOptions, type SourceCountRow } from "./count.js";

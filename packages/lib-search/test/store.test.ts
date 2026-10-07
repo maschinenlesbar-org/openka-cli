@@ -1,14 +1,30 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
-import { deepStrictEqual, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
-import type { CatalogStore, EmbeddingStore } from "@maschinenlesbar.org/openka-lib-store";
+import type { CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import {
+  DEFAULT_MIN_FREE_BYTES,
+  blobsApart,
+  byteSizeProblem,
+  checkCorpusVolumes,
+  diagnoseCorpus,
+  existingAncestor,
+  filesystemKind,
+  mountFor,
+  parseByteSize,
+  parseMountLine,
+  platformFiles,
+  removePlatformFiles,
+  spaceGuard,
+  systemVolumes,
+} from "@maschinenlesbar.org/openka-lib-store";
 import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { abstainedFieldKind, catalogGaps, corpusStats, indexableFields, indexRecord, lockCorpus, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewGroups, reviewQueue, search, selectRecords } from "../src/search.js";
@@ -1198,6 +1214,232 @@ describe("abstentions by kind of field (issue #9)", () => {
       throws(() => new FileStore(dir).catalog(), /malformed abstained_fields/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// Issue #19: a corpus on a FAT32 stick, and a sync that could run the disk full.
+describe("the volumes a corpus is on", () => {
+  const probe = (filesystem: FilesystemInfo | undefined, free: number, byPath: Record<string, Partial<{ fs: FilesystemInfo; free: number }>> = {}): VolumeProbe => ({
+    space: (path) => ({ free: byPath[path]?.free ?? free, total: 64e9 }),
+    filesystem: (path) => byPath[path]?.fs ?? filesystem,
+  });
+  const apfs: FilesystemInfo = { name: "apfs", kind: "local" };
+  const location = { root: "/c", blobsRoot: "/c/blobs" };
+
+  it("reads macOS's mount lines, spaces in the mount point included", () => {
+    deepStrictEqual(parseMountLine("/dev/disk5s1 on /Volumes/My Stick (msdos, local, nodev, nosuid, noowners)"), {
+      mountPoint: "/Volumes/My Stick",
+      type: "msdos",
+    });
+    deepStrictEqual(parseMountLine("//u@nas/share on /Volumes/share (smbfs, nodev, nosuid, mounted by u)"), { mountPoint: "/Volumes/share", type: "smbfs" });
+    strictEqual(parseMountLine("garbage"), undefined);
+  });
+
+  it("finds the mount a path is on by the longest mount point, not a name prefix", () => {
+    const mounts = [
+      { mountPoint: "/", type: "apfs" },
+      { mountPoint: "/Volumes/KA", type: "msdos" },
+      { mountPoint: "/Volumes/KA2", type: "exfat" },
+    ];
+    strictEqual(mountFor("/Volumes/KA/corpus", mounts)?.type, "msdos");
+    strictEqual(mountFor("/Volumes/KA", mounts)?.type, "msdos");
+    strictEqual(mountFor("/Volumes/KA2/corpus", mounts)?.type, "exfat");
+    strictEqual(mountFor("/Users/me/corpus", mounts)?.type, "apfs");
+  });
+
+  it("knows FAT, exFAT and network filesystems by the names macOS and Linux give them", () => {
+    deepStrictEqual(["msdos", "vfat", "exfat", "smbfs", "nfs", "cifs", "apfs", "ext4"].map(filesystemKind), [
+      "fat32", "fat32", "exfat", "network", "network", "network", "local", "local",
+    ]);
+  });
+
+  it("answers for the nearest existing directory before the corpus is created", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-volume-"));
+    try {
+      strictEqual(existingAncestor(join(dir, "not", "yet")), realpathSync(dir));
+      ok(systemVolumes.space(join(dir, "not", "yet")).total > 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses FAT32 and exFAT unless allowed, and names the way out", () => {
+    const [fat] = checkCorpusVolumes(location, { probe: probe({ name: "msdos", kind: "fat32" }, 100e9) });
+    match(fat?.problems[0] ?? "", /the corpus \/c is on FAT32 \(msdos\).*65,534 entries.*--allow-fs fat32/);
+    const [exfat] = checkCorpusVolumes(location, { probe: probe({ name: "exfat", kind: "exfat" }, 100e9) });
+    match(exfat?.problems[0] ?? "", /is on exFAT \(exfat\).*--allow-fs exfat/);
+    doesNotMatch(exfat?.problems[0] ?? "", /4 GB|65,534/);
+    deepStrictEqual(checkCorpusVolumes(location, { probe: probe({ name: "msdos", kind: "fat32" }, 100e9), allowFilesystems: ["fat32"] })[0]?.problems, []);
+    deepStrictEqual(checkCorpusVolumes(location, { probe: probe({ name: "msdos", kind: "fat32" }, 100e9), allowFilesystems: ["exfat"] })[0]?.problems.length, 1);
+  });
+
+  it("warns on a network filesystem and says nothing when the type is unknown", () => {
+    const [smb] = checkCorpusVolumes(location, { probe: probe({ name: "smbfs", kind: "network" }, 100e9) });
+    deepStrictEqual(smb?.problems, []);
+    match(smb?.warnings[0] ?? "", /network filesystem \(smbfs\)/);
+    deepStrictEqual(checkCorpusVolumes(location, { probe: probe(undefined, 100e9) })[0], { role: "corpus", path: "/c", problems: [], warnings: [], space: { free: 100e9, total: 64e9 } });
+  });
+
+  it("refuses less free space than the floor, 1 GB by default, and checks none at 0", () => {
+    match(checkCorpusVolumes(location, { probe: probe(apfs, 999e6) })[0]?.problems[0] ?? "", /only 999 MB free for the corpus \/c, less than the 1\.0 GB to keep \(--min-free\)/);
+    deepStrictEqual(checkCorpusVolumes(location, { probe: probe(apfs, 999e6), minFreeBytes: 500e6 })[0]?.problems, []);
+    deepStrictEqual(checkCorpusVolumes(location, { probe: probe(apfs, 0), minFreeBytes: 0 })[0]?.problems, []);
+    strictEqual(DEFAULT_MIN_FREE_BYTES, 1e9);
+  });
+
+  it("checks a blob directory named apart on its own volume", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-volume-"));
+    try {
+      const apart = { root: "/c", blobsRoot: dir };
+      const reports = checkCorpusVolumes(apart, { probe: probe(apfs, 100e9, { [dir]: { fs: { name: "exfat", kind: "exfat" }, free: 1e6 } }) });
+      deepStrictEqual(reports.map((report) => [report.role, report.problems.length]), [["corpus", 0], ["blobs", 2]]);
+      // An unplugged drive has nothing to ask; the store names it (blobStoreProblem).
+      deepStrictEqual(checkCorpusVolumes({ root: "/c", blobsRoot: join(dir, "gone") }, { probe: probe(apfs, 100e9) })[1]?.problems, []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("asks the volume a symlinked <corpus>/blobs points to, as it does for --blobs", () => {
+    const root = mkdtempSync(join(tmpdir(), "openka-volume-"));
+    const drive = mkdtempSync(join(tmpdir(), "openka-drive-"));
+    try {
+      strictEqual(blobsApart({ root, blobsRoot: join(root, "blobs") }), false);
+      symlinkSync(drive, join(root, "blobs"));
+      ok(blobsApart({ root, blobsRoot: join(root, "blobs") }));
+      const reports = checkCorpusVolumes(new FileStore(root), { probe: probe(apfs, 100e9, { [join(root, "blobs")]: { free: 1e6 } }) });
+      deepStrictEqual(reports.map((report) => [report.role, report.problems.length]), [["corpus", 0], ["blobs", 1]]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(drive, { recursive: true, force: true });
+    }
+  });
+
+  it("does not stop a run on a volume it cannot ask", () => {
+    const failing: VolumeProbe = {
+      space: () => {
+        throw new Error("EIO");
+      },
+      filesystem: () => apfs,
+    };
+    const guard = spaceGuard(location, 1e9, failing);
+    deepStrictEqual([guard.lowProblem(), guard.fitProblem(1e12)], [undefined, undefined]);
+    match(checkCorpusVolumes(location, { probe: failing })[0]?.warnings[0] ?? "", /could not ask how much space is free for the corpus \/c: EIO/);
+  });
+
+  it("guards a sync: whether the documents fit beside the floor, and whether a volume ran low", () => {
+    let free = 3e9;
+    const live: VolumeProbe = { space: () => ({ free, total: 64e9 }), filesystem: () => apfs };
+    const guard = spaceGuard(location, 1e9, live);
+    strictEqual(guard.fitProblem(2e9), undefined);
+    match(guard.fitProblem(2.5e9) ?? "", /the documents to fetch \(≈ 2\.5 GB\) do not fit: 3\.0 GB is free for the corpus \/c, and 1\.0 GB of it is to be kept/);
+    strictEqual(guard.lowProblem(), undefined);
+    free = 0.5e9;
+    match(guard.lowProblem() ?? "", /only 500 MB free for the corpus \/c/);
+    strictEqual(spaceGuard(location, 0, live).lowProblem(), undefined, "--min-free 0 never stops a run");
+  });
+
+  it("reads sizes in the decimal units ka prints", () => {
+    deepStrictEqual(["0", "500M", "2G", "1.5 GB", "20g", "100", "3T"].map(parseByteSize), [0, 500e6, 2e9, 1.5e9, 20e9, 100, 3e12]);
+    for (const bad of ["", "-1", "2X", "G", "1e9", "abc"]) {
+      strictEqual(parseByteSize(bad), undefined, bad);
+      match(byteSizeProblem(bad) ?? "", /Expected a size/);
+    }
+  });
+});
+
+describe("the corpus doctor", () => {
+  const roomy: VolumeProbe = { space: () => ({ free: 100e9, total: 500e9 }), filesystem: () => ({ name: "apfs", kind: "local" }) };
+  const corpus = (): FileStore => new FileStore(mkdtempSync(join(tmpdir(), "openka-doctor-")));
+
+  it("finds nothing wrong with a consistent corpus", () => {
+    const store = corpus();
+    try {
+      const record = sampleRecord();
+      store.putRecord(record);
+      indexRecord(store, record);
+      const diagnosis = diagnoseCorpus(store, { probe: roomy });
+      deepStrictEqual(
+        { exists: diagnosis.exists, lock: diagnosis.lock, catalog: diagnosis.catalog, platform: diagnosis.platform_files, problems: diagnosis.problems },
+        { exists: true, lock: { state: "free" }, catalog: { records: 1, catalogued: 1, uncatalogued: [], missing_files: [] }, platform: 0, problems: [] },
+      );
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("checks only the volume of a corpus not created yet", () => {
+    const store = corpus();
+    try {
+      const diagnosis = diagnoseCorpus(new FileStore(join(store.root, "later")), { probe: roomy });
+      deepStrictEqual([diagnosis.exists, diagnosis.catalog, diagnosis.problems], [false, undefined, []]);
+      ok(!existsSync(join(store.root, "later")), "nothing is created");
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("calls a catalog apart from the record files, an unreadable catalog and a missing blob drive problems", () => {
+    const store = corpus();
+    try {
+      store.putRecord(sampleRecord());
+      match(diagnoseCorpus(store, { probe: roomy }).problems.join("\n"), /1 record file\(s\) are not in the catalog .* `ka reindex`/);
+      mkdirSync(join(store.root, "index"), { recursive: true });
+      writeFileSync(join(store.root, "index", "catalog.json"), "{");
+      match(diagnoseCorpus(new FileStore(store.root), { probe: roomy }).problems.join("\n"), /Corrupt JSON/);
+      const away = new FileStore(store.root, { blobs: join(store.root, "unplugged") });
+      match(diagnoseCorpus(away, { probe: roomy }).problems.join("\n"), /blob store .*unplugged is not available/);
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("calls a file where the corpus should be a problem, not a crash", () => {
+    const store = corpus();
+    try {
+      const file = join(store.root, "corpus.txt");
+      writeFileSync(file, "");
+      match(diagnoseCorpus(new FileStore(file), { probe: roomy }).problems.join("\n"), /corpus\.txt is not a directory/);
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("says who holds the lock without taking it", () => {
+    const store = corpus();
+    try {
+      const release = store.lock("sync --source berlin");
+      const held = diagnoseCorpus(new FileStore(store.root), { probe: roomy }).lock;
+      strictEqual(held.state, "held");
+      match(held.state === "held" ? held.holder : "", /^sync --source berlin, pid \d+ on /);
+      release();
+      writeFileSync(join(store.root, "lock"), JSON.stringify({ host: hostname(), pid: 4_194_304 * 8, purpose: "sync" }));
+      deepStrictEqual(store.lockStatus()?.stale, true);
+      ok(existsSync(join(store.root, "lock")), "reading it does not take it over");
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("counts the macOS files everywhere in the corpus and removes only those, under the lock", () => {
+    const store = corpus();
+    try {
+      store.putRecord(sampleRecord());
+      indexRecord(store, sampleRecord());
+      const blob = store.putBlob(Buffer.from("%PDF-1.4"));
+      for (const path of [["._records"], ["records", "._berlin-19-12345.json"], ["blobs", blob.slice(0, 2), `._${blob}.bin`], [".DS_Store"]]) {
+        writeFileSync(join(store.root, ...path), "");
+      }
+      strictEqual(diagnoseCorpus(store, { probe: roomy }).platform_files, 4);
+      const release = new FileStore(store.root).lock("sync");
+      throws(() => removePlatformFiles(store), CorpusLockedError);
+      release();
+      strictEqual(removePlatformFiles(store), 4);
+      deepStrictEqual(platformFiles(store), []);
+      ok(store.hasBlob(blob) && store.hasRecord("berlin-19-12345") && !existsSync(join(store.root, "lock")));
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
     }
   });
 });
