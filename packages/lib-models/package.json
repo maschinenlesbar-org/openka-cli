@@ -16,7 +16,7 @@
     "@maschinenlesbar.org/openka-lib-repro": "0.0.1"
   },
   "scripts": {
-    "test": "node --test dist/test/*.test.js"
+    "test": "node --test --test-timeout=5000 dist/test/*.test.js"
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-cli-ka-factory": "0.0.1",

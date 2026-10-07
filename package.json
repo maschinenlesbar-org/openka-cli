@@ -17,7 +17,7 @@
     "lint:line": "node packages/cli-ka-factory/dist/src/cli/index.js lint",
     "docs": "node tools/docs/node_modules/typedoc/bin/typedoc packages/openka-cli/src/index.ts --out out",
     "start": "node packages/cli-ka/dist/src/index.js",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/test/**\" packages/*/dist/test/*.test.js",
+    "coverage": "node --test --test-timeout=5000 --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/test/**\" packages/*/dist/test/*.test.js",
     "pack": "npm pack --workspace @maschinenlesbar.org/openka-cli",
     "goldens": "node packages/cli-ka-factory/dist/src/cli/index.js goldens verify",
     "publish:npm": "npm publish --workspace @maschinenlesbar.org/openka-cli --access public",

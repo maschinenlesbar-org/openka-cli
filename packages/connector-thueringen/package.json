@@ -20,7 +20,7 @@
     "@maschinenlesbar.org/openka-lib-source": "0.0.1"
   },
   "scripts": {
-    "test": "node --test dist/test/*.test.js"
+    "test": "node --test --test-timeout=5000 dist/test/*.test.js"
   },
   "devDependencies": {
     "@maschinenlesbar.org/openka-lib-http": "0.0.1",
