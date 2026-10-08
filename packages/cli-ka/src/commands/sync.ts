@@ -533,7 +533,7 @@ function outcomeJson(outcome: SourceOutcome): unknown {
 /** The text summary of one report, named by its job; `prefix` names it again when several ran. */
 function printReport(io: CliIO, label: string, report: SyncReport, prefix: string): void {
   if (report.upstreamUnchanged) {
-    io.out(`${label}: upstream reports no change since the last sync — nothing to do.`);
+    io.out(`${label}: upstream reports no change since the last complete sync of this window — nothing to do (--force rediscovers).`);
     return;
   }
   if (report.blocked !== undefined) {

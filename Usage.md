@@ -160,8 +160,12 @@ another run says "Waiting for the corpus…" once, tries again every two seconds
 starts when it is free — Ctrl-C stops the wait (exit 130). Without it, the second run
 exits 3 as before.
 
-Idempotent: a second run over an unchanged window costs one conditional request and
-stores nothing. `--force` bypasses both the feed's `ETag` and the per-record check.
+Idempotent: a second run over the same window, with the upstream unchanged, costs one
+conditional request and stores nothing ("upstream reports no change since the last
+complete sync of this window"). A different window is looked at in full even when the
+feed has not changed, and a run that stopped early (Ctrl-C, low disk space) does not
+keep the feed's new validator, so running it again continues. `--force` bypasses both
+the feed's `ETag` and the per-record check.
 
 **Progress goes to stderr while it runs.** After discovery, `berlin: 2471 Anfragen
 discovered`, then `berlin: 1220/2471 · 0 failed · 4.1/min · ~5h 05m left`, and a

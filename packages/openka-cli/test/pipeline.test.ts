@@ -982,6 +982,35 @@ describe("sync pipeline", () => {
     ok(xml.length > 0);
   });
 
+  it("keeps a source's new feed validators only after a run that covered its window", async () => {
+    // Issue #11: an interrupted run kept the feed's new ETag, and "run the same sync
+    // again to continue" got a 304 and did nothing.
+    class FeedSource extends ManySource {
+      override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+        const result = await super.discover(options);
+        return { ...result, state: { ...options.state, http_cache: { ...options.state.http_cache, "https://example.invalid/feed.xml": { etag: '"feed-v2"' } } } };
+      }
+    }
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"pdf-v1"' } }]);
+    const store = new MemoryStore();
+    store.putSourceState({ source: "berlin", http_cache: { "https://example.invalid/feed.xml": { etag: '"feed-v1"' } } });
+    const controller = new AbortController();
+    const stopped = await sync({
+      source: new FeedSource(3),
+      store,
+      engine: testEngine(transport),
+      signal: controller.signal,
+      onProgress: (event) => event.index === 1 && controller.abort(),
+    });
+    strictEqual(stopped.interrupted, true);
+    const cache = store.getSourceState("berlin").http_cache;
+    strictEqual(cache["https://example.invalid/feed.xml"]?.etag, '"feed-v1"', "the old feed validator stays");
+    strictEqual(cache[PDF_URL]?.etag, '"pdf-v1"', "a document's validator is kept: its bytes are archived");
+
+    await sync({ source: new FeedSource(3), store, engine: testEngine(transport) });
+    strictEqual(store.getSourceState("berlin").http_cache["https://example.invalid/feed.xml"]?.etag, '"feed-v2"', "a complete run commits it");
+  });
+
   it("carries the per-document cache validators into the next run", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF, headers: { etag: '"pdf-v1"' } }]);

@@ -18,14 +18,19 @@ Berlin's instrument is the **Schriftliche Anfrage**, not the Kleine Anfrage. The
 record's `document_type` says so.
 
 The whole period is a 50+ MB download, so ETag / If-Modified-Since is what keeps a
-daily sync cheap. The format itself is parsed by `lib-pardok`, which is shared.
+daily sync cheap. The validators are kept per window (`berlinFeedKey`: the feed URL
+with `since`, `until` and `limit` as its fragment): a 304 says the feed did not change,
+not that the window asked for now was handled, and keyed by the URL alone a sync of 2025
+after one of 2026 discovered nothing (issue #11). A new window downloads the feed once;
+the same window again costs one conditional request. The format itself is parsed by
+`lib-pardok`, which is shared.
 
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-BERLIN_OPENDATA_BASE, BERLIN_PERIODS, BERLIN_LATEST_PERIOD, berlinFeedUrl, BerlinSource, ENTRY
+BERLIN_OPENDATA_BASE, BERLIN_PERIODS, BERLIN_LATEST_PERIOD, berlinFeedUrl, berlinFeedKey, BerlinSource, ENTRY
 ```
 
 ## Depends on

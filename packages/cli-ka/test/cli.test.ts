@@ -7,6 +7,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } from "../src/run.js";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
 import { CredentialStore, FileStore, RunStatusRecorder, indexRecord, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
@@ -1454,6 +1455,42 @@ describe("ka", () => {
         const events = parse(harness.stderr());
         ok(events.some((event) => event.event === "note" && /^Note: sachsen-anhalt: at most one request per 4 s/.test(String(event["message"]))));
         ok(events.some((event) => event.event === "done" && typeof event["blocked"] === "string"));
+      } finally {
+        harness.cleanup();
+      }
+    });
+  });
+
+  describe("an unchanged feed and a new window (issue #11)", () => {
+    /** Berlin's feed as the server serves it: 304 to a matching If-None-Match. */
+    const conditional = (): { transport: Transport; feeds: string[] } => {
+      const feeds: string[] = [];
+      const transport: Transport = async (request) => {
+        if (request.url.includes("pardok-wp19.xml")) {
+          const match = request.headers?.["if-none-match"] === '"feed-v1"';
+          feeds.push(match ? "304" : "200");
+          return match ? { status: 304, headers: {}, body: Buffer.alloc(0) } : { status: 200, headers: { etag: '"feed-v1"' }, body: Buffer.from(PARDOK) };
+        }
+        return { status: 200, headers: { etag: '"pdf-v1"' }, body: PDF };
+      };
+      return { transport, feeds };
+    };
+
+    it("discovers a window the last run did not cover, though the feed did not change", async () => {
+      const { transport, feeds } = conditional();
+      const harness = cliHarness({ transport });
+      try {
+        // A window with nothing in it: the feed is read, and its ETag kept.
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--since", "2030-01-01"], harness.deps), EXIT_OK, harness.stderr());
+        // Another window of the same, unchanged feed: it must be looked at.
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--since", "2021-01-01"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^berlin: [1-9]\d* discovered, [1-9]\d* stored/m);
+        // The same window again: now the shortcut is right, and says so.
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--since", "2021-01-01"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^berlin: upstream reports no change since the last complete sync of this window — nothing to do \(--force rediscovers\)\.$/m);
+        deepStrictEqual(feeds, ["200", "200", "304"]);
       } finally {
         harness.cleanup();
       }

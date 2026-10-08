@@ -31,6 +31,18 @@ export function berlinFeedUrl(period: number): string {
   return `${BERLIN_OPENDATA_BASE}/pardok-wp${period}.xml`;
 }
 
+/**
+ * Where the feed's validators are kept for one window: the feed URL with the window
+ * (`since`, `until`, `limit`) as its fragment. A 304 says the feed did not change, not
+ * that the window asked for now was handled: keyed by the URL alone, a sync of 2025
+ * after one of 2026 got a 304 from the same Wahlperiode feed and discovered nothing
+ * (issue #11). Kept per window, a 304 skips only a window that was synced before.
+ */
+export function berlinFeedKey(period: number, window: { since?: string; until?: string; limit?: number }): string {
+  const parts = [`since=${window.since ?? ""}`, `until=${window.until ?? ""}`, `limit=${window.limit ?? ""}`];
+  return `${berlinFeedUrl(period)}#${parts.join("&")}`;
+}
+
 export class BerlinSource implements Source {
   readonly key = "berlin";
   readonly parliament = "berlin" as const;
@@ -62,8 +74,12 @@ export class BerlinSource implements Source {
       );
     }
     const url = berlinFeedUrl(period);
+    const key = berlinFeedKey(period, options);
     const state: SourceState = { ...options.state, http_cache: { ...options.state.http_cache } };
-    const cached = options.force === true ? undefined : state.http_cache[url];
+    // Validators kept under the bare URL (before 2026-10-08) belong to an unknown
+    // window, so they are not used, and are replaced below.
+    delete state.http_cache[url];
+    const cached = options.force === true ? undefined : state.http_cache[key];
 
     const response = await options.engine.get(url, {
       headers: { accept: "application/xml, text/xml" },
@@ -77,7 +93,7 @@ export class BerlinSource implements Source {
     const entry: { etag?: string; last_modified?: string } = {};
     if (response.etag !== undefined) entry.etag = response.etag;
     if (response.lastModified !== undefined) entry.last_modified = response.lastModified;
-    state.http_cache[url] = entry;
+    state.http_cache[key] = entry;
 
     const xml = response.body.toString("utf8");
     if (!xml.includes("<Export")) {

@@ -399,6 +399,16 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   // success, since the window was not covered.
   const nextState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
   if (report.interrupted || report.lowSpace !== undefined) {
+    // The source's own validators — a feed's ETag — say "everything this window holds
+    // was handled", which a run that stopped early cannot say: kept, the next run of
+    // the same window got a 304 and did nothing (issue #11). They go back to what they
+    // were; the documents' validators stay, since their bytes are archived.
+    for (const key of Object.keys(discovered.state?.http_cache ?? {})) {
+      if (JSON.stringify(discovered.state?.http_cache[key]) === JSON.stringify(state.http_cache[key])) continue;
+      const before = state.http_cache[key];
+      if (before === undefined) delete httpCache[key];
+      else httpCache[key] = before;
+    }
     // Neither a success nor a degraded source: last_success and last_error stay.
   } else if (report.errors.length === 0) {
     nextState.last_success = startedAt;

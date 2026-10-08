@@ -2,7 +2,7 @@
 
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BerlinSource, berlinFeedUrl, BERLIN_LATEST_PERIOD } from "../src/index.js";
+import { BerlinSource, berlinFeedKey, berlinFeedUrl, BERLIN_LATEST_PERIOD } from "../src/index.js";
 import { scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 // The recorded export is the PARDOK format's reference fixture; Berlin borrows it
@@ -25,19 +25,37 @@ describe("Berlin source", () => {
       state: { source: "berlin", http_cache: {} },
     });
     ok(result.refs.length >= 1);
-    const cached = result.state?.http_cache[berlinFeedUrl(BERLIN_LATEST_PERIOD)];
+    const cached = result.state?.http_cache[berlinFeedKey(BERLIN_LATEST_PERIOD, {})];
     strictEqual(cached?.etag, '"abc"');
   });
 
-  it("reports an unchanged feed without re-parsing it", async () => {
+  it("reports an unchanged feed without re-parsing it — for the window synced before", async () => {
     const { transport, requests } = scriptedTransport([{ match: "pardok-wp19.xml", status: 304 }]);
     const result = await new BerlinSource().discover({
       engine: testEngine(transport),
-      state: { source: "berlin", http_cache: { [berlinFeedUrl(19)]: { etag: '"abc"' } } },
+      state: { source: "berlin", http_cache: { [berlinFeedKey(19, { since: "2026-01-01" })]: { etag: '"abc"' } } },
+      since: "2026-01-01",
     });
     strictEqual(result.unchanged, true);
     deepStrictEqual(result.refs, []);
     strictEqual(requests[0]?.headers?.["if-none-match"], '"abc"');
+  });
+
+  it("asks unconditionally for a window not synced before, and trusts no validator kept under the bare URL", async () => {
+    // Issue #11: a 304 says the feed did not change, not that this window was handled.
+    const { transport, requests } = scriptedTransport([{ match: "pardok-wp19.xml", body: xml, headers: { etag: '"abc"' } }]);
+    const result = await new BerlinSource().discover({
+      engine: testEngine(transport),
+      state: {
+        source: "berlin",
+        http_cache: { [berlinFeedKey(19, { since: "2026-01-01" })]: { etag: '"abc"' }, [berlinFeedUrl(19)]: { etag: '"abc"' } },
+      },
+      since: "2021-01-01",
+    });
+    strictEqual(requests[0]?.headers?.["if-none-match"], undefined);
+    ok(result.unchanged !== true);
+    deepStrictEqual(Object.keys(result.state?.http_cache ?? {}).sort(), [berlinFeedKey(19, { since: "2021-01-01" }), berlinFeedKey(19, { since: "2026-01-01" })].sort());
+    strictEqual(berlinFeedKey(19, { since: "2021-01-01", limit: 5 }), `${berlinFeedUrl(19)}#since=2021-01-01&until=&limit=5`);
   });
 
   it("re-reads the feed when the caller forces it", async () => {
