@@ -38,6 +38,14 @@ page, and `page=1` the second — the page itself says "Seite 2". Discovery star
 with no more than that came back empty (Saarland, September 2026: 15 Anfragen, none
 found). Every Land discovered through the portal is affected, so re-sync recent windows.
 
+**A document link can hold two URLs.** For some Sachsen-Anhalt papers the portal glues
+two URLs into one `href` — `…/d7036dak.pdfhttps://…/d7036dak.doc`, both halves of which
+answer 200 (issue #20). `documentUrl` splits such a link at each `http(s)://`, takes the
+first PDF (else the first part) for the question and for an answer, and warns naming the
+parts it left out. Until 2026-10-08 the glued string was fetched as one URL, answered 404,
+and the record was stored without its document. A re-sync of the window archives it.
+The pipeline also refuses to ask for such a URL from any source (`gap: "glued"`).
+
 The recorded result rows live here rather than with the Länder because a
 Parlamentsspiegel search result is the aggregator's document. A connector that needs
 one borrows it with `fixturesOf(...)`.
@@ -47,7 +55,7 @@ one borrows it with `fixturesOf(...)`.
 Everything is re-exported from the package root:
 
 ```
-PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, parseResultCount, toGermanDate, documentRole, parseVorgangBlock, undecorated
+PARLAMENTSSPIEGEL_BASE, KLEINE_ANFRAGE_FILTER, ParlamentsspiegelSource, ParlamentsspiegelAllLaender, parseResultCount, toGermanDate, documentRole, documentUrl, parseVorgangBlock, undecorated
 ```
 
 ## Depends on
@@ -86,5 +94,8 @@ npm test -w @maschinenlesbar.org/openka-lib-parlamentsspiegel
   `qyHerk=SACA` of 2026-10-07 (exploratory review, result 05), trimmed to three
   unanswered rows: 08/4004 and 08/4010 (one asker), 08/4011 (two Grünen askers);
   documents under `/files/drs/wp8/dkl_anfr/`
+- `fixtures/payloads/parlamentsspiegel-glued-href.html` — the live answer to `qyHerk=SACA`
+  with `query=7036` of 2026-10-08, trimmed to its one row, 08/7036, whose document link is
+  `…/d7036dak.pdfhttps://…/d7036dak.doc` (issue #20)
 - `fixtures/payloads/parlamentsspiegel-sh.html`
 - `fixtures/payloads/parlamentsspiegel-thueringen.html`

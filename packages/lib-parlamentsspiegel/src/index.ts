@@ -317,6 +317,27 @@ function combinedByLand(parliament: ParliamentKey, role: SourceDocumentRole): So
   return parliament === "bayern" && role === "question_pdf" ? "combined_pdf" : role;
 }
 
+/**
+ * The document URL of a row's link. For some Sachsen-Anhalt papers the portal glues
+ * two URLs into one `href` — `…/d7036dak.pdfhttps://…/d7036dak.doc` (issue #20), both
+ * halves of which answer 200 — and the string was fetched as one URL, answered 404,
+ * and the record was stored without its document. The parts are split at each
+ * `http(s)://`; the first PDF is taken, else the first part, and the rest are named
+ * in a warning rather than dropped without a word.
+ */
+export function documentUrl(href: string | undefined, warnings: string[], reference: string): string | undefined {
+  if (href === undefined) return undefined;
+  const parts = href.split(/(?=https?:\/\/)/i).filter((part) => /^https?:\/\//i.test(part));
+  if (parts.length <= 1) return /^https?:/i.test(href) ? href : undefined;
+  const chosen = parts.find((part) => /\.pdf(?:$|[?#])/i.test(part)) ?? (parts[0] as string);
+  const left = parts.filter((part) => part !== chosen);
+  warnings.push(
+    `${reference}: the portal's document link holds ${parts.length} URLs glued together (${href}); ` +
+      `took ${chosen} and left out ${left.join(", ")}`,
+  );
+  return chosen;
+}
+
 /** The "N weitere Dokumente" header that every row with follow-ups carries. */
 const FOLGE_MARKER = /<p[^>]*\sclass="(?:[^"]*\s)?ps-folge-dok(?:\s[^"]*)?"[^>]*>/;
 
@@ -350,7 +371,7 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
 
   const documentRegion = regionWithClass(head, "ps-dokument");
   if (documentRegion === undefined) return undefined;
-  const url = firstHref(documentRegion);
+  const href = firstHref(documentRegion);
   // Hidden spans are excluded: the row carries a "Neuestes Dokument" date that
   // belongs to the answer, and dating the question by it breaks every date window.
   const summary = visibleTextOf(documentRegion);
@@ -369,15 +390,14 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
   const role = combinedByLand(parliament.key, documentRole(summary, fundstelle));
 
   const documents: DocRefDocument[] = [];
-  if (url !== undefined && /^https?:/i.test(url)) {
-    documents.push({ role, url, urlStable: urlIsStable(url) });
-  }
+  const url = documentUrl(href, warnings, reference);
+  if (url !== undefined) documents.push({ role, url, urlStable: urlIsStable(url) });
 
   const urheberRegion = regionWithClass(head, "ps-urheber");
   const urheber = urheberRegion === undefined ? "" : (spanTexts(urheberRegion).pop() ?? "");
   const { askers, bodies } = parseUrheber(urheber);
 
-  const answer = parseFollowUps(tail);
+  const answer = parseFollowUps(tail, warnings, reference);
   const answeredBy: AnsweredBy = {};
   if (answer?.ministry !== undefined) answeredBy.ministry = answer.ministry;
   // Schleswig-Holstein publishes question and answer as one document, so there is
@@ -428,7 +448,7 @@ function followUpSegments(tail: string): string[] {
 }
 
 /** The Antwort among a Vorgang's follow-up documents, if it lists one. */
-function parseFollowUps(tail: string): { url?: string; date?: string; ministry?: string } | undefined {
+function parseFollowUps(tail: string, warnings: string[], reference: string): { url?: string; date?: string; ministry?: string } | undefined {
   if (tail === "") return undefined;
   for (const segment of followUpSegments(tail)) {
     const region = regionWithClass(segment, "ps-dokument");
@@ -438,8 +458,8 @@ function parseFollowUps(tail: string): { url?: string; date?: string; ministry?:
     // Requiring the full word cost that Land every answer it publishes.
     if (!/\bAntw(?:ort)?\b\.?/.test(summary)) continue;
     const out: { url?: string; date?: string; ministry?: string } = {};
-    const url = firstHref(region);
-    if (url !== undefined && /^https?:/i.test(url)) out.url = url;
+    const url = documentUrl(firstHref(region), warnings, reference);
+    if (url !== undefined) out.url = url;
     const date = findRowDate(summary);
     if (date !== undefined) out.date = date;
     // The answering body comes from the row's own `Urheber` field, not from the

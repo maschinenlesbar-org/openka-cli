@@ -328,3 +328,50 @@ describe("paging the portal", () => {
     ok(result.warnings.some((warning) => warning.includes(`discovery stopped after ${MAX_PAGES} pages`) && warning.includes("--since/--until")));
   });
 });
+
+// Issue #20: the portal glues two document URLs into one href for some
+// Sachsen-Anhalt papers — `…/d7036dak.pdfhttps://…/d7036dak.doc` — and that string
+// was fetched as one URL, answered 404, and the record was stored without a document.
+describe("a document link holding several URLs", () => {
+  const BASE = "https://padoka.landtag.sachsen-anhalt.de/files/drs/wp8/drs";
+  const recorded = (): string => blocksWithClass(readFixtureText("payloads", "parlamentsspiegel-glued-href.html"), "ps-vorgang", /<hr\s*\/?>/)[0] as string;
+
+  it("takes the PDF of the recorded row 08/7036 and names what it left out", () => {
+    const warnings: string[] = [];
+    const ref = parseVorgangBlock(recorded(), warnings);
+    deepStrictEqual(ref?.documents.map((document) => document.url), [`${BASE}/d7036dak.pdf`]);
+    deepStrictEqual(warnings, [
+      `08/7036: the portal's document link holds 2 URLs glued together (${BASE}/d7036dak.pdf${BASE}/d7036dak.doc); ` +
+        `took ${BASE}/d7036dak.pdf and left out ${BASE}/d7036dak.doc`,
+    ]);
+  });
+
+  it("prefers the PDF wherever it sits, and the first of two PDFs", () => {
+    const withHref = (href: string): string => recorded().replace(`${BASE}/d7036dak.pdf${BASE}/d7036dak.doc`, href);
+    for (const [href, expected] of [
+      [`${BASE}/d7230dak.doc${BASE}/d7230dak.pdf`, `${BASE}/d7230dak.pdf`],
+      [`${BASE}/d6426gak.pdf${BASE}/d6426dak.pdf`, `${BASE}/d6426gak.pdf`],
+      [`${BASE}/d1dak.doc${BASE}/d1dak.docx`, `${BASE}/d1dak.doc`],
+      [`${BASE}/d7036dak.pdf`, `${BASE}/d7036dak.pdf`],
+    ] as const) {
+      const warnings: string[] = [];
+      deepStrictEqual(parseVorgangBlock(withHref(href), warnings)?.documents.map((document) => document.url), [expected], href);
+      strictEqual(warnings.length, href.lastIndexOf("https://") > 0 ? 1 : 0, href);
+    }
+  });
+
+  it("splits an answer's link the same way", () => {
+    // No recorded Sachsen-Anhalt row has an answer link yet; Niedersachsen's do.
+    const html = readFixtureText("payloads", "parlamentsspiegel-niedersachsen.html");
+    const block = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/).find((candidate) => {
+      const ref = parseVorgangBlock(candidate, []);
+      return ref?.documents.some((document) => document.role === "answer_pdf") === true;
+    });
+    ok(block !== undefined, "the recorded page has a row with an answer");
+    const answer = parseVorgangBlock(block, [])?.documents.find((document) => document.role === "answer_pdf")?.url as string;
+    const glued = block.replace(`href="${answer}"`, `href="${answer.replace(/\.pdf$/, ".doc")}${answer}"`);
+    const warnings: string[] = [];
+    deepStrictEqual(parseVorgangBlock(glued, warnings)?.documents.find((document) => document.role === "answer_pdf")?.url, answer);
+    match(warnings.join("\n"), /document link holds 2 URLs glued together/);
+  });
+});

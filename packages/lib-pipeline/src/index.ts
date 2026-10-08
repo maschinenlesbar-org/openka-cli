@@ -610,10 +610,11 @@ export interface FetchedBytes {
 }
 
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
-export type FetchGap = { gap: "404" | "robots" | "not-pdf" };
+export type FetchGap = { gap: "404" | "robots" | "not-pdf" | "glued" };
 
 function gapText(gap: FetchGap["gap"]): string {
   if (gap === "not-pdf") return "answered something that is not a PDF; nothing was archived";
+  if (gap === "glued") return "is several URLs glued together, not one; nothing was fetched";
   return gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
 }
 
@@ -661,6 +662,11 @@ async function fetchDocumentOnce(
   run: RunContext,
   expectPdf: boolean,
 ): Promise<FetchedBytes | FetchGap> {
+  // A URL with a second scheme inside it is two links run together by the source
+  // (the Parlamentsspiegel's `….pdfhttps://….doc`, issue #20). Asked for, it answered
+  // 404 and was reported as a dead link; it is the source's markup that is broken.
+  // Only a scheme in the path counts: one in the query (`?u=https://…`) is a value.
+  if (/^https?:\/\/[^?#]*?https?:\/\//i.test(url)) return { gap: "glued" };
   // CONCEPT.md §7, at the one place every document URL passes through. A blob
   // already archived under a validator is still re-asked: the rule is about
   // requests, and a 304 is a request.

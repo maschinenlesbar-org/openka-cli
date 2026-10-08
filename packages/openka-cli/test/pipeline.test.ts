@@ -720,6 +720,35 @@ describe("sync pipeline", () => {
     }
   });
 
+  it("does not fetch a URL that is several glued together, says so, and takes the document once the link is clean", async () => {
+    // Issue #20: `….pdfhttps://….doc` was asked for as one URL and reported as
+    // "now answers 404", which read like a dead link.
+    const glued = `${PDF_URL}${PDF_URL.replace(/\.pdf$/, ".doc")}`;
+    const withUrl = (url: string): StubSource =>
+      new (class extends StubSource {
+        override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+          const result = await super.discover(options);
+          return { ...result, refs: result.refs.map((ref) => ({ ...ref, documents: [{ role: "combined_pdf" as const, url, urlStable: true }] })) };
+        }
+      })();
+    const store = new MemoryStore();
+    const { transport, requests } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const first = await sync({ source: withUrl(glued), store, engine: testEngine(transport) });
+    strictEqual(requests.length, 0, "nothing is asked for a malformed URL");
+    deepStrictEqual(first.warnings, [`19/10006: ${glued} is several URLs glued together, not one; nothing was fetched`]);
+    deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, []);
+
+    // The next sync over the window, with the link split, archives the document.
+    const second = await sync({ source: withUrl(PDF_URL), store, engine: testEngine(transport) });
+    strictEqual(second.stored, 1);
+    deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents.map((document) => document.url), [PDF_URL]);
+
+    // A URL in the query is a value, not a second link.
+    const mirrored = `${PDF_URL}?mirror=https://example.invalid/x.pdf`;
+    const third = await sync({ source: withUrl(mirrored), store: new MemoryStore(), engine: testEngine(transport) });
+    deepStrictEqual([third.stored, third.warnings], [1, []]);
+  });
+
   it("reports the discovered count before the first record, for a progress display", async () => {
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
     const seen: string[] = [];
