@@ -56,3 +56,5 @@ npm test -w @maschinenlesbar.org/openka-connector-berlin
 - `fixtures/berlin/berlin-19-10006/` — the record, its metadata and the exact source bytes
 - `fixtures/berlin/berlin-19-10041/` — the record, its metadata and the exact source bytes
 - `fixtures/berlin/berlin-19-10048/` — the record, its metadata and the exact source bytes
+- `fixtures/berlin/berlin-19-21204/` — 2025: question numbers run into their text ("1.2.Welche …"), read since issue #9
+- `fixtures/berlin/berlin-19-21969/` — 2025: a date with a year at a line start, no longer a question (issue #9)

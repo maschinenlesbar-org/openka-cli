@@ -626,7 +626,23 @@ anywhere is a misread of the sentence, not the discovery of a question.
 **Measured coverage.** On a 60-document Berlin window (2021-11 to 2021-12):
 47 parse-complete, 57 with at least one Q/A pair, 2 abstaining on `qa` entirely —
 documents dominated by tables, which land in `ka review` rather than in the corpus
-as half-read records. On an 8-document NRW window (2025-03 to 2025-04): 6
+as half-read records.
+
+**Berlin 2024–2026, measured on 3,852 records (issue #9).** 1,259 abstained, 33%,
+nearly all on Q/A segmentation. Two text-layer artifacts kept headings from being
+read: a question number run into its text ("1.2.Welche …", where the layer lost the
+space) and a date with a year at a line start ("20.01.2025) ab.", "15.04.2025. Der
+Zeitplan …") read as an item. Reading the first — only when the heading asks within
+`ASKS_WITHIN_LINES` lines, since table rows and lists inside answers ("13.Sekundarschule:
+CJD", "1.Zeitplan der Veröffentlichung") run numbers into words too — and refusing the
+second took the abstaining records to 1,195 (64 complete, 134 with fewer holes; none newly
+abstaining; three gained holes because questions they hid are now read and their answers
+are grouped). Goldens 19/21204 and 19/21969. What is left is mostly answers that cover
+several items ("Zu 1. bis 4.", "Zu 6. a) und b)", sub-answers written "a. …" under "Zu
+1.:") and page-break debris at line starts ("1\fZu 1.:") — reading the first would be new
+inference about what a record says, and is a decision, not a fix.
+
+On an 8-document NRW window (2025-03 to 2025-04): 6
 parse-complete, 7 with Q/A pairs. On a 6-document Schleswig-Holstein window
 (2025-01 to 2025-06): 2 parse-complete, 4 with Q/A pairs, up from none at all.
 

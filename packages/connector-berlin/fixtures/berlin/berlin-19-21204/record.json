@@ -1,0 +1,79 @@
+{
+  "answered_by": {
+    "ministry": "Senatsverwaltung für Arbeit, Soziales, Gleichstellung, Integration, Vielfalt und Antidiskriminierung"
+  },
+  "askers": [
+    {
+      "name": "Dr. Bahar Haghanipour",
+      "party": "Grüne"
+    }
+  ],
+  "dates": {
+    "answered": "2025-01-21",
+    "submitted": "2025-01-06"
+  },
+  "document_type": "schriftliche_anfrage",
+  "extraction": {
+    "abstained_fields": [],
+    "extractor_version": "pkg:0.6.0+extract:b69d9d17e5ac",
+    "input_sha256": "f900d2bfa09a2fb5fa04377c9128a69ca19445b8e096d9eafe034644832ac729",
+    "model_artifacts": [],
+    "parse_complete": true,
+    "reproducible": true,
+    "review_status": "ok",
+    "tier": "text_layer"
+  },
+  "full_text": "Drucksache 19 /21 204\nSchriftliche Anfrage\n19. Wahlperiode\nSchriftliche Anfrage\nder Abgeordneten Dr. Bahar Haghanipour (GRÜNE)\nvom 6. Januar 2025 (Eingang beim Abgeordnetenhaus am 7. Januar 2025)\nzum Thema:\nKlarheit für die Frauenprojekte II: Auflösung der Pauschalen Minderausgaben\nim Haushaltsplan 2025 – Wo wird im Gleichstellungskapitel konkret gekürzt?\nund Antwort vom 21. Januar 2025 (Eingang beim Abgeordnetenhaus am 22. Januar 2025)\fSenatsverwaltung für Arbeit, Soziales, Gleichstellung,\nIntegration, Vielfalt und Antidiskriminierung\n Frau Abgeordnete Dr. Bahar Haghanipour (GRÜNE)\nüber\ndie Präsidentin des Abgeordnetenhauses von Berlin\nüber Senatskanzlei – G Sen –\nAntwort\nauf die Schriftliche Anfrage Nr. 19/21 204\nvom 06.01.2025\nüber Klarheit für die Frauenprojekte II: Auflösung der Pauschalen Minderausgaben im\nHaushaltsplan 2025 – Wo wird im Gleichstellungskapitel konkret gekürzt?\n_____________________________________________________________________\nIm Namen des Senats von Berlin beantworte ich Ihre Schriftliche Anfrage wie folgt:\n1. Welche Kürzungen sieht der aktuelle Plan des Senats zu Auflösung der Pauschalen Minderausgaben\n(PMA) im Haushalt 2025 für den Einzelplan 11, Kapitel 1180 – Frauen und Gleichstellung - vor?\nZu 1.: Zur Auflösung der Pauschalen Minderausgaben ist aus dem Einzelplan 11, Kapitel\n1180 aktuell ein titelscharfer Konsolidierungsbeitrag in Höhe von insgesamt 455.700 €\nerbracht worden.\nDie Kürzungen beziehen sich auf die Titel 54010 Dienstleistungen (-107.200 €), 54053\nVeranstaltungen (-7.500 €), 68406 Zuschüsse an soziale oder ähnliche Einrichtungen (-\n142.900 €), 68447 Weiterförderung besonderer Projekte (-62.400 €), 68459 Hinführung\nvon Mädchen zu technischen Berufen (-33.400 €), sowie 68500 Förderung der Frauen in\nForschung und Lehre (-102.300 €).\n1\f1.1.Welche gleichstellungspolitischen Vorhaben sind betroffen und können in 2025 voraussichtlich nicht\numgesetzt werden? (Bitte titelscharf und nach Vorhaben auflösen)\nZu 1.1.: Aufgrund der Aufwüchse zur Umsetzung der Istanbul-Konvention in den\nHaushaltsjahren 2024 und 2025 können alle gleichstellungspolitisches Vorhaben, die in\n2024 begonnen wurden und für 2025 geplant sind, fortgesetzt und umgesetzt werden.\n1.2.Welche Zuwendungsempfangenden werden voraussichtlich betroffen sein? Welche\nZuwendungsempfangenden werden für 2025 beantragte Mittel voraussichtlich nicht bewilligt\nbekommen? (Bitte titelscharf auflösen/ Bitte die Projekte und Verbände einzeln auflisten)\nZu 1.2.: Die Zuwendungsempfangenden wurden aufgefordert, einen Antrag auf dem\nfinanziellen Niveau von 2024 für das Haushaltsjahr 2025 einzureichen. Auf dieser\nGrundlage erfolgt nach jeweiliger Antragsprüfung dann die Bewilligung. Für etwaige\nTarifmittel gibt es eine dezentrale Vorsorge in 2025.\n1.3.Sofern eine konkrete Beantwortung der vorigen Fragen noch nicht möglich ist: Wann, in welchem\nVerfahren und nach welchen Kriterien werden die hierfür notwendigen Entscheidungen getroffen?\nZu 1.3.: siehe oben\n2. Strebt der Senat an, für die Jahre 2026 und 2027 einen Doppelhaushalt weitestgehend ohne Pauschale\nMinderausgabe aufzustellen, um endlich Planungssicherheit für die Zuwendungsempfangenden\nherzustellen?\n2.1.Wenn Pauschale Minderausgaben im Haushalt 2026 stehen sollten: Was unternimmt der Senat, um für die\nZuwendungsempfangenden frühzeitig Planungssicherheit zum Thema Kürzungen herzustellen und die\nrechtzeitige Ausstellung von Zuwendungsbescheiden für das gesamte Haushaltsjahr sicherzustellen?\nZu 2. und 2.1.: Hierzu können noch keine Aussagen getroffen werden, da das\nPlanaufstellungsverfahren für den Doppelhaushalt 2026-27 noch nicht begonnen hat und\ndamit auch die dafür erforderlichen Maßgaben noch nicht vorliegen.\nBerlin, den 21. Januar 2025\nIn Vertretung\nMicha K l a p p\nSenatsverwaltung für Arbeit, Soziales, Gleichstellung,\nIntegration, Vielfalt und Antidiskriminierung\n2",
+  "id": "berlin-19-21204",
+  "legislative_period": 19,
+  "markers": {
+    "attachments_referenced": [],
+    "classified": false,
+    "contains_tables": false
+  },
+  "parliament": "berlin",
+  "qa": [
+    {
+      "answer": "Zur Auflösung der Pauschalen Minderausgaben ist aus dem Einzelplan 11, Kapitel\n1180 aktuell ein titelscharfer Konsolidierungsbeitrag in Höhe von insgesamt 455.700 €\nerbracht worden.\nDie Kürzungen beziehen sich auf die Titel 54010 Dienstleistungen (-107.200 €), 54053\nVeranstaltungen (-7.500 €), 68406 Zuschüsse an soziale oder ähnliche Einrichtungen (-\n142.900 €), 68447 Weiterförderung besonderer Projekte (-62.400 €), 68459 Hinführung\nvon Mädchen zu technischen Berufen (-33.400 €), sowie 68500 Förderung der Frauen in\nForschung und Lehre (-102.300 €).\n1",
+      "number": "1",
+      "question": "Welche Kürzungen sieht der aktuelle Plan des Senats zu Auflösung der Pauschalen Minderausgaben\n(PMA) im Haushalt 2025 für den Einzelplan 11, Kapitel 1180 – Frauen und Gleichstellung - vor?"
+    },
+    {
+      "answer": "Aufgrund der Aufwüchse zur Umsetzung der Istanbul-Konvention in den\nHaushaltsjahren 2024 und 2025 können alle gleichstellungspolitisches Vorhaben, die in\n2024 begonnen wurden und für 2025 geplant sind, fortgesetzt und umgesetzt werden.",
+      "number": "1.1",
+      "question": "Welche gleichstellungspolitischen Vorhaben sind betroffen und können in 2025 voraussichtlich nicht\numgesetzt werden? (Bitte titelscharf und nach Vorhaben auflösen)"
+    },
+    {
+      "answer": "Die Zuwendungsempfangenden wurden aufgefordert, einen Antrag auf dem\nfinanziellen Niveau von 2024 für das Haushaltsjahr 2025 einzureichen. Auf dieser\nGrundlage erfolgt nach jeweiliger Antragsprüfung dann die Bewilligung. Für etwaige\nTarifmittel gibt es eine dezentrale Vorsorge in 2025.",
+      "number": "1.2",
+      "question": "Welche Zuwendungsempfangenden werden voraussichtlich betroffen sein? Welche\nZuwendungsempfangenden werden für 2025 beantragte Mittel voraussichtlich nicht bewilligt\nbekommen? (Bitte titelscharf auflösen/ Bitte die Projekte und Verbände einzeln auflisten)"
+    },
+    {
+      "answer": "siehe oben",
+      "number": "1.3",
+      "question": "Sofern eine konkrete Beantwortung der vorigen Fragen noch nicht möglich ist: Wann, in welchem\nVerfahren und nach welchen Kriterien werden die hierfür notwendigen Entscheidungen getroffen?"
+    },
+    {
+      "answer": "Hierzu können noch keine Aussagen getroffen werden, da das\nPlanaufstellungsverfahren für den Doppelhaushalt 2026-27 noch nicht begonnen hat und\ndamit auch die dafür erforderlichen Maßgaben noch nicht vorliegen.\nBerlin, den 21. Januar 2025\nIn Vertretung\nMicha K l a p p\nSenatsverwaltung für Arbeit, Soziales, Gleichstellung,\nIntegration, Vielfalt und Antidiskriminierung\n2",
+      "number": "2",
+      "question": "Strebt der Senat an, für die Jahre 2026 und 2027 einen Doppelhaushalt weitestgehend ohne Pauschale\nMinderausgabe aufzustellen, um endlich Planungssicherheit für die Zuwendungsempfangenden\nherzustellen?"
+    },
+    {
+      "answer": "Hierzu können noch keine Aussagen getroffen werden, da das\nPlanaufstellungsverfahren für den Doppelhaushalt 2026-27 noch nicht begonnen hat und\ndamit auch die dafür erforderlichen Maßgaben noch nicht vorliegen.\nBerlin, den 21. Januar 2025\nIn Vertretung\nMicha K l a p p\nSenatsverwaltung für Arbeit, Soziales, Gleichstellung,\nIntegration, Vielfalt und Antidiskriminierung\n2",
+      "number": "2.1",
+      "question": "Wenn Pauschale Minderausgaben im Haushalt 2026 stehen sollten: Was unternimmt der Senat, um für die\nZuwendungsempfangenden frühzeitig Planungssicherheit zum Thema Kürzungen herzustellen und die\nrechtzeitige Ausstellung von Zuwendungsbescheiden für das gesamte Haushaltsjahr sicherzustellen?"
+    }
+  ],
+  "reference": "19/21204",
+  "schema_version": "1.0",
+  "source_documents": [
+    {
+      "retrieved_at": "2026-10-08T12:41:13Z",
+      "role": "combined_pdf",
+      "sha256": "f900d2bfa09a2fb5fa04377c9128a69ca19445b8e096d9eafe034644832ac729",
+      "url": "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-21204.pdf",
+      "url_stable": true
+    }
+  ],
+  "title": "Klarheit für die Frauenprojekte (Teil 2): Auflösung der Pauschalen Minderausgaben im Haushaltsplan 2025 - Wo wird im Gleichstellungskapitel konkret gekürzt?"
+}

@@ -134,11 +134,50 @@ export const FRAGE_ANTWORT: SegmentationRules = {
  */
 const SUB_ITEM = /^[ \t]*([a-z])[.)][ \t]+(?![A-Za-zÄÖÜäöü]\.)(?=\S)/;
 
+/**
+ * A date at the start of a line — "20.01.2025) ab." where a table caption wrapped, or
+ * "14.11.2024, zu Fuß Gehende 41" in a table row. `SHORT_NUMBER_LIST` reads the first as
+ * question "20.01.2025" (Berlin 19/21245), so a number shaped like a date with a
+ * four-digit year is not a heading.
+ */
+const NOT_A_DATE = String.raw`(?![0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4}(?![0-9]))`;
+
+/**
+ * What follows a question heading's `N.`: whitespace, or — where the text layer lost
+ * the space, "1.2.Welche Zuwendungsempfangenden …" (Berlin 19/21204) — directly a
+ * capitalised word. The second form is only believed when the heading asks something
+ * soon after (`asksSoon`, in `findMarkers`). A month name is a date in either case
+ * ("12. November", "12.November").
+ */
+const AFTER_NUMBER = `(?:[ \\t]+|(?=[A-ZÄÖÜ]))(?!${MONTH}\\b)(?=\\S)`;
+
+/** How many lines below a heading whose number ran into its text a "?" is looked for. */
+const ASKS_WITHIN_LINES = 3;
+
+/**
+ * Whether the heading at `index` asks something: a "?" on its line or on one of the
+ * next `ASKS_WITHIN_LINES`, before the next heading. A number run into a word
+ * is also how a table row ("13.Sekundarschule: CJD") or a list inside an answer
+ * ("1.Zeitplan der Veröffentlichung") reaches the text layer; measured on 3,852 Berlin
+ * records of 2024–2026, believing those made three records worse, while requiring the
+ * "?" on the heading's own line lost 79 of the 141 records the reading improved —
+ * a question wraps before its "?" ("19.Wer kontrolliert … ⏎ von KTWs?").
+ */
+function asksSoon(lines: readonly string[], index: number, rules: SegmentationRules): boolean {
+  for (let j = index; j < Math.min(lines.length, index + 1 + ASKS_WITHIN_LINES); j++) {
+    const line = lines[j] as string;
+    // The next heading starts something else; its "?" is not this one's.
+    if (j > index && (rules.answer?.test(line) === true || rules.question.test(line))) return false;
+    if (line.includes("?")) return true;
+  }
+  return false;
+}
+
 /** The style where the question is a numbered list item and the answer says `Zu N`. */
 export const NUMMERIERT: SegmentationRules = {
   key: "nummeriert",
   description: "`N.` numbered questions with `Zu N.` answers, including `a.` sub-items",
-  question: new RegExp(`^[ \\t]*${SHORT_NUMBER_LIST}[.)][ \\t]+(?!${MONTH}\\b)(?=\\S)`),
+  question: new RegExp(`^[ \\t]*${NOT_A_DATE}${SHORT_NUMBER_LIST}[.)]${AFTER_NUMBER}`),
   answer: new RegExp(
     `^[ \\t]*(?:Antwort(?:en)?[ \\t]+(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
     "i",
@@ -558,7 +597,9 @@ function findMarkers(lines: string[], rules: SegmentationRules): Marker[] {
       return;
     }
     const question = rules.question.exec(line);
-    if (question?.[1] !== undefined) {
+    // A number run straight into its text ("1.2.Welche …") is a heading only when it asks something.
+    const glued = question !== null && /[.)]$/.test(question[0]) && /^[A-ZÄÖÜ]/.test(line.slice(question[0].length));
+    if (question?.[1] !== undefined && (!glued || asksSoon(lines, index, rules))) {
       const numbers = expandNumbers(question[1]);
       const plain = numbers.find((number) => /^[0-9]+$/.test(number));
       const value = plain === undefined ? undefined : Number.parseInt(plain, 10);

@@ -407,6 +407,38 @@ describe("the heading styles of the remaining Länder", () => {
   });
 });
 
+// Issue #9: Berlin text-layer artifacts that kept a heading from being read.
+describe("headings a text layer garbled", () => {
+  it("reads a question number run into its question, when the question asks", () => {
+    // Berlin 19/21204: "1.2.Welche Zuwendungsempfangenden …"; 19/21250 wraps before its "?".
+    const text = ["1. Erste Frage?", "Zu 1.:", "Eins.", "1.2.Welche zweite Frage?", "Zu 1.2.:", "Zwei.", "2.Wer prüft das", "und wie oft?", "Zu 2.:", "Das Amt."].join("\n");
+    deepStrictEqual(segmentQa(text).segments.map((segment) => [segment.number, segment.question, segment.answer]), [
+      ["1", "Erste Frage?", "Eins."],
+      ["1.2", "Welche zweite Frage?", "Zwei."],
+      ["2", "Wer prüft das\nund wie oft?", "Das Amt."],
+    ]);
+    // A date is still not a heading, with or without the space.
+    const dated = ["1. Erste Frage?", "Zu 1.:", "Seit dem", "12.November gilt das?", "2. Zweite?", "Zu 2.:", "Zwei."].join("\n");
+    deepStrictEqual(segmentQa(dated).segments.map((segment) => segment.number), ["1", "2"]);
+  });
+
+  it("does not read a table row or a list inside an answer as a question", () => {
+    // Berlin 19/22278 "13.Sekundarschule: CJD", 19/21486 "1.Zeitplan der Veröffentlichung":
+    // a number run into a word that asks nothing before the next heading.
+    const listed = ["1. Erste Frage?", "Zu 1.:", "Geplant sind:", "2.Zeitplan der Veröffentlichung", "3.Auswirkungen", "2. Zweite?", "Zu 2.:", "Zwei."].join("\n");
+    deepStrictEqual(segmentQa(listed).segments.map((segment) => segment.number), ["1", "2"]);
+  });
+
+  it("does not read a date with a year at the start of a line as a question", () => {
+    // Berlin 19/21245: a table caption wrapped as "20.01.2025) ab." and became question
+    // "20.01.2025", with no answer; 19/22369 had "15.04.2025. Der Zeitplan …".
+    const text = ["1. Erste Frage?", "Zu 1.:", "Stand vom", "20.01.2025) ab.", "2. Zweite?", "Zu 2.:", "bis zum", "15.04.2025. Der Zeitplan verzögert sich."].join("\n");
+    const result = segmentQa(text);
+    deepStrictEqual(result.segments.map((segment) => segment.number), ["1", "2"]);
+    ok(result.segments[0]?.answer?.includes("20.01.2025) ab."));
+  });
+});
+
 describe("grouped answers", () => {
   it("reads the numbers a government says it is answering together", () => {
     deepStrictEqual(
