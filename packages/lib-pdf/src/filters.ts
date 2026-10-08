@@ -26,7 +26,7 @@ export const IMAGE_FILTERS = new Set(["DCTDecode", "JPXDecode", "JBIG2Decode", "
  * than after it has been allocated. Twice the per-stream cap: one maximal stream
  * still fits, and no real Drucksache comes near it.
  */
-export const MAX_DECODED_BYTES = 256 * 1024 * 1024;
+export const MAX_DECODED_BYTES = 512 * 1024 * 1024;
 
 export class DecodeBudget {
   used = 0;
@@ -131,10 +131,11 @@ function numberOf(value: PdfValue | undefined, fallback: number): number {
  * unbounded amount of heap: a 199 KiB deflate stream of repeated bytes expands to
  * 200 MiB, so a 128 MiB body at that ratio is tens of gigabytes. LZW and RunLength
  * expand just as well — a 230 KB LZW stream cost 3.7 GB before it failed — so they
- * are held to the same cap. 128 MiB is far beyond any real Drucksache and turns
- * the bomb into an abstention.
+ * are held to the same cap. 256 MiB — twice the response cap since that was raised
+ * to 128 MiB (issue #23) — is far beyond any real Drucksache and turns the bomb into
+ * an abstention.
  */
-export const MAX_INFLATED_BYTES = 128 * 1024 * 1024;
+export const MAX_INFLATED_BYTES = 256 * 1024 * 1024;
 
 /**
  * zlib inflate, tolerating the two defects seen in the wild: a missing zlib header
