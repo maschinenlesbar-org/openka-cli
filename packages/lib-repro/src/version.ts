@@ -17,7 +17,7 @@ import { EXTRACTION_DIGEST } from "./extraction-digest.js";
 export const VERSION_ENV = "OPENKA_EXTRACTOR_VERSION";
 
 /** Package version, updated by `npm version` like every other repo here. */
-export const PACKAGE_VERSION = "0.7.0";
+export const PACKAGE_VERSION = "0.8.0";
 
 /**
  * The stamp for `extraction.extractor_version`. Reads the environment on every

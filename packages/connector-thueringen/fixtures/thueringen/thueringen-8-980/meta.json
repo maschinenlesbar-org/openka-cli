@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.7.0+extract:92e420073a5d",
+  "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
   "human_verified": false,
   "id": "thueringen-8-980",
   "note": "Thüringer Landtag: the answer Drucksache is found through Parldok's JSON API and reprints the question above the reply",

@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.7.0+extract:92e420073a5d",
+  "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
   "human_verified": false,
   "id": "berlin-19-10041",
   "note": "numbered list with a./b./c. sub-items, a date at line start, and one answer the rules refuse",
