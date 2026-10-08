@@ -17,7 +17,17 @@ import {
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
-import { FileStore, checkCorpusVolumes, lockCorpus, queueProgressKey, spaceGuard, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import {
+  FileStore,
+  RunStatusRecorder,
+  checkCorpusVolumes,
+  lockCorpus,
+  queueProgressKey,
+  spaceGuard,
+  type RunResult,
+  type SpaceGuard,
+  type Store,
+} from "@maschinenlesbar.org/openka-lib-store";
 import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
 import {
   action,
@@ -33,7 +43,7 @@ import {
 } from "../shared.js";
 import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
-import { JobLogs, QueueRound, collectJobSpec, finished, printSummary, selectJobs, type CliJob } from "./sync-jobs.js";
+import { JobLogs, QueueRound, collectJobSpec, finished, jobEnd, printSummary, runResult, selectJobs, type CliJob } from "./sync-jobs.js";
 
 /**
  * The most of one warning or error line that is printed. These are this program's own
@@ -173,10 +183,10 @@ export function registerSync(program: Command, deps: CliDeps): void {
           // The command takes the corpus lock itself — syncJobs() re-enters it —
           // so that it can wait for it (--wait) and, before the first request, knows
           // what kind of volume the corpus is on.
-          const purpose = `sync ${jobs.map((job) => `--source ${job.label}`).join(" ")}`;
+          const purpose = queue === undefined ? `sync ${jobs.map((job) => `--source ${job.label}`).join(" ")}` : `sync --plan ${queue.path}`;
           let release: () => void;
           try {
-            release = await lockCorpus(store, queue === undefined ? purpose : `sync --plan ${queue.path}`, {
+            release = await lockCorpus(store, purpose, {
               wait: ctx.opts["wait"] === true,
               signal: controller.signal,
               onWaiting: (held) => io.err(`Waiting for the corpus: it is in use by another run (${sanitizeForTerminal(held.holder)}).`),
@@ -196,44 +206,65 @@ export function registerSync(program: Command, deps: CliDeps): void {
             if (toRun.length === 0) {
               outcomes = [];
             } else {
-              // One pacing book for every job's engine: two jobs reaching one host
-              // are paced together, so running them side by side never asks a host
-              // for more than one job would. Each engine is its own, since a
-              // source's politeness floor raises its engine's interval for good.
-              const pacer = new HostPacer();
-              outcomes = await syncJobs({
-                jobs: toRun.map((job) => ({ label: job.label, source: createSource(job.spec.source), window: windowOf(job.spec) })),
-                store,
-                engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
-                apiKeyFor: keyFor,
-                perceiver,
-                now: ctx.deps.now,
-                signal: controller.signal,
-                ...(queue === undefined ? {} : { stopOnFailure: !queue.continueOnError }),
-                ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
-                ...(ctx.opts["force"] === true ? { force: true } : {}),
-                ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
-                ...(space === undefined ? {} : { space }),
-                // Progress is stderr, so --json (which shapes stdout) keeps it.
-                onStart: (job: string) => {
-                  progress?.start(job);
-                  logs.line(job, "started");
-                },
-                onDiscovered: (job: string, count: number) => {
-                  progress?.discovered(job, count);
-                  logs.line(job, `${count} Anfragen discovered`);
-                },
-                onProgress: (job: string, event: ProgressEvent) => {
-                  progress?.update(job, event);
-                  logs.line(job, `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
-                },
-                onDone: (outcome: SourceOutcome) => {
-                  progress?.finish(outcome.job);
-                  logs.outcome(outcome);
-                  // Recorded as each job ends, so a run killed later keeps it.
-                  if (round !== undefined && finished(outcome)) round.markDone(outcome.job);
-                },
-              });
+              // What another terminal reads with `ka status`: kept under the lock,
+              // left behind with the run's result.
+              const status =
+                store instanceof FileStore
+                  ? new RunStatusRecorder(store, {
+                      command: purpose,
+                      jobs: toRun.map((job) => ({ job: job.label, source: job.spec.source })),
+                      now: ctx.deps.now,
+                      onError: (err) => say(`warning: cannot write the run status for \`ka status\`: ${errorMessage(err)}; the sync goes on.`),
+                    })
+                  : undefined;
+              let result: RunResult = "failed";
+              try {
+                // One pacing book for every job's engine: two jobs reaching one host
+                // are paced together, so running them side by side never asks a host
+                // for more than one job would. Each engine is its own, since a
+                // source's politeness floor raises its engine's interval for good.
+                const pacer = new HostPacer();
+                outcomes = await syncJobs({
+                  jobs: toRun.map((job) => ({ label: job.label, source: createSource(job.spec.source), window: windowOf(job.spec) })),
+                  store,
+                  engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+                  apiKeyFor: keyFor,
+                  perceiver,
+                  now: ctx.deps.now,
+                  signal: controller.signal,
+                  ...(queue === undefined ? {} : { stopOnFailure: !queue.continueOnError }),
+                  ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),
+                  ...(ctx.opts["force"] === true ? { force: true } : {}),
+                  ...(ctx.opts["ignoreRobots"] === true ? { ignoreRobots: true } : {}),
+                  ...(space === undefined ? {} : { space }),
+                  // Progress is stderr, so --json (which shapes stdout) keeps it.
+                  onStart: (job: string) => {
+                    progress?.start(job);
+                    status?.start(job);
+                    logs.line(job, "started");
+                  },
+                  onDiscovered: (job: string, count: number) => {
+                    progress?.discovered(job, count);
+                    status?.discovered(job, count);
+                    logs.line(job, `${count} Anfragen discovered`);
+                  },
+                  onProgress: (job: string, event: ProgressEvent) => {
+                    progress?.update(job, event);
+                    status?.progress(job, event);
+                    logs.line(job, `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
+                  },
+                  onDone: (outcome: SourceOutcome) => {
+                    progress?.finish(outcome.job);
+                    status?.done(outcome.job, jobEnd(outcome));
+                    logs.outcome(outcome);
+                    // Recorded as each job ends, so a run killed later keeps it.
+                    if (round !== undefined && finished(outcome)) round.markDone(outcome.job);
+                  },
+                });
+                result = runResult(outcomes, caught !== undefined);
+              } finally {
+                status?.finish(result);
+              }
             }
           } finally {
             release();

@@ -9,6 +9,7 @@ import { registerQuery } from "./commands/query.js";
 import { registerMaintain } from "./commands/maintain.js";
 import { registerOutput } from "./commands/output.js";
 import { registerDoctor } from "./commands/doctor.js";
+import { registerStatus } from "./commands/status.js";
 
 export { defaultDeps } from "./io.js";
 
@@ -30,6 +31,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   registerMaintain(program, deps);
   registerOutput(program, deps);
   registerDoctor(program, deps);
+  registerStatus(program, deps);
 
   program.addHelpText(
     "after",
@@ -41,6 +43,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
       "  ka get berlin-19-10006 --format md",
       "  ka verify berlin-19-10006",
       "  ka review",
+      "  ka status --watch",
       "  ka doctor",
       "  ka export --format csv --out corpus.csv",
       "",

@@ -9,6 +9,8 @@
   index/catalog.json           denormalised rows for filtering and listing
   index/tokens/<shard>.json    inverted index shards
   lock                         held while a run writes: pid, host and purpose
+  run/status.json              what the running sync is doing, or what the last one did
+  state/queues/<key>.json      a plan file's open round: the jobs done in it
 ```
 
 **One writer at a time.** `FileStore.lock(purpose)` creates `lock` exclusively and
@@ -45,6 +47,16 @@ nearest existing ancestor. `parseByteSize`/`byteSizeProblem` read `--min-free`, 
 drive (`blobStoreProblem`), `lockStatus()`, `catalogGaps` and a count of the platform
 files anywhere in the corpus (`platformFiles`) into problems and warnings, writing
 nothing. `removePlatformFiles(store)` deletes those files under the corpus lock.
+
+**A running sync's status.** `RunStatusRecorder` writes `run/status.json`
+(`getRunStatus`/`putRunStatus`, replaced atomically) as a sync goes — on each job's
+start, discovery and end, and at most every `RUN_STATUS_EVERY_MS` in between, with
+progress samples over the last `RATE_WINDOW_MS` — and leaves it with the run's result.
+A write that fails is reported once (`onError`) and never thrown. `readRunReport`
+joins it with `lockStatus()` (which now also gives the holder's pid, host and purpose):
+`running`, `idle` (with the last run), `stale` (the lock's process on this host is gone)
+or `busy` (another writer), each job with `rate_per_min`, `eta_seconds` and
+`quiet_seconds`. `parseDurationSeconds`/`durationProblem` read `--stalled-after`.
 
 **A plan's progress.** `getQueueProgress(key)`/`putQueueProgress(key, progress)` keep
 which jobs of a plan file (`ka sync --plan`) are done in its open round, under
@@ -104,6 +116,7 @@ and catalog rows whose file is gone.
 - **`src/fts.ts`** — The full-text index: tokenizer, scoring and sharding — all pure functions, so the ranking of a search result is reproducible and unit-testable without touching a filesystem.
 - **`src/indexer.ts`** — Keeping the catalog and the inverted index in step with the records.
 - **`src/volume.ts`** — What a corpus is stored on: the filesystem and the free space of its volumes, and the refusals a sync makes before it writes.
+- **`src/run-status.ts`** — What a running sync is doing, readable from another terminal: the status file and `ka status`'s reading of it.
 - **`src/doctor.ts`** — `ka doctor`: the volumes, the lock, the catalog against the record files, and the macOS files beside them.
 - **`src/stats.ts`** — `corpusStats`: what is in a corpus, counted from its catalog — the numbers `ka stats` prints; `corpusDiskUsage`: what it takes on disk (`ka stats --disk`).
 - **`src/store.ts`** — The corpus seam.
@@ -113,7 +126,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles, QueueProgress, queueProgressKey
+FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles, QueueProgress, queueProgressKey, RunStatus, JobStatus, JobState, JobEnd, RunResult, RunStatusRecorder, RUN_STATUS_EVERY_MS, RATE_WINDOW_MS, RunReport, JobReport, readRunReport, parseDurationSeconds, durationProblem
 ```
 
 ## Depends on

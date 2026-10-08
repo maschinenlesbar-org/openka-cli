@@ -87,6 +87,11 @@ Wahlperioden as one job each, a log per job and a summary at the end. A plan tha
 stopped part-way — Ctrl-C, a reboot, a full disk — continues with its unfinished jobs
 when run again. See [Usage.md](https://github.com/maschinenlesbar-org/openka-cli/blob/main/Usage.md).
 
+**Watch it from elsewhere.** A running sync keeps a status file in the corpus, and
+`ka status` (from another terminal, `--watch`, `--json`) says how far it is, at what
+rate over the last ten minutes, how long it has left, and whether it has stalled or
+its process is gone; `--stalled-after 10m` turns that into an exit code for cron.
+
 **Not past a full disk.** `ka sync` keeps 1 GB free on each volume it writes to
 (`--min-free 20G` for more, `--min-free 0` to turn it off). It refuses to start below
 that floor, and also when the documents still to fetch would not fit. Their size is

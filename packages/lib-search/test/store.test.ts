@@ -11,7 +11,12 @@ import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import {
   DEFAULT_MIN_FREE_BYTES,
+  RUN_STATUS_EVERY_MS,
+  RunStatusRecorder,
   blobsApart,
+  durationProblem,
+  parseDurationSeconds,
+  readRunReport,
   byteSizeProblem,
   checkCorpusVolumes,
   diagnoseCorpus,
@@ -1441,5 +1446,121 @@ describe("the corpus doctor", () => {
     } finally {
       rmSync(store.root, { recursive: true, force: true });
     }
+  });
+});
+
+// Issue #15: what a running sync is doing, from another terminal.
+describe("the run status", () => {
+  const corpus = (): FileStore => new FileStore(mkdtempSync(join(tmpdir(), "openka-status-")));
+  /** A clock the test moves. */
+  const clock = (start = "2026-10-08T10:00:00Z"): { now: () => Date; advance: (ms: number) => void } => {
+    let t = Date.parse(start);
+    return { now: () => new Date(t), advance: (ms) => (t += ms) };
+  };
+  const deadPid = (): number => {
+    for (let pid = 4_000_000; ; pid++) {
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        if ((err as { code?: unknown }).code === "ESRCH") return pid;
+      }
+    }
+  };
+
+  it("keeps a running sync's progress, its recent rate and the time left", () => {
+    const store = corpus();
+    try {
+      const time = clock();
+      const release = store.lock("sync --source berlin");
+      const recorder = new RunStatusRecorder(store, { command: "sync --source berlin", jobs: [{ job: "berlin", source: "berlin" }], now: time.now });
+      strictEqual(store.getRunStatus()?.jobs[0]?.state, "waiting", "written at once");
+      recorder.start("berlin");
+      time.advance(60_000);
+      recorder.discovered("berlin", 1000);
+      for (let i = 1; i <= 100; i++) {
+        time.advance(6_000); // 10 a minute
+        recorder.progress("berlin", { index: i, total: 1000, action: i === 50 ? "failed" : "stored" });
+      }
+      time.advance(12_000);
+      const report = readRunReport(store, time.now());
+      strictEqual(report.state, "running");
+      strictEqual(report.run?.command, "sync --source berlin");
+      const job = report.jobs[0];
+      deepStrictEqual([job?.state, job?.done, job?.total, job?.failed, job?.rate_per_min, job?.eta_seconds, job?.quiet_seconds], ["running", 100, 1000, 1, 10, 5400, 12]);
+      strictEqual(report.quiet_seconds, 12);
+      ok(!("samples" in (job ?? {})), "the samples stay in the file");
+      ok((store.getRunStatus()?.jobs[0]?.samples.length ?? 0) <= 42, "only the last ten minutes are kept");
+
+      recorder.done("berlin", { state: "done", discovered: 1000, stored: 990, unchanged: 9, failed: 1 });
+      recorder.finish("finished");
+      release();
+      const idle = readRunReport(store, time.now());
+      deepStrictEqual([idle.state, idle.run?.result, idle.run?.running, idle.jobs[0]?.state, idle.jobs[0]?.stored, idle.quiet_seconds], ["idle", "finished", false, "done", 990, undefined]);
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes at most every RUN_STATUS_EVERY_MS between events, and never throws", () => {
+    const writes: string[] = [];
+    const time = clock();
+    const errors: unknown[] = [];
+    let fail = false;
+    const recorder = new RunStatusRecorder(
+      {
+        putRunStatus: (status) => {
+          if (fail) throw new Error("EROFS");
+          writes.push(`${status.updated_at} ${status.jobs[0]?.done}`);
+        },
+      },
+      { command: "sync", jobs: [{ job: "berlin", source: "berlin" }], now: time.now, onError: (err) => errors.push(err) },
+    );
+    recorder.discovered("berlin", 10);
+    for (let i = 1; i <= 5; i++) {
+      time.advance(500);
+      recorder.progress("berlin", { index: i, total: 10, action: "stored" });
+    }
+    deepStrictEqual(writes, ["2026-10-08T10:00:00Z 0", "2026-10-08T10:00:00Z 0", "2026-10-08T10:00:02Z 4"]);
+    fail = true;
+    recorder.finish("finished");
+    recorder.finish("finished");
+    strictEqual(errors.length, 1);
+    strictEqual(RUN_STATUS_EVERY_MS, 2000);
+  });
+
+  it("tells a stale lock, another writer and a run that ended without a word from a running sync", () => {
+    const store = corpus();
+    try {
+      const time = clock();
+      deepStrictEqual(readRunReport(store, time.now()), { state: "idle", jobs: [], notes: [] });
+
+      // Another writer: the lock, but no status of its own.
+      const release = store.lock("reindex");
+      const busy = readRunReport(store, time.now());
+      deepStrictEqual([busy.state, busy.run], ["busy", undefined]);
+      match(busy.holder ?? "", /^reindex, pid \d+ on /);
+      release();
+
+      // A sync killed outright: its status says running, its lock names a dead process.
+      const recorder = new RunStatusRecorder(store, { command: "sync --source berlin", jobs: [{ job: "berlin", source: "berlin" }], now: time.now });
+      recorder.start("berlin");
+      writeFileSync(join(store.root, "lock"), JSON.stringify({ host: hostname(), pid: deadPid(), purpose: "sync --source berlin" }));
+      time.advance(90_000);
+      const stale = readRunReport(store, time.now());
+      deepStrictEqual([stale.state, stale.quiet_seconds, stale.run?.command], ["stale", 90, "sync --source berlin"]);
+      match(stale.notes.join("\n"), /the lock was left by a run that is gone .* the next writer takes it over/);
+
+      rmSync(join(store.root, "lock"));
+      const ended = readRunReport(store, time.now());
+      strictEqual(ended.state, "idle");
+      match(ended.notes.join("\n"), /ended without recording its end/);
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads durations for --stalled-after", () => {
+    deepStrictEqual(["90", "90s", "10m", "2h", "1h30m", "1m30s"].map(parseDurationSeconds), [90, 90, 600, 7200, 5400, 90]);
+    for (const bad of ["", "0", "10x", "m", "-5", "1.5h"]) match(durationProblem(bad) ?? "", /Expected a duration/, bad);
   });
 });

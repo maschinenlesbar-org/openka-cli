@@ -181,8 +181,8 @@ a subprocess, touches the network, or reads the clock.
   implementation; `MemoryStore` in `test/helpers.ts` is the test double.
 - **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factories (`createStore` for a
   command that writes, `openStore` for one that only reads an existing corpus), the
-  engine factory, the environment, **the clock** and the volume probe (`volumes`:
-  filesystem and free space). `run()` returns an exit code rather than calling
+  engine factory, the environment, **the clock**, the volume probe (`volumes`:
+  filesystem and free space) and `sleep` (only `ka status --watch` waits). `run()` returns an exit code rather than calling
   `process.exit`.
 
 A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
@@ -343,6 +343,12 @@ What the library now computes that a `ka` action used to compute on its own:
   on one corpus used to lose postings and catalog rows while both reported success.
   A lock whose process on this host is gone is taken over. `lockStatus()` reads it
   without taking it (`ka doctor`).
+- **What a running sync is doing** — `RunStatusRecorder` (`lib-store`) keeps
+  `<corpus>/run/status.json` from `syncJobs`' callbacks, on the CLI's clock, and never
+  throws: a status that cannot be written is a warning, not a stopped sync.
+  `readRunReport(store, now)` joins it with `lockStatus()` into running / idle / stale /
+  busy, with each job's rate over the last `RATE_WINDOW_MS` and its time left. `ka
+  status` only renders that.
 - **Where a corpus may be written, and how full** — `checkCorpusVolumes` (`lib-store`)
   asks a `VolumeProbe` about the corpus and a separate blob directory: FAT32/exFAT is a
   problem unless allowed, a network filesystem a warning, less than `minFreeBytes`

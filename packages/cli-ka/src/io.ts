@@ -54,6 +54,8 @@ export interface CliDeps {
    * its space guard and `ka doctor`). Unset, the machine's own (`systemVolumes`).
    */
   volumes?: VolumeProbe;
+  /** Wait: only `ka status --watch`, between two looks. Unset, a timer. */
+  sleep?(ms: number): Promise<void>;
 }
 
 /** The signals `ka sync` stops early on. */
@@ -149,4 +151,5 @@ export const defaultDeps: CliDeps = {
   now: () => new Date(),
   onInterrupt: listenForInterrupts,
   volumes: systemVolumes,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };

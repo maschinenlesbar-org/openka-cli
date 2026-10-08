@@ -9,6 +9,7 @@
 //     state/<source>.json               per-source sync + conditional-request state
 //     state/queues/<key>.json           a plan file's open round: the jobs done in it
 //     lock                              held while a run writes: pid, host and purpose
+//     run/status.json                   what the running sync is doing, or what the last one did
 //
 // Everything is plain JSON in canonical form, so a corpus diffs cleanly in git, can
 // be inspected with `cat`, and — crucially for the reproducibility claim — is
@@ -25,6 +26,7 @@ import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { IndexShard } from "./fts.js";
 import type { CatalogEntry, EmbeddingSet, QueueProgress, SourceState, Store } from "./store.js";
+import type { RunStatus } from "./run-status.js";
 
 /** Record ids and source keys reach the filesystem, so they are strictly checked. */
 const SAFE_KEY = /^[a-z0-9][a-z0-9._-]*$/;
@@ -206,11 +208,19 @@ export class FileStore implements Store {
    * `stale` lock names this host and a process that is gone — the next writer takes
    * it over; a lock from another host is never stale here, since it cannot be checked.
    */
-  lockStatus(): { holder: string; stale: boolean } | undefined {
+  lockStatus(): { holder: string; stale: boolean; pid?: number; host?: string; purpose?: string; local: boolean } | undefined {
     const path = this.path("lock");
     if (!existsSync(path)) return undefined;
     const holder = readLock(path);
-    return { holder: describeHolder(holder), stale: holder !== undefined && isStale(holder) };
+    return {
+      holder: describeHolder(holder),
+      stale: holder !== undefined && isStale(holder),
+      ...(typeof holder?.pid === "number" ? { pid: holder.pid } : {}),
+      ...(typeof holder?.host === "string" ? { host: holder.host } : {}),
+      ...(typeof holder?.purpose === "string" ? { purpose: holder.purpose } : {}),
+      // Whether the holder's process can be checked from here: only on its own host.
+      local: holder?.host === hostname(),
+    };
   }
 
   private appleDouble = false;
@@ -642,6 +652,25 @@ export class FileStore implements Store {
 
   sourceStateKeys(): string[] {
     return this.listJsonKeys("state");
+  }
+
+  // ----------------------------------------------------------- run status
+
+  /** The status file a sync keeps (`RunStatusRecorder`), or undefined when none was written. */
+  getRunStatus(): RunStatus | undefined {
+    const path = this.path("run", "status.json");
+    const value = this.readJson<unknown>(path, undefined);
+    if (value === undefined) return undefined;
+    const status = value as Partial<RunStatus>;
+    if (typeof status.command !== "string" || typeof status.started_at !== "string" || typeof status.running !== "boolean" || !Array.isArray(status.jobs)) {
+      throw new StoreError(`Corrupt run status ${path}: the next sync replaces it, or delete it`);
+    }
+    return status as RunStatus;
+  }
+
+  /** Replace the status file, atomically: a reader never sees half of one. */
+  putRunStatus(status: RunStatus): void {
+    this.writeJson(this.path("run", "status.json"), status);
   }
 
   // --------------------------------------------------------------- queues

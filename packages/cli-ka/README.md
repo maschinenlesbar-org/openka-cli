@@ -4,7 +4,7 @@
 
 `sync` ingests, `search`/`get`/`show`/`open` read, `export`/`feed`/`schema` get data
 out in bulk, `verify`/`review`/`reindex`/`sources` keep the corpus honest about
-itself, and `doctor` checks what it is stored on.
+itself, `doctor` checks what it is stored on, and `status` watches a running sync.
 
 **Nothing here touches the world directly.** Everything the CLI reads or writes goes
 through a deps object — store factory, engine factory, `out`/`err`, `env`, `now` —
@@ -26,6 +26,7 @@ use them.
 ## What is in here
 
 - **`src/commands/doctor.ts`** — `ka doctor` — whether the corpus is safe to write to and complete to read from.
+- **`src/commands/status.ts`** — `ka status` — what a running sync is doing, from another terminal.
 - **`src/commands/sync-jobs.ts`** — The jobs one `ka sync` runs: `--source key@window` and `--plan`, the job logs, a plan's progress and its summary.
 - **`src/commands/maintain.ts`** — `verify`, `review`, `reindex` and `sources` — the commands that keep the corpus honest about itself.
 - **`src/commands/output.ts`** — `export`, `feed` and `schema` — getting the corpus out in bulk.

@@ -4,12 +4,12 @@
 import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { FileStore, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import { FileStore, RunStatusRecorder, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import { hostname, tmpdir } from "node:os";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
@@ -906,6 +906,136 @@ describe("ka", () => {
           harness.cleanup();
         }
       });
+    });
+  });
+
+  describe("ka status (issue #15)", () => {
+    /** A sync in progress in this process: the lock, and a status 35 minutes in, last moved at 03:04:00. */
+    const running = (corpus: string): { release: () => void; recorder: RunStatusRecorder } => {
+      const store = new FileStore(corpus);
+      const release = store.lock("sync --source berlin");
+      let t = Date.parse("2026-01-02T02:29:00Z");
+      const recorder = new RunStatusRecorder(store, { command: "sync --source berlin", jobs: [{ job: "berlin", source: "berlin" }, { job: "bund", source: "bund" }], now: () => new Date(t) });
+      recorder.start("berlin");
+      recorder.discovered("berlin", 3476);
+      for (let i = 1; i <= 280; i++) {
+        t += 7_500; // 8 a minute
+        recorder.progress("berlin", { index: i, total: 3476, action: "stored" });
+      }
+      return { release, recorder };
+    };
+
+    it("says what a running sync is doing, as text and as JSON", async () => {
+      // The harness clock: 2026-01-02T03:04:05Z, 5 s after the last progress.
+      const harness = cliHarness();
+      try {
+        const { release } = running(harness.corpus);
+        strictEqual(await run(["--corpus", harness.corpus, "status"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^sync --source berlin {3}pid \d+ on \S+ {3}running 35 min$/m);
+        match(harness.stdout(), /^ {2}berlin: 280\/3,476 · 0 failed · 8\/min \(last 10 min\) · last progress 5s ago · ~6h 40m left$/m);
+        match(harness.stdout(), /^ {2}bund: waiting$/m);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--json"], harness.deps), EXIT_OK);
+        const report = JSON.parse(harness.stdout()) as { state: string; quiet_seconds: number; jobs: { job: string; rate_per_min?: number; eta_seconds?: number }[] };
+        deepStrictEqual([report.state, report.quiet_seconds, report.jobs[0]?.rate_per_min, report.jobs[0]?.eta_seconds], ["running", 5, 8, 23_970]);
+
+        // A scheduler's check: still moving, or not.
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "1m"], harness.deps), EXIT_OK);
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "5s"], harness.deps), EXIT_ERROR);
+        match(harness.stderr(), /^Error: stalled: nothing has moved for 5s \(--stalled-after 5s\)$/m);
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "soon"], harness.deps), EXIT_USAGE);
+        release();
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("is idle after a sync, and shows how the last run ended", async () => {
+      const harness = await seeded();
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "status"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^idle — last run: sync --source berlin, finished 2026-01-02T03:04:05Z after 0s$/m);
+        match(harness.stdout(), /^ {2}berlin: done · \d+ discovered, \d+ stored, 0 unchanged, 0 failed$/m);
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "1s"], harness.deps), EXIT_OK, "an idle corpus is not stalled");
+
+        const fresh = cliHarness();
+        try {
+          strictEqual(await run(["--corpus", fresh.corpus, "status"], fresh.deps), EXIT_OK);
+          match(fresh.stdout(), /^idle — no sync has recorded a status in this corpus yet$/m);
+          strictEqual(await run(["--corpus", join(fresh.corpus, "missing"), "status"], fresh.deps), EXIT_STORE);
+        } finally {
+          fresh.cleanup();
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("names a stale lock and another writer instead of leaving the user to guess", async () => {
+      const harness = cliHarness();
+      try {
+        // A sync killed outright: its lock and its status name a process that is gone.
+        running(harness.corpus);
+        const gone = 4_194_304 * 8;
+        const store = new FileStore(harness.corpus);
+        store.putRunStatus({ ...(store.getRunStatus() as NonNullable<ReturnType<FileStore["getRunStatus"]>>), pid: gone });
+        writeFileSync(join(harness.corpus, "lock"), JSON.stringify({ host: hostname(), pid: gone, purpose: "sync --source berlin" }));
+        strictEqual(await run(["--corpus", harness.corpus, "status"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^sync --source berlin {3}pid \d+ on \S+ {3}stale lock — the process is gone; last status$/m);
+        match(harness.stderr(), /^note: the lock was left by a run that is gone/m);
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "1h"], harness.deps), EXIT_ERROR);
+        match(harness.stderr(), /^Error: stalled: the run that holds the corpus is gone/m);
+
+        rmSync(join(harness.corpus, "lock"));
+        const release = new FileStore(harness.corpus).lock("reindex");
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "status"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^busy: the corpus is held by reindex, pid \d+ on \S+ — no progress is kept for it$/m);
+        release();
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("looks again with --watch until the sync is done", async () => {
+      const harness = cliHarness();
+      try {
+        const { release, recorder } = running(harness.corpus);
+        const waits: number[] = [];
+        harness.deps.sleep = async (ms) => {
+          waits.push(ms);
+          recorder.done("berlin", { state: "done", discovered: 3476, stored: 3476, unchanged: 0, failed: 0 });
+          recorder.finish("finished");
+          release();
+        };
+        strictEqual(await run(["--corpus", harness.corpus, "status", "--watch"], harness.deps), EXIT_OK);
+        deepStrictEqual(waits, [5000]);
+        match(harness.stdout(), /running 35 min[\s\S]*^idle — last run: sync --source berlin, finished/m);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("leaves the run's result behind when a sync is interrupted", async () => {
+      const harness = cliHarness({ transport: berlinTransport().transport });
+      try {
+        let interrupt: ((signal: "SIGINT" | "SIGTERM") => void) | undefined;
+        harness.deps.onInterrupt = (handler) => {
+          interrupt = handler;
+          return () => undefined;
+        };
+        const engine = harness.deps.createEngine;
+        harness.deps.createEngine = (options) => {
+          interrupt?.("SIGINT");
+          return engine(options);
+        };
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), 130);
+        const status = new FileStore(harness.corpus).getRunStatus();
+        deepStrictEqual([status?.running, status?.result], [false, "interrupted"]);
+      } finally {
+        harness.cleanup();
+      }
     });
   });
 

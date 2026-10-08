@@ -19,7 +19,7 @@ import {
   type SyncWindow,
 } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { adapterSourceKeys, sourceKeyProblem } from "@maschinenlesbar.org/openka-lib-registry";
-import { queueProgressKey, type FileStore, type QueueProgress } from "@maschinenlesbar.org/openka-lib-store";
+import { queueProgressKey, type FileStore, type JobEnd, type QueueProgress, type RunResult } from "@maschinenlesbar.org/openka-lib-store";
 import { InvalidArgumentError } from "commander";
 import type { CliIO } from "../io.js";
 import type { ActionContext } from "../shared.js";
@@ -175,6 +175,32 @@ export function statusOf(outcome: SourceOutcome): string {
   if (report.lowSpace !== undefined) return "low on space";
   if (report.blocked !== undefined) return "blocked";
   return "done";
+}
+
+/** What a job ended as, for the run's status file (`RunStatusRecorder.done`). */
+export function jobEnd(outcome: SourceOutcome): JobEnd {
+  if (outcome.status === "failed") return { state: "failed", message: outcome.error instanceof Error ? outcome.error.message : String(outcome.error) };
+  if (outcome.status === "skipped") {
+    return { state: "not-started", message: outcome.reason === "interrupted" ? "the run was interrupted" : "an earlier job failed" };
+  }
+  const report = outcome.report;
+  const state = report.interrupted ? "interrupted" : report.lowSpace !== undefined ? "low-space" : report.blocked !== undefined ? "blocked" : "done";
+  return {
+    state,
+    discovered: report.discovered,
+    stored: report.stored,
+    unchanged: report.unchanged,
+    failed: report.failed,
+    ...(report.lowSpace !== undefined ? { message: report.lowSpace } : report.blocked !== undefined ? { message: report.blocked } : {}),
+  };
+}
+
+/** How a run ended, for its status file: a signal, then a failure, then low space. */
+export function runResult(outcomes: readonly SourceOutcome[], interrupted: boolean): RunResult {
+  if (interrupted) return "interrupted";
+  if (outcomes.some((outcome) => outcome.status === "failed")) return "failed";
+  if (outcomes.some((outcome) => outcome.status === "done" && outcome.report.lowSpace !== undefined)) return "stopped";
+  return "finished";
 }
 
 /** Whether a job's window was covered, so a rerun of its plan may skip it. */

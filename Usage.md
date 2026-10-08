@@ -321,6 +321,45 @@ A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here
 `-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
 An existing file is not replaced unless `--force` is given.
 
+## `ka status`
+
+```bash
+ka status                         # is a sync running, how far is it, did it hang?
+ka status --watch                 # look again every 5 s until it is done
+ka status --json                  # for a scheduler or a dashboard
+ka status --stalled-after 10m     # exit 1 when nothing has moved for 10 minutes
+```
+
+```
+sync --source berlin --since 2025-01-01   pid 86978 on mb.local   running 2h 03m
+  berlin: 1,187/3,476 · 0 failed · 7.1/min (last 10 min) · last progress 12s ago · ~5h 22m left
+  bund@period=21: waiting
+```
+
+A running `ka sync` keeps `<corpus>/run/status.json` up to date: every job's state
+(waiting, discovering, running, done, failed, …), how many Anfragen it has handled of
+how many, and samples of its progress over the last ten minutes. The file is replaced
+atomically, at most every two seconds while Anfragen go by and at once when a job
+starts, finishes discovery or ends. `ka status` reads it together with the corpus lock:
+
+- **running** — the job lines above. The rate is taken over the last ten minutes, not
+  since the start, and the time left follows from it.
+- **idle** — no lock; the last run, how it ended (`finished`, `interrupted`, `failed`, or
+  `stopped` when a volume ran low on space) and each job's counts.
+- **stale lock** — the lock names a process on this machine that is gone (a sync killed
+  with `kill -9`, a reboot). The last status is shown; the next writer takes the lock
+  over.
+- **busy** — another writer holds the corpus (`ka reindex`, `ka doctor --fix`), which keeps
+  no progress.
+
+A run on another machine (a corpus on a network share) cannot be checked for its
+process; a note says so. `--stalled-after <duration>` (`90s`, `10m`, `2h`, `1h30m`) makes
+it a check: exit 1 when a running sync has not moved for that long — counted from its
+last progress, or from the start of a discovery that is still going — or when its
+process is gone. An idle corpus is not stalled. `--json` prints the same as an object:
+`state`, `holder`, `run` (the status file), `jobs` with `rate_per_min`, `eta_seconds` and
+`quiet_seconds`, and `notes`.
+
 ## `ka doctor`
 
 ```bash
@@ -407,7 +446,7 @@ Both `goldens list` and `goldens verify` exit 1 when the set they read is empty.
 | Code | Meaning |
 |------|---------|
 | 0 | success (including `--help` and `--version`) |
-| 1 | an error: an upstream failure, a failed verification, a missing record |
+| 1 | an error: an upstream failure, a failed verification, a missing record, a sync `ka status --stalled-after` finds stalled |
 | 2 | a usage error (a rejected option value, a malformed record id, an unknown command) |
 | 3 | a corpus problem: missing or unreadable (a `--corpus` that does not exist included), held by another run, on a refused filesystem or short of free space (`ka sync`), or anything `ka doctor` calls a problem |
 | 4 | the upstream returned 404 |

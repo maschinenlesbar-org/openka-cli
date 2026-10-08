@@ -7,3 +7,4 @@ export * from "./corpus-root.js";
 export * from "./archive.js";
 export * from "./volume.js";
 export * from "./doctor.js";
+export * from "./run-status.js";
