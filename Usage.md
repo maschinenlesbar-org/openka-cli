@@ -23,7 +23,7 @@ are authoritative; this is the narrative version.
 ```bash
 ka sync --source berlin --since 2024-01-01 --until 2024-06-30 --limit 200
 ka sync --source nordrhein-westfalen --since 2025-03-01 --until 2025-04-30
-ka sync --source bund --api-key "$DIP_KEY" --period 21
+ka sync --source bund --period 21                       # the DIP key from `ka config set bund.api-key`
 ka sync --source bund --period 3                        # 1957–1961: from DIP's Drucksachen, question only
 ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metadata + links
 ka sync --source berlin --metadata-only                 # no downloads: new records abstain on qa, stored ones keep their documents
@@ -359,6 +359,34 @@ last progress, or from the start of a discovery that is still going — or when 
 process is gone. An idle corpus is not stalled. `--json` prints the same as an object:
 `state`, `holder`, `run` (the status file), `jobs` with `rate_per_min`, `eta_seconds` and
 `quiet_seconds`, and `notes`.
+
+## `ka config`
+
+```bash
+ka config set bund.api-key            # prompts for the DIP key, without echo
+printf %s "$KEY" | ka config set bund.api-key   # or from stdin, for a script
+ka config get bund.api-key            # OSOe…Kkhw — masked
+ka config get bund.api-key --reveal   # the whole key, for a script that passes it on
+ka config list                        # every stored credential, masked, and the file
+ka config unset bund.api-key
+```
+
+Credentials live apart from the corpus, in `$XDG_CONFIG_HOME/openka/credentials` (else
+`~/.config/openka/credentials`): one JSON object, mode 0600 in a directory of mode 0700,
+replaced atomically. `ka config set` reads the value from a prompt that does not echo
+it, or from stdin when that is not a terminal. It refuses the value as an argument,
+which would put it into shell history and `ps`, and it does not repeat it in the error.
+A credentials file inside the corpus is refused, so neither `ka export` nor a copy of
+the corpus can carry it along.
+
+A source that needs a key (`bund`) takes it from `--api-key`, else from its environment
+variable (`DIP_API_KEY`), else from this file; the file is only read when the first two
+have nothing. One that can be read by others, belongs to another user or is a link is
+not used, and a command that needs it exits 3 naming the fix (`chmod 600 …`). Output,
+`--json` and logs show a key masked at most. The Bundestag rotates its public key, so
+a run that DIP rejects needs a new one stored with `ka config set bund.api-key`. No OS
+keychain is used yet: on servers, under cron, systemd and in containers it is usually
+locked or missing, and this file is what such a setup would use anyway.
 
 ## `ka doctor`
 

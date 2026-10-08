@@ -22,6 +22,8 @@ export interface CliHarness {
   stderr(): string;
   cleanup(): void;
   corpus: string;
+  /** `XDG_CONFIG_HOME` for this harness: the credentials file is `<config>/openka/credentials`. */
+  config: string;
 }
 
 /**
@@ -43,6 +45,8 @@ export function cliHarness(
   } = {},
 ): CliHarness {
   const corpus = mkdtempSync(join(tmpdir(), "openka-test-"));
+  // A config directory of its own, so no test reads or writes the user's credentials.
+  const config = mkdtempSync(join(tmpdir(), "openka-config-"));
   const out: string[] = [];
   const err: string[] = [];
   const files = new Map<string, Buffer>();
@@ -73,7 +77,7 @@ export function cliHarness(
         ...(options.pacing ?? { minHostIntervalMs: 0, sleep: async () => undefined }),
         ...(options.transport === undefined ? {} : { transport: options.transport }),
       }),
-    env: options.env ?? {},
+    env: { XDG_CONFIG_HOME: config, ...options.env },
     now: () => fixedNow,
     volumes: options.volumes ?? roomyVolumes,
   };
@@ -85,7 +89,11 @@ export function cliHarness(
     corpus,
     stdout: () => out.join("\n"),
     stderr: () => err.join("\n"),
-    cleanup: () => rmSync(corpus, { recursive: true, force: true }),
+    cleanup: () => {
+      rmSync(corpus, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
+    },
+    config,
   };
 }
 

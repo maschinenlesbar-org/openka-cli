@@ -48,6 +48,15 @@ drive (`blobStoreProblem`), `lockStatus()`, `catalogGaps` and a count of the pla
 files anywhere in the corpus (`platformFiles`) into problems and warnings, writing
 nothing. `removePlatformFiles(store)` deletes those files under the corpus lock.
 
+**Credentials, apart from the corpus.** `CredentialStore` keeps named credentials
+(`bund.api-key`) in one JSON file, `resolveCredentialsPath(env)` =
+`$XDG_CONFIG_HOME/openka/credentials`, else `$HOME/.config/openka/credentials`. It is
+written atomically with mode 0600 in a directory of mode 0700. Read, it must be a
+regular file owned by this user that no one else can read, or it is a `StoreError`
+naming the fix. `assertOutside(corpusRoot)` refuses a file inside a corpus;
+`credentialNameProblem`, `credentialValueProblem` and `maskCredential` are the rules
+`ka config` uses.
+
 **A running sync's status.** `RunStatusRecorder` writes `run/status.json`
 (`getRunStatus`/`putRunStatus`, replaced atomically) as a sync goes — on each job's
 start, discovery and end, and at most every `RUN_STATUS_EVERY_MS` in between, with
@@ -116,6 +125,7 @@ and catalog rows whose file is gone.
 - **`src/fts.ts`** — The full-text index: tokenizer, scoring and sharding — all pure functions, so the ranking of a search result is reproducible and unit-testable without touching a filesystem.
 - **`src/indexer.ts`** — Keeping the catalog and the inverted index in step with the records.
 - **`src/volume.ts`** — What a corpus is stored on: the filesystem and the free space of its volumes, and the refusals a sync makes before it writes.
+- **`src/credentials.ts`** — Credentials kept apart from the corpus: the user's credentials file.
 - **`src/run-status.ts`** — What a running sync is doing, readable from another terminal: the status file and `ka status`'s reading of it.
 - **`src/doctor.ts`** — `ka doctor`: the volumes, the lock, the catalog against the record files, and the macOS files beside them.
 - **`src/stats.ts`** — `corpusStats`: what is in a corpus, counted from its catalog — the numbers `ka stats` prints; `corpusDiskUsage`: what it takes on disk (`ka stats --disk`).
@@ -126,7 +136,7 @@ and catalog rows whose file is gone.
 Everything is re-exported from the package root:
 
 ```
-FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles, QueueProgress, queueProgressKey, RunStatus, JobStatus, JobState, JobEnd, RunResult, RunStatusRecorder, RUN_STATUS_EVERY_MS, RATE_WINDOW_MS, RunReport, JobReport, readRunReport, parseDurationSeconds, durationProblem
+FileStore, isSafeKey, isPlatformFile, abstainedFieldKind, RECORD_ID_REASON, recordIdProblem, assertRecordId, TITLE_BOOST, normalizeTerm, tokenize, shardOf, Posting, IndexShard, termFrequencies, scoreTerm, ParsedQuery, parseQuery, normalizeWithOffsets, containsPhrase, indexableFields, toCatalogEntry, IndexTarget, indexRecord, unindexRecord, CatalogGaps, catalogGaps, markHumanVerified, reindexAll, ParliamentStats, CorpusStats, corpusStats, CORPUS_ENV, CORPUS_DEFAULT_TEXT, CorpusRootOptions, resolveCorpusRoot, BLOBS_ENV, resolveBlobRoot, FileStoreOptions, LockCorpusOptions, LOCK_POLL_MS, lockCorpus, DiskUsage, CorpusDiskUsage, corpusDiskUsage, documentRoleProblem, ArchivedDocument, archivedDocument, CatalogEntry, SourceState, BlobStore, RecordStore, CatalogStore, IndexStore, SourceStateStore, ArtifactStore, EmbeddingStore, Store, LockableStore, withCorpusLock, EmbeddingSet, FilesystemKind, REFUSED_FILESYSTEMS, RefusedFilesystem, FilesystemInfo, VolumeSpace, VolumeProbe, DEFAULT_MIN_FREE_BYTES, filesystemKind, existingAncestor, parseMountLine, mountFor, systemVolumes, VolumeRole, VolumeCheckOptions, VolumeReport, CorpusLocation, blobsApart, checkCorpusVolumes, SpaceGuard, spaceGuard, parseByteSize, byteSizeProblem, formatBytes, CorpusDiagnosis, diagnoseCorpus, platformFiles, removePlatformFiles, QueueProgress, queueProgressKey, CredentialStore, resolveCredentialsPath, credentialNameProblem, credentialValueProblem, maskCredential, RunStatus, JobStatus, JobState, JobEnd, RunResult, RunStatusRecorder, RUN_STATUS_EVERY_MS, RATE_WINDOW_MS, RunReport, JobReport, readRunReport, parseDurationSeconds, durationProblem
 ```
 
 ## Depends on

@@ -10,6 +10,7 @@ import { registerMaintain } from "./commands/maintain.js";
 import { registerOutput } from "./commands/output.js";
 import { registerDoctor } from "./commands/doctor.js";
 import { registerStatus } from "./commands/status.js";
+import { registerConfig } from "./commands/config.js";
 
 export { defaultDeps } from "./io.js";
 
@@ -32,6 +33,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   registerOutput(program, deps);
   registerDoctor(program, deps);
   registerStatus(program, deps);
+  registerConfig(program, deps);
 
   program.addHelpText(
     "after",

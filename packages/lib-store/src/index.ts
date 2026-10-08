@@ -8,3 +8,4 @@ export * from "./archive.js";
 export * from "./volume.js";
 export * from "./doctor.js";
 export * from "./run-status.js";
+export * from "./credentials.js";

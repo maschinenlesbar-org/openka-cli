@@ -13,7 +13,7 @@ import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@m
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
-import { action, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
+import { action, apiKeyLookup, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { formatCount, pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
@@ -223,7 +223,6 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           (ctx.opts["source"] as string[] | undefined) ??
           SOURCE_REGISTRY.filter((entry) => entry.parliament !== undefined && entry.factory !== undefined).map((entry) => entry.key);
         const sourcesToCount = keys.map((key) => createSource(key));
-        const flagKey = ctx.opts["apiKey"] as string | undefined;
         const pacer = new HostPacer();
         if (ctx.global.quiet !== true && ctx.opts["json"] !== true) {
           ctx.deps.io.err(`Asking ${sourcesToCount.length} upstream(s) for their count…`);
@@ -232,8 +231,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           sources: sourcesToCount,
           store: ctx.store(),
           engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
-          apiKeyFor: (source) =>
-            source.apiKeyEnv === undefined ? undefined : (flagKey ?? nonBlankEnv(ctx.deps.env[source.apiKeyEnv])),
+          apiKeyFor: apiKeyLookup(ctx),
           ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
         });
         // Named on its own, a source that could not be counted is the command's
@@ -282,7 +280,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           const source = entry.factory();
           io.out(`tier:       ${source.tier}`);
           io.out(`homepage:   ${source.homepage}`);
-          if (source.apiKeyEnv !== undefined) io.out(`credential: --api-key or ${source.apiKeyEnv}`);
+          if (source.apiKeyEnv !== undefined) io.out(`credential: --api-key, ${source.apiKeyEnv} or \`ka config set ${source.key}.api-key\``);
           io.out("");
           io.out(source.notes);
         }
@@ -293,8 +291,4 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
 /** commander accumulator for a repeatable `--source`: each a key the registry knows. */
 function collectSourceKey(value: string, previous: string[] = []): string[] {
   return previous.concat([problemParser(sourceKeyProblem)(value)]);
-}
-
-function nonBlankEnv(value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === "" ? undefined : value;
 }

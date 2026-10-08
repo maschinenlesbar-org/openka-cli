@@ -32,6 +32,7 @@ import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } f
 import {
   action,
   addVolumeOptions,
+  apiKeyLookup,
   choiceOption,
   type ActionContext,
   parseBoundedInt,
@@ -105,21 +106,21 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const queue = selection.queue;
         let jobs = selection.jobs;
 
-        const flagKey = ctx.opts["apiKey"] as string | undefined;
-        const keyFor = (source: Source): string | undefined =>
-          source.apiKeyEnv === undefined ? undefined : (flagKey ?? nonBlank(ctx.deps.env[source.apiKeyEnv]));
+        const keyFor: (source: Source) => string | undefined = apiKeyLookup(ctx);
         if (ctx.opts["all"] === true) {
           // Named on its own, a source without its credential is an error, as it
           // always was. Under --all it is one of many, and failing the whole run
           // for the one source the user never asked for by name would make --all
           // unusable without a DIP key.
           const missing = (job: CliJob): string | undefined => {
-            const env = createSource(job.spec.source).apiKeyEnv;
-            return env !== undefined && flagKey === undefined && nonBlank(ctx.deps.env[env]) === undefined ? env : undefined;
+            const source = createSource(job.spec.source);
+            return source.apiKeyEnv !== undefined && keyFor(source) === undefined ? source.apiKeyEnv : undefined;
           };
           for (const job of jobs) {
             const env = missing(job);
-            if (env !== undefined) io.err(`Note: skipped ${job.label}: it needs a credential (--api-key or ${env}).`);
+            if (env !== undefined) {
+              io.err(`Note: skipped ${job.label}: it needs a credential (--api-key, ${env} or \`ka config set ${job.spec.source}.api-key\`).`);
+            }
           }
           jobs = jobs.filter((job) => missing(job) === undefined);
         }
@@ -482,10 +483,6 @@ function fetchLabel(plan: SyncPlan, metadataOnly: boolean): string {
   if (estimate === undefined) return `${count} (size unknown: no document could be measured)`;
   const basis = estimate.basis === "corpus" ? `average of ${formatCount(estimate.sampled)} in the corpus` : `HEAD-sampled n=${estimate.sampled}`;
   return `${count} (≈ ${formatBytes(estimate.total_bytes)} at ${formatBytes(estimate.average_bytes)} avg; ${basis})`;
-}
-
-function nonBlank(value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === "" ? undefined : value;
 }
 
 function errorMessage(error: unknown): string {

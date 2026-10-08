@@ -343,6 +343,13 @@ What the library now computes that a `ka` action used to compute on its own:
   on one corpus used to lose postings and catalog rows while both reported success.
   A lock whose process on this host is gone is taken over. `lockStatus()` reads it
   without taking it (`ka doctor`).
+- **Where a credential comes from** — `apiKeyLookup` (`cli-ka`'s `shared.ts`): `--api-key`,
+  then the source's environment variable, then the credentials file (`CredentialStore`,
+  `lib-store`: `$XDG_CONFIG_HOME/openka/credentials`, mode 0600, atomic, refused when
+  others can read it or it lies inside the corpus). `ka config set` reads the value
+  through `CliIO.readSecret` — a prompt without echo, or stdin — and never from argv; the
+  CLI harness gives every test a config directory of its own, so no test touches the
+  user's file.
 - **What a running sync is doing** — `RunStatusRecorder` (`lib-store`) keeps
   `<corpus>/run/status.json` from `syncJobs`' callbacks, on the CLI's clock, and never
   throws: a status that cannot be written is a warning, not a stopped sync.

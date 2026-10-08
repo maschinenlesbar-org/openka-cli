@@ -26,6 +26,7 @@ use them.
 ## What is in here
 
 - **`src/commands/doctor.ts`** — `ka doctor` — whether the corpus is safe to write to and complete to read from.
+- **`src/commands/config.ts`** — `ka config` — credentials kept apart from the corpus, read without echo.
 - **`src/commands/status.ts`** — `ka status` — what a running sync is doing, from another terminal.
 - **`src/commands/sync-jobs.ts`** — The jobs one `ka sync` runs: `--source key@window` and `--plan`, the job logs, a plan's progress and its summary.
 - **`src/commands/maintain.ts`** — `verify`, `review`, `reindex` and `sources` — the commands that keep the corpus honest about itself.

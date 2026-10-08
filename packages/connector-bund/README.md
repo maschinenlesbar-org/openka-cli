@@ -6,7 +6,7 @@ DIP, the Dokumentations- und Informationssystem für Parlamentsmaterialien, is a
 JSON API with filters and cursor pagination, so this adapter is what the concept
 calls a trivial deterministic mapper.
 
-**It needs an API key** (`--api-key`, `DIP_API_KEY`). The Bundestag publishes a
+**It needs an API key** (`ka config set bund.api-key`, `--api-key`, `DIP_API_KEY`). The Bundestag publishes a
 public one and issues personal keys on request. **No key is bundled here.**
 
 A Kleine Anfrage is a *Vorgang* with two *Vorgangspositionen*: the question and the

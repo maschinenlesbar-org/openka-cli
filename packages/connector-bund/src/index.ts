@@ -59,7 +59,7 @@ export function drucksacheWindow(options: { period?: number; until?: string }): 
 function requireKey(apiKey: string | undefined): asserts apiKey is string {
   if (apiKey === undefined || apiKey.trim() === "") {
     throw new UsageError(
-      `The Bundestag DIP API needs a key. Pass --api-key, or set ${DIP_API_KEY_ENV}. ` +
+      `The Bundestag DIP API needs a key. Store it with \`ka config set bund.api-key\`, or pass --api-key, or set ${DIP_API_KEY_ENV}. ` +
         "The Bundestag publishes a public key on https://dip.bundestag.de/über-dip/hilfe/api.",
     );
   }

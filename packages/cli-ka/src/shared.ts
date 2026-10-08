@@ -27,6 +27,7 @@ import {
 } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
+import { CredentialStore } from "@maschinenlesbar.org/openka-lib-store";
 import type { CliDeps } from "./io.js";
 import {
   BLOBS_ENV,
@@ -160,6 +161,8 @@ export interface ActionContext {
   deps: CliDeps;
   global: GlobalOptions;
   opts: Record<string, unknown>;
+  /** Every argument commander saw for the command, declared or not. */
+  args: readonly string[];
   /** The corpus, opened lazily so `--help` never creates a directory. */
   store(): Store;
   /**
@@ -196,6 +199,7 @@ export function action(
       deps,
       global,
       opts: command.opts(),
+      args: command.args,
       corpusRoot: () => root,
       store: () => (store ??= deps.createStore(root, storeOptions)),
       existingStore: () => {
@@ -234,6 +238,25 @@ function noteIgnoredFiles(deps: CliDeps, store: FileStore): void {
     `Note: ignored ${ignored.length} macOS AppleDouble/.DS_Store file(s) in the corpus; ` +
       `\`ka doctor --fix\` or \`dot_clean ${sanitizeForTerminal(store.root)}\` removes them.`,
   );
+}
+
+/**
+ * Where a source's credential comes from, in this order: `--api-key`, the source's
+ * environment variable (`DIP_API_KEY`), then the credentials file (`ka config set
+ * bund.api-key`). The file is read only when the first two have nothing, so a
+ * command that needs no key never trips over a broken one.
+ */
+export function apiKeyLookup(ctx: ActionContext): (source: { key: string; apiKeyEnv?: string }) => string | undefined {
+  const flag = ctx.opts["apiKey"] as string | undefined;
+  let store: CredentialStore | undefined;
+  return (source) => {
+    if (source.apiKeyEnv === undefined) return undefined;
+    if (flag !== undefined) return flag;
+    const fromEnv = ctx.deps.env[source.apiKeyEnv];
+    if (fromEnv !== undefined && fromEnv.trim() !== "") return fromEnv;
+    store ??= CredentialStore.fromEnv(ctx.deps.env);
+    return store.get(`${source.key}.api-key`);
+  };
 }
 
 /** Print a JSON value, pretty by default and compact with --compact. */

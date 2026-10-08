@@ -1,16 +1,21 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
-import { CorpusLockedError, MissingCorpusError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, MissingCorpusError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
 import type { CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import {
   DEFAULT_MIN_FREE_BYTES,
+  CredentialStore,
+  credentialNameProblem,
+  credentialValueProblem,
+  maskCredential,
+  resolveCredentialsPath,
   RUN_STATUS_EVERY_MS,
   RunStatusRecorder,
   blobsApart,
@@ -1562,5 +1567,71 @@ describe("the run status", () => {
   it("reads durations for --stalled-after", () => {
     deepStrictEqual(["90", "90s", "10m", "2h", "1h30m", "1m30s"].map(parseDurationSeconds), [90, 90, 600, 7200, 5400, 90]);
     for (const bad of ["", "0", "10x", "m", "-5", "1.5h"]) match(durationProblem(bad) ?? "", /Expected a duration/, bad);
+  });
+});
+
+// Issue #18: credentials kept apart from the corpus, in a file only the user can read.
+describe("the credentials file", () => {
+  const dir = (): string => mkdtempSync(join(tmpdir(), "openka-credentials-"));
+  const KEY = "OSOegLs.PR2lwJ1dwCeje9vTj7FPOt3hvpYKtwKkhw";
+
+  it("keeps a credential in a file of mode 0600 in a directory of 0700, replaced whole", () => {
+    const root = dir();
+    try {
+      const store = CredentialStore.fromEnv({ XDG_CONFIG_HOME: root });
+      strictEqual(store.path, join(root, "openka", "credentials"));
+      strictEqual(store.get("bund.api-key"), undefined);
+      store.set("bund.api-key", KEY);
+      store.set("other.api-key", "x1");
+      deepStrictEqual([store.get("bund.api-key"), store.names()], [KEY, ["bund.api-key", "other.api-key"]]);
+      if (process.platform !== "win32") {
+        strictEqual(statSync(store.path).mode & 0o777, 0o600);
+        strictEqual(statSync(join(root, "openka")).mode & 0o777, 0o700);
+      }
+      deepStrictEqual(readdirSync(join(root, "openka")), ["credentials"], "no temporary file is left");
+      strictEqual(store.unset("other.api-key"), true);
+      strictEqual(store.unset("other.api-key"), false);
+      strictEqual(store.unset("bund.api-key"), true);
+      ok(!existsSync(store.path), "an empty file is removed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads nothing from a file others can read, a link or a broken file, and says how to fix it", { skip: process.platform === "win32" }, () => {
+    const root = dir();
+    try {
+      const store = new CredentialStore(join(root, "credentials"));
+      store.set("bund.api-key", KEY);
+      chmodSync(store.path, 0o644);
+      throws(() => store.get("bund.api-key"), (err: unknown) => err instanceof StoreError && /can be read by others \(mode 644\); it is not used until only you can: chmod 600 /.test(err.message));
+      chmodSync(store.path, 0o600);
+      writeFileSync(store.path, "{", { mode: 0o600 });
+      throws(() => store.get("bund.api-key"), /is not valid JSON/);
+      writeFileSync(store.path, '{"bund.api-key": 1}', { mode: 0o600 });
+      throws(() => store.get("bund.api-key"), /not an object of names and strings/);
+      rmSync(store.path);
+      symlinkSync(join(root, "elsewhere"), store.path);
+      throws(() => store.get("bund.api-key"), /is not a regular file/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a name or a value that cannot be one, and a file inside the corpus", () => {
+    const store = new CredentialStore("/nowhere/credentials");
+    for (const name of ["bund", "Bund.api-key", "../x.y", "bund.api key"]) match(credentialNameProblem(name) ?? "", /Not a credential name/, name);
+    for (const value of ["", "  ", "abc def", "abc\n", "a\u0007b"]) ok(credentialValueProblem(value) !== undefined, JSON.stringify(value));
+    throws(() => store.set("bund", KEY), UsageError);
+    throws(() => store.set("bund.api-key", "two words"), UsageError);
+    throws(() => new CredentialStore("/corpus/x/credentials").assertOutside("/corpus"), /would be inside the corpus \/corpus/);
+    new CredentialStore("/home/me/.config/openka/credentials").assertOutside("/corpus");
+  });
+
+  it("finds the file through XDG_CONFIG_HOME, else HOME, and masks what it shows", () => {
+    strictEqual(resolveCredentialsPath({ XDG_CONFIG_HOME: "/x", HOME: "/h" }), join("/x", "openka", "credentials"));
+    strictEqual(resolveCredentialsPath({ XDG_CONFIG_HOME: "relative", HOME: "/h" }), join("/h", ".config", "openka", "credentials"));
+    strictEqual(resolveCredentialsPath({ HOME: "/h" }), join("/h", ".config", "openka", "credentials"));
+    deepStrictEqual([maskCredential(KEY), maskCredential("short"), maskCredential("x")], ["OSOe…Kkhw", "****", "****"]);
   });
 });

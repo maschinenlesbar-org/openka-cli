@@ -30,6 +30,12 @@ export interface CliIO {
    * which a run adds to rather than replaces. Unset, job logs are not written.
    */
   appendFile?(path: string, text: string): void;
+  /**
+   * Read a secret for `ka config set`: on a terminal, after `prompt` on stderr and
+   * without echo; from a pipe, the whole input. Never from argv. Unset, there is no
+   * way in, and `ka config set` says so.
+   */
+  readSecret?(prompt: string): Promise<string>;
 }
 
 export interface CliDeps {
@@ -130,6 +136,48 @@ function readerGone(err: NodeJS.ErrnoException): boolean {
   return err.code === "EPIPE" || err.code === "ENOTCONN";
 }
 
+/**
+ * `CliIO.readSecret` over real streams. From a pipe or a file (`< key.txt`, `printf %s
+ * "$KEY" |`) the whole input, one trailing newline dropped. On a terminal the input is
+ * read in raw mode, so nothing is echoed: Enter ends it, Backspace takes a character
+ * back, Ctrl-C stops (exit 130, nothing stored) and Ctrl-D ends it like Enter.
+ */
+export async function readSecretFrom(
+  stdin: NodeJS.ReadStream | NodeJS.ReadableStream,
+  stderr: Pick<NodeJS.WriteStream, "write">,
+  prompt: string,
+): Promise<string> {
+  const tty = stdin as NodeJS.ReadStream;
+  if (tty.isTTY !== true || typeof tty.setRawMode !== "function") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    return Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/, "");
+  }
+  stderr.write(prompt);
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const finish = (error?: Error): void => {
+      tty.removeListener("data", onData);
+      tty.setRawMode(false);
+      tty.pause();
+      stderr.write("\n");
+      if (error === undefined) resolve(value);
+      else reject(error);
+    };
+    const onData = (chunk: Buffer | string): void => {
+      for (const ch of chunk.toString()) {
+        if (ch === "\r" || ch === "\n" || ch === "\u0004") return finish();
+        if (ch === "\u0003") return finish(new InterruptedRunError("SIGINT", "nothing was stored."));
+        if (ch === "\u007f" || ch === "\b") value = value.slice(0, -1);
+        else if (ch >= " ") value += ch;
+      }
+    };
+    tty.setRawMode(true);
+    tty.resume();
+    tty.on("data", onData);
+  });
+}
+
 export const defaultIO: CliIO = {
   out: (text) => process.stdout.write(text + "\n"),
   err: (text) => process.stderr.write(text + "\n"),
@@ -140,6 +188,7 @@ export const defaultIO: CliIO = {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, text);
   },
+  readSecret: (prompt) => readSecretFrom(process.stdin, process.stderr, prompt),
 };
 
 export const defaultDeps: CliDeps = {

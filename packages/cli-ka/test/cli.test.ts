@@ -1,20 +1,20 @@
 // The CLI, driven in-process through `run()` with a real temporary corpus, a
 // scripted transport and a fixed clock. No subprocess, no network.
 
-import { deepStrictEqual, doesNotMatch, match, ok, strictEqual, throws } from "node:assert/strict";
+import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { FileStore, RunStatusRecorder, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import { CredentialStore, FileStore, RunStatusRecorder, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { hostname, tmpdir } from "node:os";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
-import { defaultIO, handleOutputErrors } from "../src/io.js";
+import { InterruptedRunError, defaultIO, handleOutputErrors, readSecretFrom } from "../src/io.js";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
@@ -188,7 +188,7 @@ describe("ka", () => {
   it("explains what one source does", async () => {
     const harness = cliHarness();
     strictEqual(await run(["--corpus", harness.corpus, "sources", "show", "bund"], harness.deps), EXIT_OK);
-    match(harness.stdout(), /credential: --api-key or DIP_API_KEY/);
+    match(harness.stdout(), /credential: --api-key, DIP_API_KEY or `ka config set bund\.api-key`/);
     harness.cleanup();
   });
 
@@ -434,7 +434,7 @@ describe("ka", () => {
     const harness = cliHarness({ transport });
     try {
       await run(["--corpus", harness.corpus, "sync", "--all", "--limit", "1"], harness.deps);
-      match(harness.stderr(), /^Note: skipped bund: it needs a credential \(--api-key or DIP_API_KEY\)\.$/m);
+      match(harness.stderr(), /^Note: skipped bund: it needs a credential \(--api-key, DIP_API_KEY or `ka config set bund\.api-key`\)\.$/m);
       ok(!requests.some((request) => request.url.includes("dip.bundestag.de")));
       match(harness.stdout(), /^berlin: 1 discovered, 1 stored/m);
     } finally {
@@ -1036,6 +1036,129 @@ describe("ka", () => {
       } finally {
         harness.cleanup();
       }
+    });
+  });
+
+  describe("ka config (issue #18)", () => {
+    const KEY = "OSOegLs.PR2lwJ1dwCeje9vTj7FPOt3hvpYKtwKkhw";
+    const dip = (): ReturnType<typeof scriptedTransport> =>
+      scriptedTransport([{ match: "search.dip.bundestag.de", body: '{"numFound":0,"documents":[]}', headers: { "content-type": "application/json" } }]);
+
+    it("stores the DIP key from a prompt, never from an argument, and shows it masked", async () => {
+      const harness = cliHarness();
+      try {
+        const prompts: string[] = [];
+        harness.deps.io.readSecret = async (prompt) => {
+          prompts.push(prompt);
+          return `  ${KEY}\n`;
+        };
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_OK, harness.stderr());
+        deepStrictEqual(prompts, ["bund.api-key: "]);
+        const path = join(harness.config, "openka", "credentials");
+        match(harness.stderr(), new RegExp(`^Stored bund\\.api-key \\(OSOe…Kkhw\\) in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.$`, "m"));
+        deepStrictEqual(JSON.parse(readFileSync(path, "utf8")), { "bund.api-key": KEY });
+        if (process.platform !== "win32") strictEqual(statSync(path).mode & 0o777, 0o600);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "config", "get", "bund.api-key"], harness.deps), EXIT_OK);
+        strictEqual(harness.stdout(), "OSOe…Kkhw");
+        strictEqual(await run(["--corpus", harness.corpus, "config", "list"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^bund\.api-key {2}OSOe…Kkhw$/m);
+        ok(!harness.stdout().includes(KEY) && !harness.stderr().includes(KEY), "never in full unless asked");
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "config", "get", "bund.api-key", "--reveal"], harness.deps), EXIT_OK);
+        strictEqual(harness.stdout(), KEY);
+
+        // The value as an argument is refused, and not echoed back.
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key", "s3cret-value"], harness.deps), EXIT_USAGE);
+        doesNotMatch(harness.stderr(), /s3cret-value/);
+        match(harness.stderr(), /ka config set takes the name only/);
+        for (const argv of [["config", "set", "berlin.api-key"], ["config", "get", "bund.password"]]) {
+          strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+        }
+        match(harness.stderr(), /Not a credential: expected one of bund\.api-key\./);
+        harness.deps.io.readSecret = async () => "two words";
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /a key is one token\. Nothing was stored\./);
+
+        strictEqual(await run(["--corpus", harness.corpus, "config", "unset", "bund.api-key"], harness.deps), EXIT_OK);
+        ok(!existsSync(path));
+        strictEqual(await run(["--corpus", harness.corpus, "config", "get", "bund.api-key"], harness.deps), EXIT_ERROR);
+        match(harness.stderr(), /No bund\.api-key is stored in .*; ka config set bund\.api-key stores one\./);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("lets ka sync take the stored key after --api-key and DIP_API_KEY", async () => {
+      const harness = cliHarness({ transport: dip().transport });
+      try {
+        new CredentialStore(join(harness.config, "openka", "credentials")).set("bund.api-key", KEY);
+        const authorizations = async (argv: string[], env: NodeJS.ProcessEnv = {}): Promise<string[]> => {
+          const { transport, requests } = dip();
+          const h = cliHarness({ transport, env: { XDG_CONFIG_HOME: harness.config, ...env } });
+          try {
+            strictEqual(await run(["--corpus", h.corpus, "sync", "--source", "bund", "--limit", "1", ...argv], h.deps), EXIT_OK, h.stderr());
+            ok(!h.stdout().includes(KEY) && !h.stderr().includes(KEY), "the key is not printed");
+            return [...new Set(requests.map((request) => String(request.headers?.["authorization"])))];
+          } finally {
+            rmSync(h.corpus, { recursive: true, force: true });
+          }
+        };
+        deepStrictEqual(await authorizations([]), [`ApiKey ${KEY}`]);
+        deepStrictEqual(await authorizations([], { DIP_API_KEY: "from-env" }), ["ApiKey from-env"]);
+        deepStrictEqual(await authorizations(["--api-key", "from-flag"], { DIP_API_KEY: "from-env" }), ["ApiKey from-flag"]);
+
+        // A credentials file others can read is not used: a corpus problem naming the fix.
+        if (process.platform !== "win32") {
+          chmodSync(join(harness.config, "openka", "credentials"), 0o644);
+          strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "bund", "--limit", "1"], harness.deps), EXIT_STORE);
+          match(harness.stderr(), /can be read by others \(mode 644\).*chmod 600/);
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("refuses a credentials file inside the corpus", async () => {
+      const harness = cliHarness({ env: {} });
+      try {
+        harness.deps.env = { XDG_CONFIG_HOME: join(harness.corpus, "config") };
+        harness.deps.io.readSecret = async () => KEY;
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /would be inside the corpus .*; set XDG_CONFIG_HOME to a directory outside it\./);
+        ok(!existsSync(join(harness.corpus, "config")));
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("reads a secret without echo on a terminal, and whole from a pipe", async () => {
+      const written: string[] = [];
+      const stderr = { write: (text: string) => (written.push(text), true) };
+      const fakeTty = (keys: string): NodeJS.ReadStream => {
+        const emitter = new EventEmitter() as unknown as NodeJS.ReadStream & { raw: boolean[] };
+        const raw: boolean[] = [];
+        Object.assign(emitter, {
+          isTTY: true,
+          raw,
+          setRawMode: (on: boolean) => (raw.push(on), emitter),
+          resume: () => {
+            setImmediate(() => emitter.emit("data", Buffer.from(keys)));
+            return emitter;
+          },
+          pause: () => emitter,
+        });
+        return emitter;
+      };
+      strictEqual(await readSecretFrom(fakeTty("abX\u007fc\r"), stderr, "key: "), "abc");
+      deepStrictEqual(written, ["key: ", "\n"], "the prompt and a newline, never a typed character");
+      await rejects(readSecretFrom(fakeTty("ab\u0003"), stderr, "key: "), (err: unknown) => err instanceof InterruptedRunError && err.exitCode === 130);
+      const { PassThrough } = await import("node:stream");
+      const pipe = new PassThrough();
+      pipe.end(`${KEY}\n`);
+      strictEqual(await readSecretFrom(pipe, stderr, "unused: "), KEY);
     });
   });
 
