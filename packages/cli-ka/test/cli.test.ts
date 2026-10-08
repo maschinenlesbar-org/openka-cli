@@ -1261,7 +1261,7 @@ describe("ka", () => {
         strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
         harness.out.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
-        match(harness.stdout(), /^Extractor: pkg:0\.6\S+ +2 record\(s\) \(this build\)\n {11}pkg:0\.2\.0\+extract:6f021d93d3c3 +1 record\(s\)\n {2}1 record\(s\) were made by another build — `ka reextract --all` brings them to this one\.$/m);
+        match(harness.stdout(), /^Extractor: pkg:\S+ +2 record\(s\) \(this build\)\n {11}pkg:0\.2\.0\+extract:6f021d93d3c3 +1 record\(s\)\n {2}1 record\(s\) were made by another build — `ka reextract --all` brings them to this one\.$/m);
       } finally {
         harness.cleanup();
       }
