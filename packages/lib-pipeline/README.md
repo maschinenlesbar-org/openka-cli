@@ -18,7 +18,8 @@ Everything is re-exported from the package root:
 
 ```
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
-CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, SyncWindow,
+CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, syncRefsProblem, isSelective, SyncWindow,
+selectRefs, RefSelection, isComplete, noteOutcome, refIs, sameReference,
 syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
 syncJobs, SyncJob, SyncJobsOptions, jobListProblem,
 SyncJobSpec, jobLabel, parseJobSpec, jobSpecProblem, withDefaults, windowOf,
@@ -27,6 +28,16 @@ parseToml, TomlDocument, TomlTable, TomlValue,
 planSync, SyncPlanOptions, SyncPlan, SizeEstimate, DRY_RUN_SAMPLE, ESTIMATE_MIN_KNOWN, documentsToFetch, corpusEstimate,
 countSources, CountSourcesOptions, SourceCountRow
 ```
+
+**Only some of a window** (issue #27). A `SyncWindow` also says which of the Anfragen
+discovery finds are handled: `refs`, `retryFailed` and `onlyNew` (`src/select.ts`,
+`selectRefs`). The rest cost no request and are counted in `SyncReport.skipped`. Every
+run keeps the refs it failed on in `SourceState.failed` (lib-store) until a later run
+handles them, and `retryFailed` takes those. A selective run discovers with `force`, since
+a feed's 304 lists nothing to select from. It restores the source's own validators like an
+interrupted run does, since it did not cover the window. `jobLabel`/`parseJobSpec` write
+the selection as `ref=…`, `retry-failed` and `only-new`, and a plan as `ref`,
+`retry_failed` and `only_new`.
 
 **Upstream beside the corpus.** `countSources({ sources, store, engineFor, period? })`
 (`src/count.ts`) asks each source's `count()`, one after the other, and sets the

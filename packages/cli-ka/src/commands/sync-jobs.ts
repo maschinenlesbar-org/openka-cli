@@ -56,7 +56,21 @@ const WINDOW_FLAGS = [
   ["until", "--until"],
   ["period", "--period"],
   ["limit", "--limit"],
+  ["ref", "--ref"],
+  ["retryFailed", "--retry-failed"],
+  ["onlyNew", "--only-new"],
 ] as const;
+
+/** The window field each flag fills: `--ref` collects into `refs`. */
+const WINDOW_FIELD: Record<(typeof WINDOW_FLAGS)[number][0], keyof SyncWindow> = {
+  since: "since",
+  until: "until",
+  period: "period",
+  limit: "limit",
+  ref: "refs",
+  retryFailed: "retryFailed",
+  onlyNew: "onlyNew",
+};
 
 /**
  * The jobs the flags name: `--plan`, or `--source` (each with an optional window of its
@@ -80,7 +94,7 @@ export function selectJobs(ctx: ActionContext): JobSelection {
   const defaults: SyncWindow = {};
   for (const [key] of WINDOW_FLAGS) {
     const value = ctx.opts[key];
-    if (value !== undefined) (defaults as Record<string, unknown>)[key] = value;
+    if (value !== undefined) (defaults as Record<string, unknown>)[WINDOW_FIELD[key]] = value;
   }
   const specs = named ?? adapterSourceKeys().map((source) => ({ source }));
   // Named by what was typed (`bund`, `bund@period=21`), so a plain `--source berlin

@@ -60,6 +60,20 @@ export interface SourceState {
   /** Last error message, kept so `ka sources list` can show a degraded source. */
   last_error?: string;
   documents_seen?: number;
+  /**
+   * The Anfragen whose last attempt failed and that have not been handled since, so
+   * `ka sync --retry-failed` can take only them (issue #27). A ref leaves the list
+   * when a later run stores it or finds it unchanged.
+   */
+  failed?: FailedRef[];
+}
+
+/** An Anfrage a sync failed on: its reference as discovered, the error, and when. */
+export interface FailedRef {
+  reference: string;
+  error: string;
+  /** ISO instant of the run that failed on it. */
+  at: string;
 }
 
 /**

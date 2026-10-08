@@ -890,6 +890,113 @@ describe("sync pipeline", () => {
     });
   });
 
+  describe("fetching chosen Anfragen again (issue #27)", () => {
+    /** Four Anfragen, each with a document of its own, and the URLs the run asked for. */
+    const fourSource = (refs = ["8/1", "8/2", "8/3", "8/4"], seen: DiscoverOptions[] = [], state?: DiscoverResult["state"]): Source => ({
+      key: "sachsen-anhalt",
+      parliament: "sachsen-anhalt",
+      tier: "text_layer",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async (options) => {
+        seen.push(options);
+        return {
+          warnings: [],
+          ...(state === undefined ? {} : { state }),
+          refs: refs.map((reference) => ({
+            key: reference,
+            reference,
+            legislative_period: 8,
+            title: `Anfrage ${reference}`,
+            documentType: "kleine_anfrage" as const,
+            askers: [],
+            answered_by: {},
+            dates: { answered: "2024-04-10" },
+            documents: [{ role: "combined_pdf" as const, url: `https://example.invalid/d${reference.slice(2)}.pdf`, urlStable: true }],
+          })),
+        };
+      },
+    });
+    const pdfs = (transportRoutes: { match: string; status?: number }[] = []) =>
+      scriptedTransport([...transportRoutes.map((route) => ({ ...route, body: route.status === undefined ? PDF : "" })), { match: ".pdf", body: PDF }]);
+    const fetched = (requests: { url: string }[]): string[] => requests.map((request) => new URL(request.url).pathname).filter((path) => path.endsWith(".pdf"));
+
+    it("--ref handles only the named Anfragen, asks nothing about the rest, and says which it did not find", async () => {
+      const store = new MemoryStore();
+      const { transport, requests } = pdfs();
+      const report = await sync({ source: fourSource(), store, engine: testEngine(transport), refs: ["8/2", "08/4", "8/9"] });
+      deepStrictEqual(fetched(requests), ["/d2.pdf", "/d4.pdf"]);
+      deepStrictEqual([report.discovered, report.skipped, report.stored], [4, 2, 2]);
+      ok(store.hasRecord("sachsen-anhalt-8-2") && !store.hasRecord("sachsen-anhalt-8-1"));
+      ok(report.warnings.some((warning) => /--ref: not in this window, so not synced: 8\/9/.test(warning)), report.warnings.join("\n"));
+    });
+
+    it("records what failed, and --retry-failed handles only that until it succeeds", async () => {
+      const store = new MemoryStore();
+      const first = pdfs([{ match: "/d3.pdf", status: 404 }]);
+      // A 404 is a gap, not a failure; a transport that throws is one.
+      const broken: Transport = async (request) => {
+        if (request.url.endsWith("/d3.pdf")) throw new Error("socket hang up");
+        return first.transport(request);
+      };
+      const report = await sync({ source: fourSource(), store, engine: testEngine(broken, { maxRetries: 0 }), now: () => new Date("2026-10-08T10:00:00Z") });
+      strictEqual(report.failed, 1);
+      deepStrictEqual(store.getSourceState("sachsen-anhalt").failed?.map((entry) => [entry.reference, entry.at]), [["8/3", "2026-10-08T10:00:00Z"]]);
+
+      const { transport, requests } = pdfs();
+      const retry = await sync({ source: fourSource(), store, engine: testEngine(transport), retryFailed: true });
+      deepStrictEqual(fetched(requests), ["/d3.pdf"]);
+      deepStrictEqual([retry.skipped, retry.stored], [3, 1]);
+      strictEqual(store.getSourceState("sachsen-anhalt").failed, undefined);
+
+      const again = await sync({ source: fourSource(), store, engine: testEngine(transport), retryFailed: true });
+      strictEqual(again.skipped, 4);
+      ok(again.warnings.some((warning) => /no failed Anfrage of sachsen-anhalt is recorded/.test(warning)));
+    });
+
+    it("--retry-failed names the failures that lie outside the window", async () => {
+      const store = new MemoryStore();
+      store.putSourceState({ source: "sachsen-anhalt", http_cache: {}, failed: [{ reference: "8/2391", error: "timeout", at: "2026-10-01T00:00:00Z" }] });
+      const { transport } = pdfs();
+      const report = await sync({ source: fourSource(), store, engine: testEngine(transport), retryFailed: true });
+      strictEqual(report.skipped, 4);
+      ok(report.warnings.some((warning) => /1 failed Anfrage\(n\) of sachsen-anhalt are not in this window: 8\/2391/.test(warning)));
+      // Not handled, so still recorded.
+      deepStrictEqual(store.getSourceState("sachsen-anhalt").failed?.map((entry) => entry.reference), ["8/2391"]);
+    });
+
+    it("--only-new skips what the corpus holds complete, without a request, and takes what is missing or lacks its document", async () => {
+      const store = new MemoryStore();
+      const gap = pdfs([{ match: "/d2.pdf", status: 404 }]);
+      await sync({ source: fourSource(["8/1", "8/2", "8/3"]), store, engine: testEngine(gap.transport) });
+      deepStrictEqual(store.getRecord("sachsen-anhalt-8-2")?.source_documents, [], "stored without its document");
+
+      const { transport, requests } = pdfs();
+      const report = await sync({ source: fourSource(), store, engine: testEngine(transport), onlyNew: true });
+      deepStrictEqual(fetched(requests), ["/d2.pdf", "/d4.pdf"]);
+      deepStrictEqual([report.skipped, report.stored], [2, 2]);
+    });
+
+    it("discovers the whole window, and leaves the source's own validators as they were", async () => {
+      const store = new MemoryStore();
+      store.putSourceState({ source: "sachsen-anhalt", http_cache: { feed: { etag: "old" } } });
+      const seen: DiscoverOptions[] = [];
+      const { transport } = pdfs();
+      await sync({ source: fourSource(undefined, seen, { source: "sachsen-anhalt", http_cache: { feed: { etag: "new" } } }), store, engine: testEngine(transport), onlyNew: true });
+      strictEqual(seen[0]?.force, true, "a feed's 304 would hide the refs");
+      deepStrictEqual(store.getSourceState("sachsen-anhalt").http_cache["feed"], { etag: "old" }, "the window was not covered");
+    });
+
+    it("counts the selection in a dry run", async () => {
+      const store = new MemoryStore();
+      const { transport, requests } = pdfs();
+      const plan = await planSync({ source: fourSource(), store, engine: testEngine(transport), refs: ["8/1"], sample: 0 });
+      deepStrictEqual([plan.discovered, plan.selected, plan.documents_to_fetch], [4, 1, 1]);
+      strictEqual(fetched(requests).length, 0);
+    });
+  });
+
   it("reports the discovered count before the first record, for a progress display", async () => {
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
     const seen: string[] = [];
@@ -1621,6 +1728,7 @@ describe("sync jobs", () => {
       ["bund@2026-01-01..,limit=50", { source: "bund", since: "2026-01-01", limit: 50 }],
       ["bund@..2026-06-30", { source: "bund", until: "2026-06-30" }],
       ["bund@since=2026-01-01,until=2026-02-01,period=21", { source: "bund", since: "2026-01-01", until: "2026-02-01", period: 21 }],
+      ["saarland@2023-01-01..,ref=08/2391,ref=KA 8/4011,retry-failed,only-new", { source: "saarland", since: "2023-01-01", refs: ["08/2391", "KA 8/4011"], retryFailed: true, onlyNew: true }],
     ] as const) {
       deepStrictEqual(parseJobSpec(text, { sourceProblem: known }), spec, text);
       strictEqual(jobLabel(parseJobSpec(text)), text.replace("since=2026-01-01,until=2026-02-01", "2026-01-01..2026-02-01"), text);
@@ -1639,6 +1747,9 @@ describe("sync jobs", () => {
       ["bund@2026-06-01..2026-01-01", /Must be >= since \(2026-06-01\)/],
       ["bund@period=21,period=20", /sets period twice/],
       ["bund@2026", /"2026" in "bund@2026" is not a window\. Expected <source>\[@<window>\]/],
+      ["bund@ref=21/1,ref=21/1", /"21\/1" is named twice/],
+      ["bund@ref=", /A reference is blank/],
+      ["bund@only-new,only-new", /says only-new twice/],
     ] as const) {
       throws(() => parseJobSpec(text, { sourceProblem: known }), (err: unknown) => err instanceof OpenKaValidationError && reason.test(err.message), text);
       match(jobSpecProblem(text, { sourceProblem: known }) ?? "", reason, text);
@@ -1752,12 +1863,36 @@ describe("a plan file", () => {
     deepStrictEqual(parseSyncQueue('[defaults]\nperiod = [2, 1]\n[[job]]\nsource = "bund"').jobs.map((job) => job.label), ["bund@period=2", "bund@period=1"]);
   });
 
+  it("selects Anfragen per job: a ref or a list of them, retry_failed and only_new, a job's false over a default's true", () => {
+    const queue = parseSyncQueue(
+      [
+        "[defaults]",
+        "only_new = true",
+        "[[job]]",
+        'source = "bund"',
+        'ref = "21/7449"',
+        "[[job]]",
+        'source = "berlin"',
+        'ref = ["19/1", "19/2"]',
+        "retry_failed = true",
+        "only_new = false",
+        "[[job]]",
+        'source = "berlin"',
+      ].join("\n"),
+      { sourceProblem: known },
+    );
+    deepStrictEqual(
+      queue.jobs.map((job) => job.label),
+      ["bund@ref=21/7449,only-new", "berlin@ref=19/1,ref=19/2,retry-failed", "berlin@only-new"],
+    );
+  });
+
   it("refuses a plan it cannot read in full, naming the file, the job and the field", () => {
     for (const [text, reason] of [
       ["", /jobs\.toml: no \[\[job\]\] in the plan/],
       ['[[job]]\nsource = "narnia"', /jobs\.toml \[\[job\]\] #1 \(narnia\): source: Unknown source "narnia"/],
       ["[[job]]\nsince = 2026-01-01", /#1: source is required/],
-      ['[[job]]\nsource = "bund"\nperiods = [21]', /#1 \(bund\): unknown key "periods"; expected source, since, until, period, limit, log/],
+      ['[[job]]\nsource = "bund"\nperiods = [21]', /#1 \(bund\): unknown key "periods"; expected source, since, until, period, limit, ref, retry_failed, only_new, log/],
       ['[[job]]\nsource = "bund"\nperiod = 0', /#1 \(bund\): Invalid period/],
       ['[[job]]\nsource = "bund"\nperiod = []', /period must be an integer or a non-empty list/],
       ['[[job]]\nsource = "bund"\nsince = "2026-06-01"\nuntil = "2026-01-01"', /Must be >= since/],
@@ -1766,6 +1901,9 @@ describe("a plan file", () => {
       ['[[job]]\nsource = "bund"\nlog = "x-{wp}.log"', /unknown placeholder \{wp\}/],
       ['[jobs]\nsource = "bund"', /unknown "jobs"; a plan file has \[\[job\]\] tables and one \[defaults\]/],
       ['[[job]]\nsource = "bund"\n[defaults]\ncontinue_on_error = "yes"', /continue_on_error must be true or false/],
+      ['[[job]]\nsource = "bund"\nref = []', /ref must be a reference or a non-empty list/],
+      ['[[job]]\nsource = "bund"\nonly_new = "yes"', /only_new must be true or false/],
+      ['[[job]]\nsource = "bund"\nref = "21/1"\n[defaults]\nref = "21/2"', /\[defaults\]: unknown key "ref"/],
     ] as const) {
       throws(() => parseSyncQueue(text, { where: "jobs.toml", sourceProblem: known }), (err: unknown) => err instanceof UsageError && reason.test(err.message), text);
     }

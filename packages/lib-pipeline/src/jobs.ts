@@ -18,14 +18,19 @@ export interface SyncJobSpec extends SyncWindow {
 
 /**
  * The job's name in output, logs and a plan's progress: the source key alone for a
- * job without a window of its own, otherwise `key@since..until,period=N,limit=N`
- * with only the parts it has — the same text `parseJobSpec` reads.
+ * job without a window of its own, otherwise
+ * `key@since..until,period=N,limit=N,ref=R,…,retry-failed,only-new` with only the parts
+ * it has — the same text `parseJobSpec` reads. A selection is part of the name, so a
+ * plan's `--only-new` job is not taken for the full one done earlier.
  */
 export function jobLabel(spec: SyncJobSpec): string {
   const parts: string[] = [];
   if (spec.since !== undefined || spec.until !== undefined) parts.push(`${spec.since ?? ""}..${spec.until ?? ""}`);
   if (spec.period !== undefined) parts.push(`period=${spec.period}`);
   if (spec.limit !== undefined) parts.push(`limit=${spec.limit}`);
+  for (const ref of spec.refs ?? []) parts.push(`ref=${ref}`);
+  if (spec.retryFailed === true) parts.push("retry-failed");
+  if (spec.onlyNew === true) parts.push("only-new");
   return parts.length === 0 ? spec.source : `${spec.source}@${parts.join(",")}`;
 }
 
@@ -37,12 +42,13 @@ function integerOf(text: string): number | undefined {
 /** The grammar, for every message that refuses a spec. */
 const SPEC_SYNTAX =
   "Expected <source>[@<window>], the window one or more of SINCE..UNTIL (either side may be empty), " +
-  "since=YYYY-MM-DD, until=YYYY-MM-DD, period=N and limit=N, separated by commas — like bund@period=21 " +
-  "or berlin@2025-01-01..2025-12-31.";
+  "since=YYYY-MM-DD, until=YYYY-MM-DD, period=N and limit=N, and the selection ref=REFERENCE (repeatable), " +
+  "retry-failed and only-new, separated by commas — like bund@period=21, berlin@2025-01-01..2025-12-31 " +
+  "or sachsen-anhalt@2023-01-01..2023-12-31,ref=08/2391.";
 
 /**
- * Read `berlin`, `berlin@2025-01-01..2025-12-31`, `bund@period=21` or
- * `bund@2026-01-01..,limit=50`. The window obeys `normalizeSyncWindow`; whether the
+ * Read `berlin`, `berlin@2025-01-01..2025-12-31`, `bund@period=21`,
+ * `bund@2026-01-01..,limit=50` or `sachsen-anhalt@2023-01-01..,ref=08/2391,ref=08/2390`. The window obeys `normalizeSyncWindow`; whether the
  * key names a source is the caller's `sourceProblem` (the registry's rule), since
  * this package does not know the registry. Throws `OpenKaValidationError`.
  */
@@ -64,9 +70,16 @@ export function parseJobSpec(text: string, options: { sourceProblem?: Problem<st
     window[key] = value;
   };
   for (const part of body.split(",")) {
+    const ref = /^ref=(.*)$/.exec(part);
     const range = /^(.*)\.\.(.*)$/.exec(part);
     const assignment = /^(since|until|period|limit)=(.*)$/.exec(part);
-    if (range !== null) {
+    if (ref !== null) {
+      spec.refs = [...(spec.refs ?? []), ref[1] as string];
+    } else if (part === "retry-failed" || part === "only-new") {
+      const key = part === "retry-failed" ? "retryFailed" : "onlyNew";
+      if (spec[key] === true) refuse(`"${text}" says ${part} twice.`);
+      spec[key] = true;
+    } else if (range !== null) {
       const [, since = "", until = ""] = range;
       if (since === "" && until === "") refuse(`"${part}" is an empty range.`);
       if (since !== "") set("since", dateOf(since, text, refuse));
@@ -86,7 +99,13 @@ export function parseJobSpec(text: string, options: { sourceProblem?: Problem<st
       refuse(`"${part}" in "${text}" is not a window.`);
     }
   }
-  return normalizeSyncWindow(spec);
+  try {
+    return normalizeSyncWindow(spec);
+  } catch (err) {
+    // A blank or repeated ref= is the window's rule; it is refused as a spec like the rest.
+    if (spec.refs === undefined) throw err;
+    return refuse(`${(err as { reason?: unknown }).reason ?? (err instanceof Error ? err.message : String(err))} (in "${text}")`);
+  }
 }
 
 function dateOf(value: string, text: string, refuse: (reason: string) => never): string {
@@ -122,5 +141,8 @@ export function windowOf(window: SyncWindow): SyncWindow {
   if (window.until !== undefined) out.until = window.until;
   if (window.period !== undefined) out.period = window.period;
   if (window.limit !== undefined) out.limit = window.limit;
+  if (window.refs !== undefined) out.refs = [...window.refs];
+  if (window.retryFailed === true) out.retryFailed = true;
+  if (window.onlyNew === true) out.onlyNew = true;
   return out;
 }

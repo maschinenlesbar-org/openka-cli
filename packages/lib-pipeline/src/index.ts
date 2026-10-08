@@ -14,10 +14,12 @@ import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenle
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
-import { normalizeSyncWindow } from "./window.js";
+import { isSelective, normalizeSyncWindow, type SyncWindow } from "./window.js";
+import { noteOutcome, sameReference, selectRefs } from "./select.js";
 import { corpusEstimate, documentsToFetch } from "./plan.js";
 
-export interface SyncOptions {
+/** One source over one window (`SyncWindow`: what is discovered, and which of it is handled). */
+export interface SyncOptions extends SyncWindow {
   source: Source;
   store: Store;
   engine: FetchEngine;
@@ -29,10 +31,6 @@ export interface SyncOptions {
   robots?: RobotsPolicy;
   /** The run's documents, shared the same way: a URL one source fetched is not fetched again. */
   documents?: DocumentMemo;
-  since?: string;
-  until?: string;
-  period?: number;
-  limit?: number;
   apiKey?: string;
   perceiver?: Perceiver;
   /**
@@ -138,6 +136,8 @@ export interface SyncTiming {
 export interface SyncReport {
   source: string;
   discovered: number;
+  /** Discovered, and left out by the job's selection (`--ref`, `--retry-failed`, `--only-new`) — no request was made for them. */
+  skipped: number;
   stored: number;
   unchanged: number;
   failed: number;
@@ -243,6 +243,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   const report: SyncReport = {
     source: source.key,
     discovered: 0,
+    skipped: 0,
     stored: 0,
     unchanged: 0,
     failed: 0,
@@ -257,6 +258,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   };
 
   const startedAt = isoInstant(now());
+  const selective = isSelective(options);
   // One reading of each host's robots.txt for the whole run: the connector's gate
   // (if it has one) and every document check below ask the same policy.
   const robots = options.robots ?? new RobotsPolicy(engine, options.ignoreRobots === true);
@@ -271,7 +273,9 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
       ...(options.period !== undefined ? { period: options.period } : {}),
       ...(options.limit !== undefined ? { limit: options.limit } : {}),
       ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
-      ...(options.force === true ? { force: true } : {}),
+      // A selection needs the refs: a feed unchanged since the last sync answers 304
+      // and lists none, and the one Anfrage asked for would not be found.
+      ...(options.force === true || selective ? { force: true } : {}),
       ...(options.ignoreRobots === true ? { ignoreRobots: true } : {}),
       robots,
     };
@@ -305,20 +309,23 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
     }
   }
   report.upstreamUnchanged = discovered.unchanged === true;
+  const selection = selectRefs(discovered.refs, options, { source, store, state });
+  report.skipped = selection.skipped;
+  report.warnings.push(...selection.warnings);
 
   // Before the first download: will it fit? Only an estimate this source's own
   // archive supports is used — a sync makes no HEAD requests to guess — so a
   // source's first sync is guarded by the floor alone (and `--dry-run` samples).
   if (options.space !== undefined && options.metadataOnly !== true) {
     const cache = (discovered.state ?? state).http_cache;
-    const toFetch = documentsToFetch(discovered.refs, cache, store);
+    const toFetch = documentsToFetch(selection.refs, cache, store);
     const estimate = toFetch.length === 0 ? undefined : corpusEstimate(store, cache, toFetch.length);
     const problem = estimate === undefined ? undefined : options.space.fitProblem(estimate.total_bytes);
     if (problem !== undefined) {
       throw new StoreError(`${source.key}: ${toFetch.length} document(s) to fetch, and ${problem}. Nothing was downloaded.`);
     }
   }
-  options.onDiscovered?.(discovered.refs.length);
+  options.onDiscovered?.(selection.refs.length);
 
   // Conditional-request state travels through the run and is persisted once at
   // the end, so an interrupted sync cannot leave a validator recorded for bytes
@@ -336,7 +343,8 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   // One catalog write per `CATALOG_CHECKPOINT` refs rather than one per record:
   // the catalog grows with the corpus, and rewriting it per record made a sync
   // quadratic in catalog bytes. Each batch also flushes when the loop throws.
-  const refs = discovered.refs;
+  const refs = selection.refs;
+  let failed = state.failed ?? [];
   let index = 0;
   const handle = async (ref: DocRef): Promise<void> => {
     index++;
@@ -359,6 +367,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
         report.unchanged++;
       }
       report.bytesFetched += outcome.bytesFetched;
+      failed = noteOutcome(failed, ref, undefined, startedAt);
       options.onProgress?.({
         index,
         total: refs.length,
@@ -372,6 +381,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
       report.failed++;
       const message = err instanceof Error ? err.message : String(err);
       report.errors.push(`${ref.reference}: ${message}`);
+      failed = noteOutcome(failed, ref, message, startedAt);
       options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message, ...details() });
     }
   };
@@ -397,18 +407,24 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   // A run stopped early still records the validators of what it stored: every one
   // of them belongs to bytes that are in the blob store. It does not count as a
   // success, since the window was not covered.
-  const nextState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
-  if (report.interrupted || report.lowSpace !== undefined) {
+  const nextState: SourceState = { ...(discovered.state ?? state), http_cache: httpCache, last_sync: startedAt };
+  if (failed.length > 0) nextState.failed = failed;
+  else delete nextState.failed;
+  const stoppedEarly = report.interrupted || report.lowSpace !== undefined;
+  if (stoppedEarly || selective) {
     // The source's own validators — a feed's ETag — say "everything this window holds
-    // was handled", which a run that stopped early cannot say: kept, the next run of
-    // the same window got a 304 and did nothing (issue #11). They go back to what they
-    // were; the documents' validators stay, since their bytes are archived.
+    // was handled", which a run that stopped early, or handled a selection of it,
+    // cannot say: kept, the next run of the same window got a 304 and did nothing
+    // (issue #11). They go back to what they were; the documents' validators stay,
+    // since their bytes are archived.
     for (const key of Object.keys(discovered.state?.http_cache ?? {})) {
       if (JSON.stringify(discovered.state?.http_cache[key]) === JSON.stringify(state.http_cache[key])) continue;
       const before = state.http_cache[key];
       if (before === undefined) delete httpCache[key];
       else httpCache[key] = before;
     }
+  }
+  if (stoppedEarly) {
     // Neither a success nor a degraded source: last_success and last_error stay.
   } else if (report.errors.length === 0) {
     nextState.last_success = startedAt;
@@ -698,19 +714,6 @@ function recordIdFor(request: { parliament: string; metadata: SourceMetadata }):
 }
 
 /**
- * Do two references name the same Drucksache? Compared as values where both parse,
- * so a Land that pads the period one day (`08/980`) and not the next (`8/980`) is
- * a correction of the same record, not a collision with another.
- */
-function sameReference(a: string, b: string): boolean {
-  if (a === b) return true;
-  const left = parseReference(a);
-  const right = parseReference(b);
-  if (left === undefined || right === undefined) return false;
-  return periodNumber(left) === periodNumber(right) && left.number === right.number && left.prefix === right.prefix;
-}
-
-/**
  * Is the stored record still the right answer for these inputs? Compares the
  * extractor version, the hash of the bytes that were parsed, and the metadata the
  * source supplied — so a correction upstream does trigger a rewrite, and a re-run
@@ -908,7 +911,8 @@ export function isoInstant(date: Date): string {
   return `${date.toISOString().slice(0, 19)}Z`;
 }
 export { sourceStatus, type SourceStatusRow } from "./status.js";
-export { SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, type SyncWindow } from "./window.js";
+export { SYNC_LIMIT_MIN, isSelective, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, syncRefsProblem, type SyncWindow } from "./window.js";
+export { isComplete, noteOutcome, refIs, sameReference, selectRefs, type RefSelection } from "./select.js";
 export {
   jobListProblem,
   planLanes,

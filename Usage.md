@@ -36,6 +36,9 @@ ka sync --source bund@period=21 --source bund@period=20  # one source, two windo
 ka sync --plan jobs.toml --wait                         # a queue of jobs from a plan file
 ka sync --source bund --wait                            # queue behind a run holding the corpus
 ka sync --source berlin --since 2026-01-01 --dry-run    # how many, and how much disk, before committing to it
+ka sync --source sachsen-anhalt --since 2023-01-01 --until 2023-12-31 --ref 08/2391 --ref 08/2390   # only these two
+ka sync --source sachsen-anhalt --since 2023-01-01 --retry-failed   # only what failed last time
+ka sync --source sachsen-anhalt --since 2023-01-01 --only-new       # only what the corpus lacks
 ka sync --source berlin --min-free 20G                  # keep 20 GB free (default 1 GB; 0 checks none)
 ka --corpus /Volumes/STICK/openka sync --source berlin --allow-fs exfat   # a corpus on exFAT, on purpose
 ```
@@ -102,7 +105,32 @@ written out, separated by commas. What a source leaves out, the shared `--since`
 several times with different windows (`bund@period=21 --source bund@period=20`): its
 jobs share the source's lane and run one after the other, in the order given. Output,
 progress and `--json` (a `job` field on each entry) name every job by what was typed —
-`bund@period=21`, or just `berlin` for a source without a window of its own.
+`bund@period=21`, or just `berlin` for a source without a window of its own. A job's
+selection is part of its name (`berlin@only-new`), so a plan does not take it for the
+full job.
+
+**Only some Anfragen of a window.** A sync re-checks every Anfrage it discovers, and a
+stored one costs a request; at Sachsen-Anhalt's 4 s floor that is about 15 a minute, so
+hours to reach the few that matter. Three flags choose what a sync handles. Discovery
+still runs over the window, and an Anfrage left out costs nothing:
+
+- `--ref <reference>` (repeatable): only these, or ones they were filed under before
+  (an unanswered Sachsen-Anhalt question named `08/4011` finds `KA 8/4011`). A
+  reference the window does not hold is a warning naming it.
+- `--retry-failed`: only the Anfragen whose last attempt failed. A sync records each
+  failure per source, and a later run that stores the Anfrage, or finds it unchanged,
+  clears it. A failure outside the window is named in a warning. With 0.7.0 or earlier,
+  nothing was recorded, so name those with `--ref`.
+- `--only-new`: skip every Anfrage the corpus holds with all its documents, and take the
+  rest: those not in the corpus, and those stored without a document (a glued link, a
+  document over the size cap, a timeout).
+
+`--ref` and `--retry-failed` together take either; `--only-new` then narrows what they
+took. `--limit` counts what discovery returns, before the selection. Such a run discovers
+the whole window and leaves the feed's own validators as they were, since it did not
+handle the whole window. The report says `N not selected`, `--json` has `skipped`,
+`--dry-run` adds `N selected`. In a `--source` window they are `ref=08/2391` (repeatable),
+`retry-failed` and `only-new`: `sachsen-anhalt@2023-01-01..2023-12-31,ref=08/2391`.
 
 **A plan file.** `--plan jobs.toml` runs a queue of jobs from a file:
 
@@ -122,8 +150,9 @@ log    = "logs/sync-bund-wp{period}.log"
 ```
 
 A `[[job]]` takes `source` (required), `since`, `until`, `period` (a number, or a list
-for one job per period), `limit` and `log`; `[defaults]` takes the same but `source`,
-plus `continue_on_error`. The file is the part of TOML these need: strings, integers,
+for one job per period), `limit`, `ref` (a reference, or a list), `retry_failed`,
+`only_new` and `log`; `[defaults]` takes the same but `source` and `ref`, plus
+`continue_on_error`. A job's `only_new = false` overrides a default's `true`. The file is the part of TOML these need: strings, integers,
 `true`/`false`, dates (quoted or not), lists and comments. Anything else, or an unknown
 key, is refused with the file and line, and nothing of the plan runs. The jobs run like
 several `--source`s: different parliaments side by side, one parliament's jobs one

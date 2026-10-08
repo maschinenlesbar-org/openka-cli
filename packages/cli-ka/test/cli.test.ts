@@ -54,6 +54,45 @@ async function seeded(): Promise<ReturnType<typeof cliHarness>> {
   return harness;
 }
 
+describe("ka sync --ref, --retry-failed and --only-new (issue #27)", () => {
+  it("handles only what is asked for, and asks nothing about the rest", async () => {
+    const { transport, requests } = berlinTransport();
+    const harness = cliHarness({ transport });
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_OK, harness.stderr());
+      const pdfs = (): number => requests.filter((request) => request.url.endsWith(".pdf")).length;
+      const before = pdfs();
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--only-new", "--json"], harness.deps), EXIT_OK, harness.stderr());
+      const report = JSON.parse(harness.stdout()) as { discovered: number; skipped: number; stored: number; unchanged: number };
+      strictEqual(report.skipped, report.discovered);
+      deepStrictEqual([report.stored, report.unchanged, pdfs()], [0, 0, before]);
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--ref", "19/10006", "--ref", "19/77777"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^berlin: \d+ discovered, \d+ not selected, 0 stored, 1 unchanged, 0 failed$/m);
+      match(harness.stderr(), /--ref: not in this window, so not synced: 19\/77777/);
+
+      harness.out.length = 0;
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--ref", "19/10006", "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^berlin ref 19\/10006: \d+ Anfragen discovered, \d+ already in corpus, 1 selected$/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("refuses a blank reference, and the selection flags beside --plan", async () => {
+    const harness = cliHarness();
+    try {
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--ref", " "], harness.deps), EXIT_USAGE);
+      strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", "jobs.toml", "--only-new"], harness.deps), EXIT_USAGE);
+      match(harness.stderr(), /put --only-new in the plan/);
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("a source blocked by robots.txt", () => {
   // A daily `ka sync --source sachsen-anhalt` could not tell "blocked" from "nothing
   // new": both printed "0 discovered", exited 0, and stamped the source as synced.

@@ -16,6 +16,12 @@
 //   period = [21, 20, 19, 18]
 //   log    = "logs/sync-bund-wp{period}.log"
 //
+//   [[job]]
+//   source = "sachsen-anhalt"
+//   since  = "2023-01-01"
+//   until  = "2023-12-31"
+//   ref    = ["08/2391", "08/2390"]   # only these (issue #27); or retry_failed / only_new
+//
 // A job whose `period` is a list is one job per period, in that order. `[defaults]`
 // gives every job the window fields and `log` it does not set itself. The jobs run
 // as `syncJobs` runs them: different parliaments side by side, one parliament's jobs
@@ -40,9 +46,9 @@ export interface SyncQueue {
 }
 
 /** The keys a `[[job]]` table may set. */
-export const JOB_KEYS = ["source", "since", "until", "period", "limit", "log"] as const;
+export const JOB_KEYS = ["source", "since", "until", "period", "limit", "ref", "retry_failed", "only_new", "log"] as const;
 /** The keys `[defaults]` may set. */
-export const DEFAULT_KEYS = ["since", "until", "period", "limit", "log", "continue_on_error"] as const;
+export const DEFAULT_KEYS = ["since", "until", "period", "limit", "retry_failed", "only_new", "log", "continue_on_error"] as const;
 /** The placeholders a `log` path may use. */
 export const LOG_PLACEHOLDERS = ["source", "period", "since", "until", "limit"] as const;
 
@@ -98,6 +104,9 @@ export function parseSyncQueue(text: string, options: { where?: string; sourcePr
       } catch (err) {
         throw new UsageError(`${at}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
+      // A job's own `false` turns off a default's `true`; `windowOf` carries only `true`.
+      if (own.retryFailed === false) delete spec.retryFailed;
+      if (own.onlyNew === false) delete spec.onlyNew;
       const label = jobLabel(spec);
       const twice = seen.get(label);
       if (twice !== undefined) throw new UsageError(`${at}: ${label} is the same job as ${twice}`);
@@ -127,6 +136,20 @@ function fields(table: TomlTable, at: string): Fields {
     if (value === undefined) continue;
     if (typeof value !== "string") throw new UsageError(`${at}: ${key} must be a string${key === "log" ? "" : " (YYYY-MM-DD)"}`);
     out[key] = value;
+  }
+  const ref = table["ref"];
+  if (ref !== undefined) {
+    const refs = typeof ref === "string" ? [ref] : ref;
+    if (!Array.isArray(refs) || refs.length === 0 || !refs.every((r: TomlValue) => typeof r === "string")) {
+      throw new UsageError(`${at}: ref must be a reference or a non-empty list of them, like ["08/2391"]`);
+    }
+    out.refs = refs as string[];
+  }
+  for (const [key, field] of [["retry_failed", "retryFailed"], ["only_new", "onlyNew"]] as const) {
+    const value = table[key];
+    if (value === undefined) continue;
+    if (typeof value !== "boolean") throw new UsageError(`${at}: ${key} must be true or false`);
+    out[field] = value;
   }
   const limit = table["limit"];
   if (limit !== undefined) {

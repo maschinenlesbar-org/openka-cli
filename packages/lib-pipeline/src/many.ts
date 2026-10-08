@@ -34,6 +34,7 @@ import { RobotsPolicy, type Source } from "@maschinenlesbar.org/openka-lib-sourc
 import { withCorpusLock } from "@maschinenlesbar.org/openka-lib-store";
 import { DocumentMemo, sync, type ProgressEvent, type SyncOptions, type SyncReport } from "./index.js";
 import { normalizeSyncWindow, type SyncWindow } from "./window.js";
+import { windowOf } from "./jobs.js";
 
 /** One job of a run: a source over its own window, named by `label` (`jobLabel`). */
 export interface SyncJob {
@@ -131,13 +132,8 @@ export function planLanes<S extends Pick<Source, "parliament">>(sources: readonl
  */
 export async function syncSources(options: SyncSourcesOptions): Promise<SourceOutcome[]> {
   assertValid("sources", options.sources, sourceListProblem);
-  const { sources, since, until, period, limit, ...rest } = options;
-  const window = normalizeSyncWindow({
-    ...(since === undefined ? {} : { since }),
-    ...(until === undefined ? {} : { until }),
-    ...(period === undefined ? {} : { period }),
-    ...(limit === undefined ? {} : { limit }),
-  });
+  const { sources, since: _since, until: _until, period: _period, limit: _limit, refs: _refs, retryFailed: _retry, onlyNew: _onlyNew, ...rest } = options;
+  const window = normalizeSyncWindow(windowOf(options));
   return syncJobs({ ...rest, jobs: sources.map((source) => ({ label: source.key, source, window })) });
 }
 

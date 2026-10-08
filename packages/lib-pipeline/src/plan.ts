@@ -20,7 +20,9 @@ import { makeRecordId, referenceSlug } from "@maschinenlesbar.org/openka-lib-mod
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
 import { statSync } from "node:fs";
-import { normalizeSyncWindow, type SyncWindow } from "./window.js";
+import { isSelective, normalizeSyncWindow, type SyncWindow } from "./window.js";
+import { windowOf } from "./jobs.js";
+import { selectRefs } from "./select.js";
 
 /** The most documents a dry run asks for with HEAD to estimate their size. */
 export const DRY_RUN_SAMPLE = 20;
@@ -31,7 +33,7 @@ export const ESTIMATE_MIN_KNOWN = 20;
 export interface SyncPlanOptions extends SyncWindow {
   source: Source;
   /** Read only: records, blobs and source state. Nothing is written. */
-  store: Pick<Store, "getSourceState" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact" | "assertBlobStore">;
+  store: Pick<Store, "getSourceState" | "getRecord" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact" | "assertBlobStore">;
   engine: FetchEngine;
   apiKey?: string;
   metadataOnly?: boolean;
@@ -58,6 +60,8 @@ export interface SyncPlan {
   discovered: number;
   /** Of those, the ones whose record the corpus holds already. */
   in_corpus: number;
+  /** With a selection (`--ref`, `--retry-failed`, `--only-new`): how many of the discovered a sync would handle. */
+  selected?: number;
   /** Document downloads a sync would make: URLs whose bytes the corpus does not hold. */
   documents_to_fetch: number;
   /** Absent when nothing is to be fetched or nothing could be measured. */
@@ -74,12 +78,7 @@ export interface SyncPlan {
  * engine the same way.
  */
 export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
-  const window = normalizeSyncWindow({
-    ...(options.since === undefined ? {} : { since: options.since }),
-    ...(options.until === undefined ? {} : { until: options.until }),
-    ...(options.period === undefined ? {} : { period: options.period }),
-    ...(options.limit === undefined ? {} : { limit: options.limit }),
-  });
+  const window = normalizeSyncWindow(windowOf(options));
   const { source, store, engine } = options;
   // Which documents the corpus holds is read from the blob store; with it unplugged,
   // every one would count as still to fetch.
@@ -96,7 +95,10 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     engine,
     store,
     state,
-    ...window,
+    ...(window.since === undefined ? {} : { since: window.since }),
+    ...(window.until === undefined ? {} : { until: window.until }),
+    ...(window.period === undefined ? {} : { period: window.period }),
+    ...(window.limit === undefined ? {} : { limit: window.limit }),
     force: true,
     ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
     ...(options.ignoreRobots === true ? { ignoreRobots: true } : {}),
@@ -113,10 +115,17 @@ export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
     warnings: [...discovered.warnings],
   };
   for (const ref of discovered.refs) if (isInCorpus(ref, source, store)) plan.in_corpus++;
+  let refs = discovered.refs;
+  if (isSelective(window) && discovered.blocked === undefined) {
+    const selection = selectRefs(discovered.refs, window, { source, store, state });
+    refs = selection.refs;
+    plan.selected = refs.length;
+    plan.warnings.push(...selection.warnings);
+  }
   if (options.metadataOnly === true) return plan;
 
   const cache = state.http_cache;
-  const toFetch = documentsToFetch(discovered.refs, cache, store);
+  const toFetch = documentsToFetch(refs, cache, store);
   plan.documents_to_fetch = toFetch.length;
   if (toFetch.length === 0) return plan;
 

@@ -16,19 +16,54 @@ export const syncLimitProblem: Problem<number> = intRangeProblem(SYNC_LIMIT_MIN)
 /** A legislative period to sync: an integer in `PERIOD_RANGE`. */
 export const syncPeriodProblem: Problem<number> = intRangeProblem(...PERIOD_RANGE);
 
-/** The part of the sync options that selects what is discovered. */
+/**
+ * The part of the sync options that says what a job covers: the window discovery
+ * looks at, and which of the Anfragen it finds are handled (issue #27).
+ */
 export interface SyncWindow {
   since?: string;
   until?: string;
   period?: number;
   limit?: number;
+  /**
+   * Handle only these references of the window, and the ones they were filed under
+   * before (`DocRef.formerly`). With `retryFailed` too, either one selects.
+   */
+  refs?: string[];
+  /** Handle only the Anfragen whose last attempt failed (`SourceState.failed`). */
+  retryFailed?: boolean;
+  /**
+   * Skip every Anfrage the corpus holds with all its documents, without a request for
+   * it; what is missing, or stored without a document, is handled.
+   */
+  onlyNew?: boolean;
 }
+
+/** Whether a window handles less than everything it discovers. */
+export function isSelective(window: SyncWindow): boolean {
+  return window.refs !== undefined || window.retryFailed === true || window.onlyNew === true;
+}
+
+/** The references to sync: at least one, none blank, none twice. */
+export const syncRefsProblem: Problem<readonly string[]> = (refs) => {
+  if (refs.length === 0) return "Name at least one reference.";
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    if (ref.trim() === "") return "A reference is blank.";
+    // A job's label lists its refs between commas (`jobLabel`); no reference has one.
+    if (ref.includes(",")) return `"${ref.trim()}" has a comma; name each reference on its own.`;
+    if (seen.has(ref.trim())) return `"${ref.trim()}" is named twice.`;
+    seen.add(ref.trim());
+  }
+  return undefined;
+};
 
 /**
  * Check a sync window and return it in canonical form (dates trimmed). Throws
  * `OpenKaValidationError` for a `since`/`until` that is not a `YYYY-MM-DD`
  * calendar date, an `until` before `since`, a `period` outside `PERIOD_RANGE` and
- * a `limit` below `SYNC_LIMIT_MIN` (both integers). Idempotent; omitted fields stay
+ * a `limit` below `SYNC_LIMIT_MIN` (both integers), and `refs` that `syncRefsProblem`
+ * refuses (trimmed otherwise). Idempotent; omitted fields stay
  * omitted. `sync()` calls it first.
  */
 export function normalizeSyncWindow<T extends SyncWindow>(window: T): T {
@@ -36,7 +71,9 @@ export function normalizeSyncWindow<T extends SyncWindow>(window: T): T {
   if (window.until !== undefined) assertValid("until", window.until, isoDateProblem);
   if (window.period !== undefined) assertValid("period", window.period, syncPeriodProblem);
   if (window.limit !== undefined) assertValid("limit", window.limit, syncLimitProblem);
+  if (window.refs !== undefined) assertValid("refs", window.refs, syncRefsProblem);
   const normalized: T = { ...window };
+  if (window.refs !== undefined) normalized.refs = window.refs.map((ref) => ref.trim());
   if (window.since !== undefined) normalized.since = normalizeIsoDate(window.since);
   if (window.until !== undefined) normalized.until = normalizeIsoDate(window.until);
   const { since, until } = normalized;

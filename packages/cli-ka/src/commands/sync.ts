@@ -35,6 +35,7 @@ import {
   apiKeyLookup,
   noteRequestFloors,
   choiceOption,
+  collect,
   type ActionContext,
   parseBoundedInt,
   parseIsoDate,
@@ -77,7 +78,11 @@ export function registerSync(program: Command, deps: CliDeps): void {
       collectJobSpec,
     )
     .option("--all", "every source with an adapter of its own (not the parlamentsspiegel aggregator)")
-    .option("--plan <file>", "run the jobs of a plan file ([[job]] tables: source, since, until, period, limit, log; see Usage.md)", parseNonEmpty)
+    .option(
+      "--plan <file>",
+      "run the jobs of a plan file ([[job]] tables: source, since, until, period, limit, ref, retry_failed, only_new, log; see Usage.md)",
+      parseNonEmpty,
+    )
     .option("--restart", "with --plan, run every job again, also those done in the plan's unfinished round")
     .option("--wait", "wait while another run holds the corpus, instead of exiting 3")
     .option("--dry-run", "discover only: count the Anfragen and estimate the download, fetching no document and writing nothing")
@@ -88,6 +93,13 @@ export function registerSync(program: Command, deps: CliDeps): void {
     // touched, and an --until before --since is refused by sync() itself.
     .option("--period <n>", "restrict to one legislative period", parseBoundedInt(...PERIOD_RANGE))
     .option("--limit <n>", "stop after this many Anfragen (per source)", parseBoundedInt(SYNC_LIMIT_MIN, SYNC_LIMIT_CAP))
+    .option(
+      "--ref <reference>",
+      "handle only this Anfrage of the window (repeatable), or one it was filed under before; the rest are not asked for",
+      collect,
+    )
+    .option("--retry-failed", "handle only the Anfragen of the window whose last attempt failed (with --ref: those as well)")
+    .option("--only-new", "skip every Anfrage the corpus holds with all its documents, without a request; handle the rest")
     .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
     .option("--metadata-only", "download no documents: a new record abstains on qa, a stored one is rebuilt from its archived documents")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
@@ -316,6 +328,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         if (!several && failed[0] !== undefined) throw failed[0].error;
 
         const handled = (report: SyncReport): number => report.stored + report.unchanged + report.failed;
+        const toHandle = (report: SyncReport): number => report.discovered - report.skipped;
         const interrupted = done.filter((outcome) => outcome.report.interrupted);
         const notStarted = outcomes.filter((outcome) => outcome.status === "skipped" && outcome.reason === "interrupted");
         const stopped =
@@ -323,7 +336,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
             ? new InterruptedRunError(
                 caught,
                 interrupted
-                  .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${outcome.report.discovered} Anfragen`)
+                  .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${toHandle(outcome.report)} Anfragen`)
                   .concat(notStarted.map((outcome) => `${outcome.job}: not started`))
                   .join("; ") + "; what was stored is catalogued. Run the same sync again to continue.",
               )
@@ -354,7 +367,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         if (low.length > 0) {
           throw new StoreError(
             low
-              .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${outcome.report.discovered} Anfragen — ${outcome.report.lowSpace}`)
+              .map((outcome) => `${outcome.job}: stopped after ${handled(outcome.report)} of ${toHandle(outcome.report)} Anfragen — ${outcome.report.lowSpace}`)
               .join("; ") + "; what was stored is catalogued. Free some space, then run the same sync again to continue.",
           );
         }
@@ -438,7 +451,8 @@ async function dryRun(
       } else {
         io.out(
           `${plan.source} ${windowLabel(plan.window)}: ${formatCount(plan.discovered)} Anfragen discovered, ` +
-            `${formatCount(plan.in_corpus)} already in corpus`,
+            `${formatCount(plan.in_corpus)} already in corpus` +
+            (plan.selected === undefined ? "" : `, ${formatCount(plan.selected)} selected`),
         );
         io.out(`${prefix}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
       }
@@ -506,6 +520,9 @@ function windowLabel(window: SyncPlan["window"]): string {
   if (window.since !== undefined || window.until !== undefined) parts.push(`${window.since ?? ""}..${window.until ?? ""}`);
   if (window.period !== undefined) parts.push(`WP ${window.period}`);
   if (window.limit !== undefined) parts.push(`first ${formatCount(window.limit)}`);
+  if (window.refs !== undefined) parts.push(`ref ${window.refs.join(", ")}`);
+  if (window.retryFailed === true) parts.push("failed before");
+  if (window.onlyNew === true) parts.push("only new");
   return parts.length === 0 ? "(default window)" : parts.join(" ");
 }
 
@@ -544,9 +561,12 @@ function printReport(io: CliIO, label: string, report: SyncReport, prefix: strin
     return;
   }
   io.out(
-    `${label}: ${report.discovered} discovered, ${report.stored} stored, ` +
+    `${label}: ${report.discovered} discovered, ${report.skipped > 0 ? `${report.skipped} not selected, ` : ""}${report.stored} stored, ` +
       `${report.unchanged} unchanged, ${report.failed} failed`,
   );
+  if (report.failed > 0) {
+    io.out(`${prefix}the failed Anfragen are recorded: the same sync with --retry-failed handles only them.`);
+  }
   if (report.needsReview > 0) {
     io.out(`${prefix}${report.needsReview} of the stored records have abstained fields — see \`ka review\`.`);
   }
