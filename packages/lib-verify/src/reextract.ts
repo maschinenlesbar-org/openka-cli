@@ -36,6 +36,12 @@ export interface ReextractResult {
   resolved: string[];
   /** Abstained fields the new extraction adds. */
   abstained: string[];
+  /**
+   * The Q/A before and after, compared by question number rather than by index: a new
+   * reading that finds one more pair shifts every `qa[n]` after it, and `resolved` /
+   * `abstained` then name fields that only moved (issue #26). Set for `changed`.
+   */
+  qa?: QaChange;
   /** A `human_verified` mark that went, since what the person checked changed. */
   droppedMark?: true;
   /**
@@ -46,6 +52,58 @@ export interface ReextractResult {
   movedTo?: string;
   duplicate?: true;
   reason?: string;
+}
+
+/** How many pairs, questions and answers a record reads. */
+export interface QaCounts {
+  pairs: number;
+  questions: number;
+  answers: number;
+}
+
+export interface QaChange {
+  before: QaCounts;
+  after: QaCounts;
+  /** By number, what is read now and was not: `17.question`, `9b.answer`, `9b` for a new pair. */
+  gained: string[];
+  /** By number, what was read and is not any more. */
+  lost: string[];
+}
+
+/** The Q/A of `before` and `after`, compared by question number. */
+export function compareQa(before: KaRecord, after: KaRecord): QaChange {
+  const counts = (record: KaRecord): QaCounts => ({
+    pairs: record.qa.length,
+    questions: record.qa.filter((pair) => pair.question !== undefined).length,
+    answers: record.qa.filter((pair) => pair.answer !== undefined).length,
+  });
+  // A number that appears twice is told apart by its order: `1`, `1#2`.
+  const byNumber = (record: KaRecord): Map<string, { question: boolean; answer: boolean }> => {
+    const out = new Map<string, { question: boolean; answer: boolean }>();
+    for (const pair of record.qa) {
+      let key = pair.number;
+      for (let n = 2; out.has(key); n++) key = `${pair.number}#${n}`;
+      out.set(key, { question: pair.question !== undefined, answer: pair.answer !== undefined });
+    }
+    return out;
+  };
+  const old = byNumber(before);
+  const now = byNumber(after);
+  const gained: string[] = [];
+  const lost: string[] = [];
+  for (const [number, pair] of now) {
+    const was = old.get(number);
+    if (was === undefined) gained.push(number);
+    if (pair.question && was?.question !== true) gained.push(`${number}.question`);
+    if (pair.answer && was?.answer !== true) gained.push(`${number}.answer`);
+  }
+  for (const [number, pair] of old) {
+    const is = now.get(number);
+    if (is === undefined) lost.push(number);
+    if (pair.question && is?.question !== true) lost.push(`${number}.question`);
+    if (pair.answer && is?.answer !== true) lost.push(`${number}.answer`);
+  }
+  return { before: counts(before), after: counts(after), gained, lost };
 }
 
 export interface ReextractOptions extends VerifyOptions {
@@ -169,6 +227,7 @@ async function reextractOne(
     abstained: [...after].filter((field) => !before.has(field)),
     ...(droppedMark ? { droppedMark: true as const } : {}),
     ...(movedTo === undefined ? {} : { movedTo }),
+    ...(differences.some((path) => path === "qa" || path.startsWith("qa[") || path.startsWith("qa.")) ? { qa: compareQa(stored, record) } : {}),
   };
   return { result, write: record };
 }

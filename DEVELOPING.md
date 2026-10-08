@@ -649,6 +649,22 @@ several items ("Zu 1. bis 4.", "Zu 6. a) und b)", sub-answers written "a. …" u
 1.:") and page-break debris at line starts ("1\fZu 1.:") — reading the first would be new
 inference about what a record says, and is a decision, not a fix.
 
+**Sub-questions answered together, and lists that close a question (issue #26).** An
+answer heading that names its sub-questions with lone letters ("Zu 8. a und b:", "Zu 9. a
+bis c:") now gives the answer to each of them, as "Zu 10. und 11.:" already did for whole
+numbers. The letters are read in answer headings only: "Fragen 1 a. bis c. und e. werden
+im Zusammenhang beantwortet" inside an answer (Sachsen-Anhalt 8/4080) is not four
+questions. A heading run into its text is also believed when its "?" closes a list of
+lettered sub-items. Those lines do not count towards `ASKS_WITHIN_LINES`, up to
+`ASKS_ACROSS_SUB_ITEMS` of them ("17.Wie hat sich … ⏎ a) Bargeld, ⏎ … ⏎ g) sonstige monetäre
+Vorteile)?", Berlin 19/25707). Measured on 3,852 Berlin and 3,087 Sachsen-Anhalt records
+of the user's corpus, 97 records changed: 93 read more (+403 questions, +513
+answers), 3 read the same, and one, 19/25707, now abstains on all of `qa`. Its sub-items
+sit under the right question at last, and the paper answers them under the parent ("Zu
+17.:"), so 27 of 67 items are answered, under `MIN_ANSWER_RATE_LARGE`. Counting such
+sub-items as answered would relax that check; it was left as it is, by the user's
+decision. Golden 19/22581.
+
 On an 8-document NRW window (2025-03 to 2025-04): 6
 parse-complete, 7 with Q/A pairs. On a 6-document Schleswig-Holstein window
 (2025-01 to 2025-06): 2 parse-complete, 4 with Q/A pairs, up from none at all.

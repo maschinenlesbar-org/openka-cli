@@ -72,6 +72,11 @@ function selectIds(ctx: ActionContext, ids: string[]): string[] {
   return selected.records.map((record) => record.id);
 }
 
+/** A list for one line: the first 12, and how many more. */
+function list(items: readonly string[]): string {
+  return items.length <= 12 ? items.join(", ") : `${items.slice(0, 12).join(", ")} and ${items.length - 12} more`;
+}
+
 function printReport(io: CliIO, report: ReextractReport): void {
   for (const result of report.results) {
     if (result.movedTo !== undefined) {
@@ -86,6 +91,12 @@ function printReport(io: CliIO, report: ReextractReport): void {
       const shown = result.differences.slice(0, 8).join(", ");
       const more = result.differences.length > 8 ? `, and ${result.differences.length - 8} more` : "";
       io.out(`CHANGED ${result.id}: ${shown}${more}`);
+      if (result.qa !== undefined) {
+        const { before, after, gained, lost } = result.qa;
+        io.out(`  Q/A: ${before.pairs} → ${after.pairs} pairs, ${before.questions} → ${after.questions} questions, ${before.answers} → ${after.answers} answers`);
+        if (gained.length > 0) io.out(`  read now, by number: ${list(gained)}`);
+        if (lost.length > 0) io.out(`  no longer read, by number: ${list(lost)}`);
+      }
       if (result.resolved.length > 0) io.out(`  newly complete: ${result.resolved.join(", ")}`);
       if (result.abstained.length > 0) io.out(`  newly abstained: ${result.abstained.join(", ")}`);
       if (result.droppedMark === true) io.out("  the human_verified mark was dropped — check it again (`ka review --mark-verified`)");
@@ -106,6 +117,11 @@ function printReport(io: CliIO, report: ReextractReport): void {
       `; ${formatCount(c.current)} already current${c.unreadable + c.unchecked > 0 ? `, ${formatCount(c.unreadable + c.unchecked)} skipped` : ""}` +
       `${c.duplicate > 0 ? `, ${formatCount(c.duplicate)} stale copies ${report.dryRun ? "to remove" : "removed"}` : ""}.`,
   );
+  // What reads fewer answers or questions than before is what to check against its PDF.
+  const fewer = changed.filter((result) => result.qa !== undefined && (result.qa.after.answers < result.qa.before.answers || result.qa.after.questions < result.qa.before.questions));
+  if (fewer.length > 0) {
+    io.out(`${formatCount(fewer.length)} record(s) read fewer answers or questions than before: ${list(fewer.map((result) => result.id))}`);
+  }
   if (report.moved > 0) {
     io.out(`${formatCount(report.moved)} record(s) ${report.dryRun ? "would move" : "moved"} to the id this build gives them (a stale copy is removed where that id is taken).`);
   }

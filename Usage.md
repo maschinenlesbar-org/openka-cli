@@ -385,6 +385,14 @@ reindex` does. `--dry-run` reports the same and writes nothing; `--json` prints 
 report (`counts` per outcome, `results` per record). Exit 3 when a record could not be
 read (the rest are still done), 1 when an OCR record was left out.
 
+**Q/A are compared by question number.** A new reading that finds one more pair shifts
+every `qa[n]` after it, so `newly abstained` can name a field that only moved. For a
+record whose Q/A changed, `CHANGED` therefore also prints `Q/A: 37 → 45 pairs, 24 → 31
+questions, 27 → 27 answers`, plus what is read now and what is no longer read, by number
+(`17.question`, `9b.answer`, `16a` for a whole pair). The run ends by naming the records
+that read fewer answers or questions than before; those are the ones to check against
+their PDF. `--json` has the same under `results[].qa` (`before`, `after`, `gained`, `lost`).
+
 **A record an earlier build filed under another paper's id moves.** Up to 0.6.0, an
 unanswered Sachsen-Anhalt question was stored as Drucksache `08/1487`, where Drucksache
 8/1487 belongs (issue #25). `ka reextract` gives such a record the reference and id this

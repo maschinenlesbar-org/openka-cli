@@ -90,7 +90,20 @@ const SEPARATOR = String.raw`(?:,|und|bis|sowie|-|–|—)`;
  * then makes the whole document look misparsed.
  */
 const MONTH = String.raw`(?:Januar|Februar|M(?:ä|ae)rz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)`;
+/**
+ * A sub-item letter standing alone after a separator — the `b` of "Zu 8. a und b", the
+ * `c` of "Zu 9. a bis c" (Berlin 19/22581, issue #26). It names a sub-item of the
+ * number before it (`expandNumbers`). Only a letter that ends a word, so the `d` of
+ * "und die" is not one, and not the `z` of "z. B.".
+ */
+const LONE_LETTER = String.raw`[a-z](?![a-zäöüß])(?!\.[ \t]*[A-Za-zÄÖÜäöü]\.)\.?\)?`;
 const NUMBER_LIST = `(${NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${NUMBER})*)`;
+/**
+ * An answer heading's numbers, lone letters included. Only an answer heading says
+ * which sub-questions it answers: "Fragen 1 a. bis c. und e. werden im Zusammenhang
+ * beantwortet" inside an answer (Sachsen-Anhalt 8/4080) is not four questions.
+ */
+const ANSWER_NUMBER_LIST = `(${NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*(?:${NUMBER}|${LONE_LETTER}))*)`;
 const SHORT_NUMBER_LIST = `(${SHORT_NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${SHORT_NUMBER})*)`;
 const SHORT_NUMBER_LIST_INNER = `${SHORT_NUMBER}(?:[ \\t]*${SEPARATOR}[ \\t]*${SHORT_NUMBER})*`;
 
@@ -122,7 +135,7 @@ export const FRAGE_ANTWORT: SegmentationRules = {
   description: "Frage N: / Antwort zu N: headings",
   question: new RegExp(`^[ \\t]*Frage[n]?[ \\t]+${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`, "i"),
   answer: new RegExp(
-    `^[ \\t]*Antwort(?:en)?[ \\t]*(?:(?:zu|auf)[ \\t]+)?(?:Frage[n]?[ \\t]+)?${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
+    `^[ \\t]*Antwort(?:en)?[ \\t]*(?:(?:zu|auf)[ \\t]+)?(?:Frage[n]?[ \\t]+)?${ANSWER_NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
     "i",
   ),
 };
@@ -155,8 +168,17 @@ const AFTER_NUMBER = `(?:[ \\t]+|(?=[A-ZÄÖÜ]))(?!${MONTH}\\b)(?=\\S)`;
 const ASKS_WITHIN_LINES = 3;
 
 /**
+ * How many lettered sub-items may lie between such a heading and its "?" — a question
+ * whose "?" closes its list, "17.Wie hat sich … (bitte aufschlüsseln nach ⏎ a) Bargeld, ⏎
+ * … ⏎ g) sonstige monetäre Vorteile)?" (Berlin 19/25707, issue #26). Its sub-items do
+ * not count towards `ASKS_WITHIN_LINES`; they are part of the question.
+ */
+const ASKS_ACROSS_SUB_ITEMS = 26;
+
+/**
  * Whether the heading at `index` asks something: a "?" on its line or on one of the
- * next `ASKS_WITHIN_LINES`, before the next heading. A number run into a word
+ * next `ASKS_WITHIN_LINES` (not counting up to `ASKS_ACROSS_SUB_ITEMS` sub-item
+ * lines), before the next heading. A number run into a word
  * is also how a table row ("13.Sekundarschule: CJD") or a list inside an answer
  * ("1.Zeitplan der Veröffentlichung") reaches the text layer; measured on 3,852 Berlin
  * records of 2024–2026, believing those made three records worse, while requiring the
@@ -164,11 +186,19 @@ const ASKS_WITHIN_LINES = 3;
  * a question wraps before its "?" ("19.Wer kontrolliert … ⏎ von KTWs?").
  */
 function asksSoon(lines: readonly string[], index: number, rules: SegmentationRules): boolean {
-  for (let j = index; j < Math.min(lines.length, index + 1 + ASKS_WITHIN_LINES); j++) {
+  let other = 0;
+  let subItems = 0;
+  for (let j = index; j < lines.length; j++) {
     const line = lines[j] as string;
     // The next heading starts something else; its "?" is not this one's.
     if (j > index && (rules.answer?.test(line) === true || rules.question.test(line))) return false;
     if (line.includes("?")) return true;
+    if (j === index) continue;
+    if (rules.subQuestion?.test(line) === true) {
+      if (++subItems > ASKS_ACROSS_SUB_ITEMS) return false;
+    } else if (++other >= ASKS_WITHIN_LINES) {
+      return false;
+    }
   }
   return false;
 }
@@ -179,7 +209,7 @@ export const NUMMERIERT: SegmentationRules = {
   description: "`N.` numbered questions with `Zu N.` answers, including `a.` sub-items",
   question: new RegExp(`^[ \\t]*${NOT_A_DATE}${SHORT_NUMBER_LIST}[.)]${AFTER_NUMBER}`),
   answer: new RegExp(
-    `^[ \\t]*(?:Antwort(?:en)?[ \\t]+(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
+    `^[ \\t]*(?:Antwort(?:en)?[ \\t]+(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${ANSWER_NUMBER_LIST}[ \\t]*[.:)]*[ \\t]*`,
     "i",
   ),
   // A bare "Antwort:" answers the question above it. The colon is required: the
@@ -371,7 +401,7 @@ export function trimRestatedQuestions(segments: QaSegment[]): QaSegment[] {
 
 /** Any answer heading at all — the guard for `onlyWhenUnmarked`. */
 const ANY_ANSWER_HEADING = new RegExp(
-  `^[ \\t]*(?:Antwort(?:en)?[ \\t]*(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${NUMBER_LIST}`,
+  `^[ \\t]*(?:Antwort(?:en)?[ \\t]*(?:zu[ \\t]+)?(?:Frage[n]?[ \\t]+)?|Zu[ \\t]+(?:Frage[n]?[ \\t]+)?)${ANSWER_NUMBER_LIST}`,
   "im",
 );
 
@@ -513,6 +543,9 @@ export function normaliseNumber(token: string): string {
 /**
  * Expand a heading's number list into the individual numbers it covers.
  * `2 und 3` -> ["2","3"];  `4 bis 6` -> ["4","5","6"];  `1 a` -> ["1a"].
+ * A letter alone names a sub-item of the lettered number before it: `8 a und b` ->
+ * ["8a","8b"], `9 a bis c` -> ["9a","9b","9c"]; after a number without a letter it
+ * names nothing, and is dropped.
  *
  * A range is only expanded when both ends are plain integers and the span is small;
  * a "range" of 40 numbers is far more likely to be a misread than a real grouping,
@@ -531,6 +564,19 @@ export function expandNumbers(list: string): string[] {
     }
     if (/^(bis|-|–|—)$/i.test(token)) {
       pendingRange = true;
+      continue;
+    }
+    if (/^[a-z]$/.test(token)) {
+      const lettered = /^(.*[0-9])([a-z])$/.exec(out[out.length - 1] ?? "");
+      if (lettered !== null) {
+        const [, prefix = "", from = ""] = lettered;
+        const first = pendingRange ? from.charCodeAt(0) + 1 : token.charCodeAt(0);
+        for (let code = first; code <= token.charCodeAt(0); code++) {
+          const sub = prefix + String.fromCharCode(code);
+          if (!out.includes(sub)) out.push(sub);
+        }
+      }
+      pendingRange = false;
       continue;
     }
     if (pendingRange) {

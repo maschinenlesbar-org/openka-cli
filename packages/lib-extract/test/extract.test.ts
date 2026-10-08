@@ -1652,3 +1652,76 @@ describe("the date of a Sachsen-Anhalt Kleine Anfrage (issue #22)", () => {
     deepStrictEqual(await read({ answered: "2025-11-01" }), { answered: "2025-11-01" });
   });
 });
+
+describe("sub-questions answered together, and a question that closes its list (issue #26)", () => {
+  it("reads a lone letter after a lettered number as a sub-item of it", () => {
+    deepStrictEqual(expandNumbers("8. a und b"), ["8a", "8b"]);
+    deepStrictEqual(expandNumbers("9. a bis c"), ["9a", "9b", "9c"]);
+    deepStrictEqual(expandNumbers("1 a, c"), ["1a", "1c"]);
+    // After a number without a letter, a letter names nothing.
+    deepStrictEqual(expandNumbers("3 und c"), ["3"]);
+  });
+
+  it("gives an answer to each sub-question it names: Berlin 19/22581", () => {
+    const text = [
+      "1. Technische Sicherheitsverbesserungen",
+      "a) Welche technischen Maßnahmen waren zum Zeitpunkt des Angriffs implementiert?",
+      "b) Welche Maßnahmen plant die BVG?",
+      "Zu 1. a und b: Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam beantwortet.",
+      "2.Transparenz gegenüber der Öffentlichkeit",
+      "a) Wie viele Kundinnen und Kunden wurden informiert?",
+      "b) Welche Kommunikationswege wurden genutzt?",
+      "c) In welchem Zeitraum erhielten die Betroffenen ihre Mitteilung?",
+      "Zu 2. a bis c: Die Fragen werden gemeinsam beantwortet. Alle wurden per Brief informiert.",
+    ].join("\n");
+    const { segments, rejection } = applyRules(text, NUMMERIERT);
+    strictEqual(rejection, undefined);
+    deepStrictEqual(
+      segments.filter((segment) => segment.answer !== undefined).map((segment) => segment.number),
+      ["1a", "1b", "2a", "2b", "2c"],
+    );
+  });
+
+  it("reads lone letters only in an answer heading: Sachsen-Anhalt 8/4080", () => {
+    const text = [
+      "Frage 1:",
+      "Wie sieht das Vertragscontrolling aus?",
+      "a. Wie genau sieht es aus?",
+      "b. In welchen Ministerien gibt es eines?",
+      "Antwort zu Frage 1:",
+      "Fragen 1 a. bis c. und e. werden im Zusammenhang beantwortet.",
+      "Frage 2:",
+      "Gibt es eine Berater-Datenbank?",
+      "Antwort zu Frage 2:",
+      "Ja.",
+    ].join("\n");
+    const { segments } = applyRules(text, FRAGE_ANTWORT);
+    deepStrictEqual(segments.map((segment) => segment.number).filter((number) => /^1[a-z]$/.test(number) && !["1a", "1b"].includes(number)), []);
+    ok(segments.some((segment) => segment.number === "1" && segment.question !== undefined));
+  });
+
+  it("does not take the z of z. B. for a sub-item", () => {
+    const { segments } = applyRules(["1. Wie viele?", "Zu 1. - z. B. vierzehn."].join("\n"), NUMMERIERT);
+    match(segments[0]?.answer ?? "", /z\. B\. vierzehn/);
+  });
+
+  it("believes a heading run into its text whose question mark closes a list of sub-items: Berlin 19/25707", () => {
+    const text = [
+      "1. Wie stellt sich die Entwicklung der Gesamtwerte dar?",
+      "Zu 1.: Die Daten folgen.",
+      "2.Wie hat sich der Anteil der Art der Vorteile auf Nehmerseite im Berichtszeitraum 2024 und 2025",
+      "entwickelt (bitte aufschlüsseln nach Jahren sowie",
+      "a) Bargeld,",
+      "b) Sachzuwendungen,",
+      "c) Bewirtung/Feiern,",
+      "d) Teilnahme an Veranstaltungen,",
+      "e) Arbeits-/Dienstleistungen,",
+      "f) Reisen,",
+      "g) sonstige monetäre Vorteile)?",
+      "Zu 2.: Die erfragten Daten folgen.",
+    ].join("\n");
+    const { segments } = applyRules(text, NUMMERIERT);
+    deepStrictEqual(segments.filter((segment) => /^1[a-z]?$/.test(segment.number)).map((segment) => segment.number), ["1"], "the list is not 1's");
+    match(segments.find((segment) => segment.number === "2")?.question ?? "", /^Wie hat sich der Anteil/);
+  });
+});

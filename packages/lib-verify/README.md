@@ -46,7 +46,7 @@ content did not move — and rebuilds the index and catalog with `reindexAll`.
 Everything is re-exported from the package root:
 
 ```
-UNCHECKED_FIELDS, VERSION_PATH, VerifyResult, VerifyOptions, Reextraction, reextractStored, verifyRecord, VersionOnlyError, reextractRecords, ReextractOptions, ReextractOutcome, ReextractReport, ReextractResult, DEFAULT_VERIFY_SAMPLE, evenSample, VerifyCorpusOptions, CorpusVerifyReport, verifyCorpus, assertVerified, diffPaths
+UNCHECKED_FIELDS, VERSION_PATH, VerifyResult, VerifyOptions, Reextraction, reextractStored, verifyRecord, VersionOnlyError, reextractRecords, ReextractOptions, ReextractOutcome, ReextractReport, ReextractResult, compareQa, QaChange, QaCounts, DEFAULT_VERIFY_SAMPLE, evenSample, VerifyCorpusOptions, CorpusVerifyReport, verifyCorpus, assertVerified, diffPaths
 ```
 
 ## Depends on

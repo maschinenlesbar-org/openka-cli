@@ -16,6 +16,7 @@ import {
   assertVerified,
   diffPaths,
   evenSample,
+  compareQa,
   reextractRecords,
   verifyCorpus,
   verifyRecord,
@@ -449,5 +450,29 @@ describe("a record an earlier build filed under another paper's id (issue #25)",
     const report = await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"] });
     deepStrictEqual([report.results[0]?.movedTo, report.results[0]?.droppedMark], ["sachsen-anhalt-8-ka-1487", undefined]);
     strictEqual(store.getRecord("sachsen-anhalt-8-ka-1487")?.extraction.review_status, "human_verified");
+  });
+});
+
+describe("comparing a re-extraction's Q/A by number (issue #26)", () => {
+  it("names what moved by question number, not by the index a new pair shifts", () => {
+    const before = sampleRecord({
+      qa: [
+        { number: "1", question: "Wie viele?", answer: "Vierzehn." },
+        { number: "2", question: "Wo?" },
+      ],
+    });
+    const after = sampleRecord({
+      qa: [
+        { number: "1", question: "Wie viele?", answer: "Vierzehn." },
+        { number: "1a", question: "Und davon?" },
+        { number: "2", answer: "In Pankow." },
+      ],
+    });
+    deepStrictEqual(compareQa(before, after), {
+      before: { pairs: 2, questions: 2, answers: 1 },
+      after: { pairs: 3, questions: 2, answers: 2 },
+      gained: ["1a", "1a.question", "2.answer"],
+      lost: ["2.question"],
+    });
   });
 });

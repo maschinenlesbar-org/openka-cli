@@ -371,4 +371,4 @@ export function diffPaths(a: unknown, b: unknown, path = ""): string[] {
   return out;
 }
 
-export { reextractRecords, type ReextractOptions, type ReextractOutcome, type ReextractReport, type ReextractResult } from "./reextract.js";
+export { compareQa, reextractRecords, type QaChange, type QaCounts, type ReextractOptions, type ReextractOutcome, type ReextractReport, type ReextractResult } from "./reextract.js";

@@ -117,6 +117,24 @@ describe("a record an earlier build filed under another paper's id (issue #25)",
   });
 });
 
+describe("ka reextract's Q/A comparison (issue #26)", () => {
+  it("counts pairs, questions and answers per record, and names the records that read fewer", async () => {
+    const harness = await seeded();
+    try {
+      const store = new FileStore(harness.corpus);
+      const stored = store.getRecord("berlin-19-10006") as KaRecord;
+      // As if an older build had read one answer more.
+      store.putRecord({ ...stored, qa: [...stored.qa, { number: "99", question: "Noch eine?", answer: "Ja." }], extraction: { ...stored.extraction, extractor_version: "pkg:0.6.0+extract:0992e8afa678" } });
+      strictEqual(await run(["--corpus", harness.corpus, "reextract", "berlin-19-10006"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^ {2}Q\/A: 7 → 6 pairs, 7 → 6 questions, 7 → 6 answers$/m);
+      match(harness.stdout(), /^ {2}no longer read, by number: 99, 99\.question, 99\.answer$/m);
+      match(harness.stdout(), /^1 record\(s\) read fewer answers or questions than before: berlin-19-10006$/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("ka rm (issue #28)", () => {
   it("removes records under the lock, says which, and keeps a document other records share", async () => {
     const harness = await seeded();

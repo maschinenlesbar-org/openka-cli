@@ -1,0 +1,185 @@
+{
+  "answered_by": {
+    "ministry": "Senatsverwaltung für Wirtschaft, Energie und Betriebe"
+  },
+  "askers": [
+    {
+      "name": "Christopher Förster",
+      "party": "CDU"
+    }
+  ],
+  "dates": {
+    "answered": "2025-05-27",
+    "submitted": "2025-05-15"
+  },
+  "document_type": "schriftliche_anfrage",
+  "extraction": {
+    "abstained_fields": [
+      "qa[0].answer",
+      "qa[11].answer",
+      "qa[13].answer",
+      "qa[16].answer",
+      "qa[18].answer",
+      "qa[21].answer",
+      "qa[25].answer",
+      "qa[3].answer",
+      "qa[6].answer",
+      "qa[9].answer"
+    ],
+    "extractor_version": "pkg:0.7.0+extract:92e420073a5d",
+    "input_sha256": "cff5d430c9cfcfc7b1127c9638ed93fd05bed7d61dca2166e791e3a2a71f88d7",
+    "model_artifacts": [],
+    "parse_complete": false,
+    "reproducible": true,
+    "review_status": "needs_review",
+    "tier": "text_layer"
+  },
+  "full_text": "Drucksache 19 /22 581\nSchriftliche Anfrage\n19. Wahlperiode\nSchriftliche Anfrage\ndes Abgeordneten Christopher Förster (CDU)\nvom 15. Mai 2025 (Eingang beim Abgeordnetenhaus am 16. Mai 2025)\nzum Thema:\nHackerangriff auf die BVG\nund Antwort vom 27. Mai 2025 (Eingang beim Abgeordnetenhaus am 2. Juni 2025)\fSenatsverwaltung für Wirtschaft,\nEnergie und Betriebe\n\nHerrn Abgeordneten Christopher Förster (CDU)\nüber\ndie Präsidentin des Abgeordnetenhauses von Berlin\n\nüber Senatskanzlei – G Sen –\n\nAntwort\nauf die Schriftliche Anfrage Nr. 19/22581\nvom 15. Mai 2025\nüber Hackerangriff auf die BVG\n-----------------------------------------------------------------------------------------------------------\nIm Namen des Senats von Berlin beantworte ich Ihre Schriftliche Anfrage wie folgt:\nVorbemerkung der Verwaltung:\nDie Schriftliche Anfrage betrifft zum Teil Sachverhalte, die der Senat nicht in eigener\nZuständigkeit und Kenntnis beantworten kann. Er ist gleichwohl bemüht, Ihnen eine Antwort\nauf Ihre Anfrage zukommen zu lassen und hat daher die Berliner Verkehrsbetriebe Anstalt\nöffentlichen Rechts (BVG) um Stellungnahme gebeten, die von dort in eigener Verantwortung\nerstellt und dem Senat übermittelt wurde. Sie wird nachfolgend wiedergegeben.\n\nVorbemerkung der BVG:\nBei dem Datenschutzvorfall handelt es sich nicht um einen „Hackerangriff“ gegen die BVG,\nsondern um einen IT-Angriff auf einen beauftragten externen Dienstleister. Bei dem\nDienstleister handelt es sich um ein Unternehmen, das die BVG beim professionellen\nMassenversand von Vertriebsschreiben unterstützt.\nDie BVG hat die Berliner Datenschutzbehörde sowie die betroffenen Kundinnen und Kunden\nunverzüglich, nachdem gesicherte Kenntnis über Art und Umfang der Betroffenheit vorlagen,\nüber den Vorfall informiert. Zur Aufklärung des Vorfalls sowie zur Klärung weiterer Schritte\nsteht die BVG mit dem externen Dienstleister im Austausch. Sowohl der Dienstleister als auch\ndie BVG haben Anzeige gegen Unbekannt gestellt.\nDer Schutz personenbezogener Daten hat für die BVG höchste Priorität. Bei der Auswahl von\nDienstleistern wird stets auf zertifizierte IT-Sicherheitsstandards geachtet. Wie es trotz der\nhohen Standards, nach denen die BVG ihre Dienstleister auswählt, zu diesem Vorfall\nkommen konnte, wird aktuell mit Hochdruck analysiert und aufgeklärt. Dieser Prozess ist noch\nnicht abgeschlossen. Die BVG hat die Geschäftstätigkeit mit dem Dienstleister vorsorglich\f2\n\nbis zum Abschluss einer umfassenden Prüfung der technischen Systeme und Datenflüsse\neinstweilen eingestellt.\n\n1. Art und Umfang der kompromittierten Daten\n\na) Welche konkreten Kategorien von Kundendaten wurden nach aktuellem Kenntnisstand entwendet (z. B.\nName, Postanschrift, E Mail-Adresse, Kunden- und Vertragsnummern)?\nZu 1. a: Die BVG teilt mit, dass folgende Daten nach aktuellem Kenntnisstand von dem\nDatenschutzvorfall betroffen sind:\n- Name\n- Postanschrift\n- E-Mail-Adresse, sofern angegeben\n- Kundennummer\n- Vertragsnummer Berlin-Abo\n\n1. b) Wurden auch besonders schützenswerte Daten (z. B. Ausweisdaten, Zahlungs- oder Kontodaten) erfasst?\nZu 1. b: Kontodaten und Passwörter sind nach Auskunft der BVG nicht betroffen. Bei den\nbetroffenen Daten handele es sich um keine sensiblen Daten nach Art. 9 DSGVO\n(Datenschutz-Grundverordnung). Aktuell liegen der BVG keine Hinweise auf einen\nMissbrauch dieser Daten vor.\n\n2. Anzahl der betroffenen Kunden\n\na) Wie viele Kundendatensätze sind insgesamt kompromittiert worden?\nZu 2. a: Die BVG teilt mit, dass durch den IT-Angriff auf den externen Dienstleister eine Datei\nmit 182.295 Kundendatensätzen, die die unter 1 a) gelisteten Daten enthalten hat, betroffen\nist.\n\n2. b) Handelt es sich dabei um endgültig bestätigte oder geschätzte Werte?\nZu 2. b: Es handelt sich um endgültig bestätigte Werte.\n\n3. Zeitlicher Ablauf des Vorfalls\n\na) Wann erfolgte der Angriff und wann wurde er durch den Dienstleister bzw. die BVG entdeckt?\nZu 3. a: Nach den der BVG vorliegenden Informationen des Dienstleisters erfolgte der IT -\nAngriff gegen den externen Dienstleister am 7. April 2025. Der Dienstleister hat am 8. April\n2025 davon Kenntnis erlangt. Der Dienstleister meldete diesen Vorfall als einen nicht näher\ndefinierten allgemeinen Angriff auf seine IT Mitte April an die BVG. Gesicherte Kenntnis über\nArt und Umfang der BVG-Betroffenheit hatte die BVG am 30. April 2025.\f3\n\n3. b) Wie lange dauerte es vom Angriffsbeginn bis zur Unterbrechung des unbefugten Zugriffs?\nZu 3. b: Die BVG teilt hierzu mit, dass laut der Informationen des betroffenen Dienstleisters\nder Angriff rund 30 Minuten dauerte.\n\n4. Informationspflicht und Kommunikationswege\n\na) Auf welchem Weg und in welchem zeitlichen Rahmen wurden die betroffenen Kunden sowie die Berliner\nDatenschutzbehörde informiert?\nZu 4. a: Die BVG hat nach eigener Auskunft alle Kundinnen und Kunden, deren Daten\nbetroffen sind, per Brief über den Vorfall informiert. Nachdem die BVG am 30. April 2025\ngesicherte Kenntnis über Art und Umfang der BVG-Betroffenheit hatte, seien unverzüglich\ndie notwendigen Schritte zur Information der Berliner Datenschutzbehörde erfolgt. Diese\nwurde rund drei Stunden nach gesicherter Erkenntnis am 30. April 2025 informiert. Auch\nwurde von einer sofort eingesetzten Task Force die Erstellung eines Informationsschreibens\nveranlasst, dass alle betroffenen Kundinnen und Kunden informiert werden. Der\nInformationsbrief stand final und mit allen notwendigen Informationen am 5. Mai 2025 zur\nVerfügung und wurde ab dem 9. Mai 2025 an die Kundinnen und Kunden verschickt. Dazu\nwar es notwendig, kurzfristig einen neuen Dienstleister zu verpflichten, der den Regularien\nder BVG entspricht und in der Lage war, kurzfristig und zuverlässig 180.000 Briefe zu\nversenden.\nWeiterhin teilt die BVG mit, dass parallel zum Versand des Schreibens Kontaktmöglichkeiten\nfür Rückfragen und Anliegen der Kundinnen und Kunden eingerichtet wurden sowie mit den\nVorbereitungen für einen Fragen- und Antworten-Katalog auf der Seite der BVG gestartet\nwurde, der kontinuierlich die häufigsten Fragen der Kundinnen und Kunden beantwortet und\nInformationen aktualisiert. Auch die BVG-Mitarbeitenden der Hotline und in den\nServicecentern wurden informiert, um Rückfragen der Kundinnen und Kunden zu\nbeantworten.\n\n5. Ermittlungs- und Aufklärungsmaßnahmen\n\na) Welche wesentlichen Schwachstellen und Angriffsvektoren wurden bislang identifiziert?\nZu 5. a: Die BVG teilt mit, dass sie sich im Austausch mit dem Dienstleister befindet und den\nVorfall genau analysiert. Ziel sei es, eine transparente Aufarbeitung des Vorfalls zu erhalten,\num damit auch für die Zukunft Ableitungen zu treffen. Dieser Prozess ist noch nicht\nabgeschlossen.\nNach dem aktuellen Kenntnisstand der BVG wurde der Angriff über eine Schwachstelle im\nZeiterfassungstool des externen Dienstleisters eingeleitet. Weitere forensische Analysen und\nAuswertungen sind Teil der Aufarbeitung und der Ermittlungsprozesse.\nVon diesem Angriff sind keine eigenen BVG-Systeme betroffen. Der Angriff erfolgte, nach\nKenntnis der BVG, ausschließlich auf die IT-Infrastruktur des externen Dienstleisters.\f4\n\n6. Haftung und Vertragsprüfung\n\na) Welche vertraglichen Vereinbarungen zur Datensicherheit und Haftungsregelungen bestehen zwischen der\nBVG und dem betroffenen Dienstleister?\nb) Gab es bereits rechtliche Schritte oder Schadenersatzforderungen gegenüber dem Dienstleister?\nZu 6. a und b: Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass die Zusammenarbeit mit dem nach ISO27001\nzertifizierten Dienstleister auf eine m schriftlichen Auftragsverarbeitungsvertrag gemäß Art.\n28 DSGVO basiert, in dem die Anforderungen an den Schutz personenbezogener Daten,\ntechnische und organisatorische Maßnahmen (TOM) sowie die Meldepflichten bei\nSicherheitsvorfällen verbindlich geregelt seien.\nDarüber hinaus enthalte der zugrunde liegende Hauptvertrag verbindliche vertragliche\nVereinbarungen zur Verfügbarkeit, Integrität und Vertraulichkeit der Datenverarbeitung\nsowie spezifische Haftungsregelungen für Datenschutzverstöße und Pflichtverletzungen.\nDiese Regelungen sehen vor, dass der Dienstleister für Schäden haftet, die auf eine\nVerletzung seiner vertraglichen oder gesetzlichen Pflichten zurückzuführen sind.\nDie BVG prüfe derzeit im Rahmen der laufenden Aufarbeitung, ob und in welchem Umfang\nvertragliche oder gesetzliche Ansprüche geltend zu machen sind. Eine abschließende\nBewertung etwaiger Ansprüche erfolgt erst nach Vorliegen aller relevanten Ergebnisse der\ntechnischen und rechtlichen Analyse.\n\n7. Schutz- und Unterstützungsmaßnahmen für Betroffene\n\na) Welche konkreten Maßnahmen werden den betroffenen Kunden angeboten?\nZu 7. a: Direkt nach Bekanntwerden des Vorfalls wurde nach Informationen der BVG eine\ninterdisziplinäre Task Force in der BVG eingerichtet, die den Vorfall eng begleitet und\ninsbesondere auch Anfragen von BVG-Kundinnen und Kunden kategorisiert und\nschnellstmöglich beantwortet. Für die Rückfragen der betroffenen Kundinnen und Kunden sei\nein Kontaktpostfach eingerichtet worden. Alle eingehenden Kundenanfragen seien\numgehend beantwortet worden. Auch in den Kundenzentren erhalten betroffene Kundinnen\nund Kunden Hilfestellung.\n\n8. Technische Sicherheitsverbesserungen\n\na) Welche technischen Maßnahmen (z. B. Verschlüsselung, Multi-Faktor-Authentifizierung,\nZugriffsprotokollierung, Intrusion Detection Systems) waren zum Zeitpunkt des Angriffs implementiert?\nb) Welche kurzfristigen und langfristigen technischen Maßnahmen plant die BVG zur Erhöhung der IT -\nSicherheit, insbesondere im Umgang mit externen Partnern?\nZu 8. a und b: Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass sie sich im Austausch mit dem Dienstleister befindet und\nden Vorfall genau analysiert. Ziel ist es, eine transparente Aufarbeitung des Vorfalls zu\f5\n\nerhalten, um damit auch für die Zukunft Ableitungen zu treffen. Dieser Prozess ist noch nicht\nabgeschlossen.\nParallel und kurzfristig hat die BVG begonnen, bestehende Prozesse zur Zusammenarbeit\nmit externen Dienstleistern zu überprüfen und risikoorientiert nachzuschärfen. Dazu zählen\ninsbesondere:\n- eine Neubewertung aller Auftragsverarbeiter hinsichtlich Sicherheitsniveau und\nAuditierbarkeit,\n- die Verpflichtung zu zeitnahen Schwachstellenmeldungen und Patchzyklen, also\nregelmäßigen Software-Updates, um eventuelle Sicherheitslücken zu schließen,\n- die Einführung eines standardisierten Kontroll- und Eskalationsmechanismus bei\nVorfällen.\nZiel sei ein ganzheitlicher Sicherheitsansatz, der nicht nur die BVG selbst, sondern auch ihre\ndigital vernetzten Partner in die Pflicht nimmt.\n\n9.Transparenz gegenüber der Öffentlichkeit\n\na) Wie viele Kundinnen und Kunden wurden bisher schriftlich und inhaltlich umfassend über den Vorfall\ninformiert?\nb) Welche Kommunikationswege (z. B. Brief, E Mail, BVG-Website, Kundenportal) wurden bzw. werden genutzt?\nc) In welchem Zeitraum erhielten die Betroffenen ihre Mitteilung, und wie wird sichergestellt, dass alle\ntatsächlich betroffenen Personen erreicht werden?\nZu 9. a bis c: Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam beantwortet.\nDie BVG teilt mit, dass alle rund 180.000 Kundinnen und Kunden, die betroffen sind, per Brief\nüber den Vorfall informiert wurden. Betroffen können generell nur diejenigen Personen sein,\ndie im Januar 2025 im Zusammenhang mit dem Tarifprodukt „Berlin Abo“ von der BVG\nkontaktiert oder informiert wurden. Bisher hat die BVG rund 500 Rückmeldungen zum\nInformationsbrief erhalten. Der weit überwiegende Teil der Rückmeldungen waren Fragen\nder Kundinnen und Kunden, die schnellstmöglich beantwortet wurden. Darüber hinaus\naktualisiert die BVG kontinuierlich eine Informationswebseite auf www.bvg.de mit den\nhäufigsten Nachfragen. Kundinnen und Kunden haben auch die Möglichkeit, über die BVG-\nHotline oder analog in den Kundenzentren der BVG Antworten auf ihre Fragen zu erhalten.\n\n10. Lehren und landesweite Maßnahmen\n\na) Welche Lehren und Konsequenzen zieht der Senat aus diesem Vorfall für alle landeseigenen Unternehmen\nund Behörden?\nZu 10. a: Der Senat unterstützt das Anliegen der BVG, den IT-Angriff auf das von der BVG\nbeauftragte Unternehmen transparent aufzuarbeiten, um damit auch für die Zukunft\nAbleitungen zu treffen.\nDa weder dieser Prozess noch das anhängige Verfahren bei der Berliner Beauftragten für\nDatenschutz und Informationsfreiheit abgeschlossen ist, können zum jetzigen Zeitpunkt noch\f6\n\nkeine abschließende Bewertung des IT-Angriffs vorgenommen und mögliche Konsequenzen\naus diesem Vorfall seitens des Senats gezogen werden.\n\nBerlin, den 27. Mai 2025\n\nIn Vertretung\n\nDr. Severin F i s c h e r\n...........................................................\nSenatsverwaltung für Wirtschaft,\nEnergie und Betriebe",
+  "id": "berlin-19-22581",
+  "legislative_period": 19,
+  "markers": {
+    "attachments_referenced": [],
+    "classified": false,
+    "contains_tables": false
+  },
+  "parliament": "berlin",
+  "qa": [
+    {
+      "number": "1",
+      "question": "Art und Umfang der kompromittierten Daten"
+    },
+    {
+      "answer": "Die BVG teilt mit, dass folgende Daten nach aktuellem Kenntnisstand von dem\nDatenschutzvorfall betroffen sind:\n- Name\n- Postanschrift\n- E-Mail-Adresse, sofern angegeben\n- Kundennummer\n- Vertragsnummer Berlin-Abo",
+      "number": "1a",
+      "question": "Welche konkreten Kategorien von Kundendaten wurden nach aktuellem Kenntnisstand entwendet (z. B.\nName, Postanschrift, E Mail-Adresse, Kunden- und Vertragsnummern)?"
+    },
+    {
+      "answer": "Kontodaten und Passwörter sind nach Auskunft der BVG nicht betroffen. Bei den\nbetroffenen Daten handele es sich um keine sensiblen Daten nach Art. 9 DSGVO\n(Datenschutz-Grundverordnung). Aktuell liegen der BVG keine Hinweise auf einen\nMissbrauch dieser Daten vor.",
+      "number": "1b",
+      "question": "Wurden auch besonders schützenswerte Daten (z. B. Ausweisdaten, Zahlungs- oder Kontodaten) erfasst?"
+    },
+    {
+      "number": "2",
+      "question": "Anzahl der betroffenen Kunden"
+    },
+    {
+      "answer": "Die BVG teilt mit, dass durch den IT-Angriff auf den externen Dienstleister eine Datei\nmit 182.295 Kundendatensätzen, die die unter 1 a) gelisteten Daten enthalten hat, betroffen\nist.",
+      "number": "2a",
+      "question": "Wie viele Kundendatensätze sind insgesamt kompromittiert worden?"
+    },
+    {
+      "answer": "Es handelt sich um endgültig bestätigte Werte.",
+      "number": "2b",
+      "question": "Handelt es sich dabei um endgültig bestätigte oder geschätzte Werte?"
+    },
+    {
+      "number": "3",
+      "question": "Zeitlicher Ablauf des Vorfalls"
+    },
+    {
+      "answer": "Nach den der BVG vorliegenden Informationen des Dienstleisters erfolgte der IT -\nAngriff gegen den externen Dienstleister am 7. April 2025. Der Dienstleister hat am 8. April\n2025 davon Kenntnis erlangt. Der Dienstleister meldete diesen Vorfall als einen nicht näher\ndefinierten allgemeinen Angriff auf seine IT Mitte April an die BVG. Gesicherte Kenntnis über\nArt und Umfang der BVG-Betroffenheit hatte die BVG am 30. April 2025.\n3",
+      "number": "3a",
+      "question": "Wann erfolgte der Angriff und wann wurde er durch den Dienstleister bzw. die BVG entdeckt?"
+    },
+    {
+      "answer": "Die BVG teilt hierzu mit, dass laut der Informationen des betroffenen Dienstleisters\nder Angriff rund 30 Minuten dauerte.",
+      "number": "3b",
+      "question": "Wie lange dauerte es vom Angriffsbeginn bis zur Unterbrechung des unbefugten Zugriffs?"
+    },
+    {
+      "number": "4",
+      "question": "Informationspflicht und Kommunikationswege"
+    },
+    {
+      "answer": "Die BVG hat nach eigener Auskunft alle Kundinnen und Kunden, deren Daten\nbetroffen sind, per Brief über den Vorfall informiert. Nachdem die BVG am 30. April 2025\ngesicherte Kenntnis über Art und Umfang der BVG-Betroffenheit hatte, seien unverzüglich\ndie notwendigen Schritte zur Information der Berliner Datenschutzbehörde erfolgt. Diese\nwurde rund drei Stunden nach gesicherter Erkenntnis am 30. April 2025 informiert. Auch\nwurde von einer sofort eingesetzten Task Force die Erstellung eines Informationsschreibens\nveranlasst, dass alle betroffenen Kundinnen und Kunden informiert werden. Der\nInformationsbrief stand final und mit allen notwendigen Informationen am 5. Mai 2025 zur\nVerfügung und wurde ab dem 9. Mai 2025 an die Kundinnen und Kunden verschickt. Dazu\nwar es notwendig, kurzfristig einen neuen Dienstleister zu verpflichten, der den Regularien\nder BVG entspricht und in der Lage war, kurzfristig und zuverlässig 180.000 Briefe zu\nversenden.\nWeiterhin teilt die BVG mit, dass parallel zum Versand des Schreibens Kontaktmöglichkeiten\nfür Rückfragen und Anliegen der Kundinnen und Kunden eingerichtet wurden sowie mit den\nVorbereitungen für einen Fragen- und Antworten-Katalog auf der Seite der BVG gestartet\nwurde, der kontinuierlich die häufigsten Fragen der Kundinnen und Kunden beantwortet und\nInformationen aktualisiert. Auch die BVG-Mitarbeitenden der Hotline und in den\nServicecentern wurden informiert, um Rückfragen der Kundinnen und Kunden zu\nbeantworten.",
+      "number": "4a",
+      "question": "Auf welchem Weg und in welchem zeitlichen Rahmen wurden die betroffenen Kunden sowie die Berliner\nDatenschutzbehörde informiert?"
+    },
+    {
+      "number": "5",
+      "question": "Ermittlungs- und Aufklärungsmaßnahmen"
+    },
+    {
+      "answer": "Die BVG teilt mit, dass sie sich im Austausch mit dem Dienstleister befindet und den\nVorfall genau analysiert. Ziel sei es, eine transparente Aufarbeitung des Vorfalls zu erhalten,\num damit auch für die Zukunft Ableitungen zu treffen. Dieser Prozess ist noch nicht\nabgeschlossen.\nNach dem aktuellen Kenntnisstand der BVG wurde der Angriff über eine Schwachstelle im\nZeiterfassungstool des externen Dienstleisters eingeleitet. Weitere forensische Analysen und\nAuswertungen sind Teil der Aufarbeitung und der Ermittlungsprozesse.\nVon diesem Angriff sind keine eigenen BVG-Systeme betroffen. Der Angriff erfolgte, nach\nKenntnis der BVG, ausschließlich auf die IT-Infrastruktur des externen Dienstleisters.\n4",
+      "number": "5a",
+      "question": "Welche wesentlichen Schwachstellen und Angriffsvektoren wurden bislang identifiziert?"
+    },
+    {
+      "number": "6",
+      "question": "Haftung und Vertragsprüfung"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass die Zusammenarbeit mit dem nach ISO27001\nzertifizierten Dienstleister auf eine m schriftlichen Auftragsverarbeitungsvertrag gemäß Art.\n28 DSGVO basiert, in dem die Anforderungen an den Schutz personenbezogener Daten,\ntechnische und organisatorische Maßnahmen (TOM) sowie die Meldepflichten bei\nSicherheitsvorfällen verbindlich geregelt seien.\nDarüber hinaus enthalte der zugrunde liegende Hauptvertrag verbindliche vertragliche\nVereinbarungen zur Verfügbarkeit, Integrität und Vertraulichkeit der Datenverarbeitung\nsowie spezifische Haftungsregelungen für Datenschutzverstöße und Pflichtverletzungen.\nDiese Regelungen sehen vor, dass der Dienstleister für Schäden haftet, die auf eine\nVerletzung seiner vertraglichen oder gesetzlichen Pflichten zurückzuführen sind.\nDie BVG prüfe derzeit im Rahmen der laufenden Aufarbeitung, ob und in welchem Umfang\nvertragliche oder gesetzliche Ansprüche geltend zu machen sind. Eine abschließende\nBewertung etwaiger Ansprüche erfolgt erst nach Vorliegen aller relevanten Ergebnisse der\ntechnischen und rechtlichen Analyse.",
+      "number": "6a",
+      "question": "Welche vertraglichen Vereinbarungen zur Datensicherheit und Haftungsregelungen bestehen zwischen der\nBVG und dem betroffenen Dienstleister?"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass die Zusammenarbeit mit dem nach ISO27001\nzertifizierten Dienstleister auf eine m schriftlichen Auftragsverarbeitungsvertrag gemäß Art.\n28 DSGVO basiert, in dem die Anforderungen an den Schutz personenbezogener Daten,\ntechnische und organisatorische Maßnahmen (TOM) sowie die Meldepflichten bei\nSicherheitsvorfällen verbindlich geregelt seien.\nDarüber hinaus enthalte der zugrunde liegende Hauptvertrag verbindliche vertragliche\nVereinbarungen zur Verfügbarkeit, Integrität und Vertraulichkeit der Datenverarbeitung\nsowie spezifische Haftungsregelungen für Datenschutzverstöße und Pflichtverletzungen.\nDiese Regelungen sehen vor, dass der Dienstleister für Schäden haftet, die auf eine\nVerletzung seiner vertraglichen oder gesetzlichen Pflichten zurückzuführen sind.\nDie BVG prüfe derzeit im Rahmen der laufenden Aufarbeitung, ob und in welchem Umfang\nvertragliche oder gesetzliche Ansprüche geltend zu machen sind. Eine abschließende\nBewertung etwaiger Ansprüche erfolgt erst nach Vorliegen aller relevanten Ergebnisse der\ntechnischen und rechtlichen Analyse.",
+      "number": "6b",
+      "question": "Gab es bereits rechtliche Schritte oder Schadenersatzforderungen gegenüber dem Dienstleister?"
+    },
+    {
+      "number": "7",
+      "question": "Schutz- und Unterstützungsmaßnahmen für Betroffene"
+    },
+    {
+      "answer": "Direkt nach Bekanntwerden des Vorfalls wurde nach Informationen der BVG eine\ninterdisziplinäre Task Force in der BVG eingerichtet, die den Vorfall eng begleitet und\ninsbesondere auch Anfragen von BVG-Kundinnen und Kunden kategorisiert und\nschnellstmöglich beantwortet. Für die Rückfragen der betroffenen Kundinnen und Kunden sei\nein Kontaktpostfach eingerichtet worden. Alle eingehenden Kundenanfragen seien\numgehend beantwortet worden. Auch in den Kundenzentren erhalten betroffene Kundinnen\nund Kunden Hilfestellung.",
+      "number": "7a",
+      "question": "Welche konkreten Maßnahmen werden den betroffenen Kunden angeboten?"
+    },
+    {
+      "number": "8",
+      "question": "Technische Sicherheitsverbesserungen"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass sie sich im Austausch mit dem Dienstleister befindet und\nden Vorfall genau analysiert. Ziel ist es, eine transparente Aufarbeitung des Vorfalls zu\n5\n\nerhalten, um damit auch für die Zukunft Ableitungen zu treffen. Dieser Prozess ist noch nicht\nabgeschlossen.\nParallel und kurzfristig hat die BVG begonnen, bestehende Prozesse zur Zusammenarbeit\nmit externen Dienstleistern zu überprüfen und risikoorientiert nachzuschärfen. Dazu zählen\ninsbesondere:\n- eine Neubewertung aller Auftragsverarbeiter hinsichtlich Sicherheitsniveau und\nAuditierbarkeit,\n- die Verpflichtung zu zeitnahen Schwachstellenmeldungen und Patchzyklen, also\nregelmäßigen Software-Updates, um eventuelle Sicherheitslücken zu schließen,\n- die Einführung eines standardisierten Kontroll- und Eskalationsmechanismus bei\nVorfällen.\nZiel sei ein ganzheitlicher Sicherheitsansatz, der nicht nur die BVG selbst, sondern auch ihre\ndigital vernetzten Partner in die Pflicht nimmt.",
+      "number": "8a",
+      "question": "Welche technischen Maßnahmen (z. B. Verschlüsselung, Multi-Faktor-Authentifizierung,\nZugriffsprotokollierung, Intrusion Detection Systems) waren zum Zeitpunkt des Angriffs implementiert?"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam\nbeantwortet. Die BVG teilt mit, dass sie sich im Austausch mit dem Dienstleister befindet und\nden Vorfall genau analysiert. Ziel ist es, eine transparente Aufarbeitung des Vorfalls zu\n5\n\nerhalten, um damit auch für die Zukunft Ableitungen zu treffen. Dieser Prozess ist noch nicht\nabgeschlossen.\nParallel und kurzfristig hat die BVG begonnen, bestehende Prozesse zur Zusammenarbeit\nmit externen Dienstleistern zu überprüfen und risikoorientiert nachzuschärfen. Dazu zählen\ninsbesondere:\n- eine Neubewertung aller Auftragsverarbeiter hinsichtlich Sicherheitsniveau und\nAuditierbarkeit,\n- die Verpflichtung zu zeitnahen Schwachstellenmeldungen und Patchzyklen, also\nregelmäßigen Software-Updates, um eventuelle Sicherheitslücken zu schließen,\n- die Einführung eines standardisierten Kontroll- und Eskalationsmechanismus bei\nVorfällen.\nZiel sei ein ganzheitlicher Sicherheitsansatz, der nicht nur die BVG selbst, sondern auch ihre\ndigital vernetzten Partner in die Pflicht nimmt.",
+      "number": "8b",
+      "question": "Welche kurzfristigen und langfristigen technischen Maßnahmen plant die BVG zur Erhöhung der IT -\nSicherheit, insbesondere im Umgang mit externen Partnern?"
+    },
+    {
+      "number": "9",
+      "question": "Transparenz gegenüber der Öffentlichkeit"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam beantwortet.\nDie BVG teilt mit, dass alle rund 180.000 Kundinnen und Kunden, die betroffen sind, per Brief\nüber den Vorfall informiert wurden. Betroffen können generell nur diejenigen Personen sein,\ndie im Januar 2025 im Zusammenhang mit dem Tarifprodukt „Berlin Abo“ von der BVG\nkontaktiert oder informiert wurden. Bisher hat die BVG rund 500 Rückmeldungen zum\nInformationsbrief erhalten. Der weit überwiegende Teil der Rückmeldungen waren Fragen\nder Kundinnen und Kunden, die schnellstmöglich beantwortet wurden. Darüber hinaus\naktualisiert die BVG kontinuierlich eine Informationswebseite auf www.bvg.de mit den\nhäufigsten Nachfragen. Kundinnen und Kunden haben auch die Möglichkeit, über die BVG-\nHotline oder analog in den Kundenzentren der BVG Antworten auf ihre Fragen zu erhalten.",
+      "number": "9a",
+      "question": "Wie viele Kundinnen und Kunden wurden bisher schriftlich und inhaltlich umfassend über den Vorfall\ninformiert?"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam beantwortet.\nDie BVG teilt mit, dass alle rund 180.000 Kundinnen und Kunden, die betroffen sind, per Brief\nüber den Vorfall informiert wurden. Betroffen können generell nur diejenigen Personen sein,\ndie im Januar 2025 im Zusammenhang mit dem Tarifprodukt „Berlin Abo“ von der BVG\nkontaktiert oder informiert wurden. Bisher hat die BVG rund 500 Rückmeldungen zum\nInformationsbrief erhalten. Der weit überwiegende Teil der Rückmeldungen waren Fragen\nder Kundinnen und Kunden, die schnellstmöglich beantwortet wurden. Darüber hinaus\naktualisiert die BVG kontinuierlich eine Informationswebseite auf www.bvg.de mit den\nhäufigsten Nachfragen. Kundinnen und Kunden haben auch die Möglichkeit, über die BVG-\nHotline oder analog in den Kundenzentren der BVG Antworten auf ihre Fragen zu erhalten.",
+      "number": "9b",
+      "question": "Welche Kommunikationswege (z. B. Brief, E Mail, BVG-Website, Kundenportal) wurden bzw. werden genutzt?"
+    },
+    {
+      "answer": "Die Fragen werden wegen ihres Sachzusammenhangs gemeinsam beantwortet.\nDie BVG teilt mit, dass alle rund 180.000 Kundinnen und Kunden, die betroffen sind, per Brief\nüber den Vorfall informiert wurden. Betroffen können generell nur diejenigen Personen sein,\ndie im Januar 2025 im Zusammenhang mit dem Tarifprodukt „Berlin Abo“ von der BVG\nkontaktiert oder informiert wurden. Bisher hat die BVG rund 500 Rückmeldungen zum\nInformationsbrief erhalten. Der weit überwiegende Teil der Rückmeldungen waren Fragen\nder Kundinnen und Kunden, die schnellstmöglich beantwortet wurden. Darüber hinaus\naktualisiert die BVG kontinuierlich eine Informationswebseite auf www.bvg.de mit den\nhäufigsten Nachfragen. Kundinnen und Kunden haben auch die Möglichkeit, über die BVG-\nHotline oder analog in den Kundenzentren der BVG Antworten auf ihre Fragen zu erhalten.",
+      "number": "9c",
+      "question": "In welchem Zeitraum erhielten die Betroffenen ihre Mitteilung, und wie wird sichergestellt, dass alle\ntatsächlich betroffenen Personen erreicht werden?"
+    },
+    {
+      "number": "10",
+      "question": "Lehren und landesweite Maßnahmen"
+    },
+    {
+      "answer": "Der Senat unterstützt das Anliegen der BVG, den IT-Angriff auf das von der BVG\nbeauftragte Unternehmen transparent aufzuarbeiten, um damit auch für die Zukunft\nAbleitungen zu treffen.\nDa weder dieser Prozess noch das anhängige Verfahren bei der Berliner Beauftragten für\nDatenschutz und Informationsfreiheit abgeschlossen ist, können zum jetzigen Zeitpunkt noch\n6\n\nkeine abschließende Bewertung des IT-Angriffs vorgenommen und mögliche Konsequenzen\naus diesem Vorfall seitens des Senats gezogen werden.\n\nBerlin, den 27. Mai 2025\n\nIn Vertretung\n\nDr. Severin F i s c h e r\n...........................................................\nSenatsverwaltung für Wirtschaft,\nEnergie und Betriebe",
+      "number": "10a",
+      "question": "Welche Lehren und Konsequenzen zieht der Senat aus diesem Vorfall für alle landeseigenen Unternehmen\nund Behörden?"
+    }
+  ],
+  "reference": "19/22581",
+  "schema_version": "1.0",
+  "source_documents": [
+    {
+      "retrieved_at": "2026-10-06T22:14:23Z",
+      "role": "combined_pdf",
+      "sha256": "cff5d430c9cfcfc7b1127c9638ed93fd05bed7d61dca2166e791e3a2a71f88d7",
+      "url": "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-22581.pdf",
+      "url_stable": true
+    }
+  ],
+  "title": "Hackerangriff auf die BVG"
+}
