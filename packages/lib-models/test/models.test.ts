@@ -8,7 +8,7 @@ import { isSha256, sha256, sha256Canonical } from "@maschinenlesbar.org/openka-l
 import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/schema.js";
 import { isCalendarDate, isoDateProblem, normalizeIsoDate, validateRecord } from "../src/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/json-schema.js";
-import { isParliamentKey, normalizeParliamentKey, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
+import { isKnownGap, isParliamentKey, knownGaps, normalizeParliamentKey, onlyKnownGaps, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
 import { extractorVersion, VERSION_ENV } from "@maschinenlesbar.org/openka-lib-repro";
 import { EXTRACTION_DIGEST } from "@maschinenlesbar.org/openka-lib-repro";
 import { computeExtractionDigest, extractionSourceFiles } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -284,5 +284,24 @@ describe("the input rules for dates and parliament keys", () => {
       strictEqual(normalizeParliamentKey(key), "berlin");
     }
     match(parliamentKeyProblem("narnia") ?? "", /^Unknown parliament "narnia"\. Known: bund, /);
+  });
+});
+
+// Issue #22: fields a parliament never provides.
+describe("known gaps", () => {
+  it("names Sachsen-Anhalt's question date, and only that", () => {
+    deepStrictEqual(knownGaps("sachsen-anhalt").map((gap) => gap.field), ["dates.submitted"]);
+    deepStrictEqual([knownGaps("berlin"), knownGaps("narnia")], [[], []]);
+    strictEqual(isKnownGap("sachsen-anhalt", "dates.submitted"), true);
+    strictEqual(isKnownGap("sachsen-anhalt", "qa[].answer"), false);
+    strictEqual(isKnownGap("berlin", "dates.submitted"), false);
+  });
+
+  it("calls a record known-gaps-only when every hole is one, and not when its kinds are unknown", () => {
+    strictEqual(onlyKnownGaps("sachsen-anhalt", { "dates.submitted": 1 }), true);
+    strictEqual(onlyKnownGaps("sachsen-anhalt", { "dates.submitted": 1, "qa[].answer": 2 }), false);
+    strictEqual(onlyKnownGaps("sachsen-anhalt", {}), false);
+    strictEqual(onlyKnownGaps("sachsen-anhalt", undefined), false);
+    strictEqual(onlyKnownGaps("berlin", { "dates.submitted": 1 }), false);
   });
 });

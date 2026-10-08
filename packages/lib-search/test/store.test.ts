@@ -8,6 +8,7 @@ import { after, describe, it } from "node:test";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { CorpusLockedError, MissingCorpusError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
+import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { CatalogEntry, CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { NONE, NOT_INDEXED, UNDATED, statsBreakdown, statsSelection, type StatsDimension } from "../src/stats.js";
 import {
@@ -726,9 +727,10 @@ describe("corpus statistics", () => {
       records: 3,
       parse_complete: 2,
       needs_review: 1,
+      known_gaps_only: 0,
       by_parliament: {
-        bayern: { records: 1, abstained: 0, abstained_by_field: {}, abstained_fields_unknown: 0 },
-        berlin: { records: 2, abstained: 1, abstained_by_field: { qa: 1 }, abstained_fields_unknown: 0 },
+        bayern: { records: 1, abstained: 0, known_gaps_only: 0, abstained_by_field: {}, abstained_fields_unknown: 0 },
+        berlin: { records: 2, abstained: 1, known_gaps_only: 0, abstained_by_field: { qa: 1 }, abstained_fields_unknown: 0 },
       },
       by_tier: { text_layer: 3 },
       coverage: { first_asked: "2024-03-01", last_asked: "2024-03-01", undated: 0, questions: 2, questions_unknown: 0, unanswered: 0 },
@@ -742,6 +744,7 @@ describe("corpus statistics", () => {
       records: 0,
       parse_complete: 0,
       needs_review: 0,
+      known_gaps_only: 0,
       by_parliament: {},
       by_tier: {},
       coverage: { undated: 0, questions: 0, questions_unknown: 0, unanswered: 0 },
@@ -1219,6 +1222,7 @@ describe("abstentions by kind of field (issue #9)", () => {
           { field: "qa[].answer", occurrences: 1, records: 1, examples: ["berlin-19-3"] },
         ],
         unknown: 0,
+        knownGapsOnly: 0,
       },
     ]);
     deepStrictEqual(reviewGroups(store, { parliament: "bund" }), []);
@@ -1740,5 +1744,46 @@ describe("stats breakdowns", () => {
     const entries = [row(1, { submitted: "2026-01-01" }), row(2, { parliament: "bayern", submitted: "2026-01-01" }), row(3)];
     const selection = statsSelection(entries, { parliament: ["berlin"], year: [2026] });
     deepStrictEqual([selection.entries.map((entry) => entry.id), selection.undated], [["berlin-19-00001"], 1]);
+  });
+});
+
+// Issue #22: a hole the parliament never fills is not the extractor's to read.
+describe("known gaps in the review queue", () => {
+  /** A Sachsen-Anhalt record abstaining on `fields`. */
+  const saxony = (n: number, fields: string[]): KaRecord =>
+    sampleRecord({
+      id: `sachsen-anhalt-8-${n}`,
+      parliament: "sachsen-anhalt",
+      reference: `8/${n}`,
+      legislative_period: 8,
+      extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: fields, review_status: "needs_review" },
+    });
+  const corpus = (): MemoryStore => {
+    const store = new MemoryStore();
+    for (const record of [saxony(1, ["dates.submitted"]), saxony(2, ["dates.submitted"]), saxony(3, ["dates.submitted", "qa[0].answer"])]) {
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    return store;
+  };
+
+  it("leaves out of the queue a record whose only hole is one the parliament never fills, and counts it", () => {
+    const queue = reviewQueue(corpus());
+    deepStrictEqual([queue.total, queue.entries.map((entry) => entry.id), queue.knownGapsOnly], [1, ["sachsen-anhalt-8-3"], 2]);
+    deepStrictEqual(reviewQueue(corpus(), { includeKnownGaps: true }).total, 3);
+  });
+
+  it("marks the field in the grouped queue, and counts the left-out records per parliament", () => {
+    const [set] = reviewGroups(corpus());
+    deepStrictEqual([set?.queued, set?.knownGapsOnly], [1, 2]);
+    deepStrictEqual(set?.groups.map((group) => [group.field, group.records, group.known ?? false]), [
+      ["dates.submitted", 1, true],
+      ["qa[].answer", 1, false],
+    ]);
+  });
+
+  it("counts them apart in corpusStats, still as records with abstained fields", () => {
+    const stats = corpusStats(corpus());
+    deepStrictEqual([stats.needs_review, stats.known_gaps_only, stats.by_parliament["sachsen-anhalt"]?.known_gaps_only], [3, 2, 2]);
   });
 });

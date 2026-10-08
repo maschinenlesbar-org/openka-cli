@@ -313,7 +313,8 @@ read (the rest are still done), 1 when an OCR record was left out.
 
 ```bash
 ka review                                     # the abstention queue, worst first
-ka review --source berlin --limit 50
+ka review --parliament berlin --limit 50      # --source is the same, as it always was
+ka review --include-known-gaps                # also the holes a parliament never fills
 ka review --mark-verified berlin-19-10041     # a person checked it against the PDF
 ka review --group-by field                    # the queue per source, by kind of field
 ```
@@ -336,6 +337,20 @@ rose (`field_spike`), which the overall abstention rate can hide. It is read fro
 catalog; rows catalogued by an older version lack it and are counted as
 `abstained_fields_unknown` until `ka reindex`. The records do not keep which
 segmentation rule refused a field, so there is no grouping by rule.
+
+**Holes no extractor could fill are counted apart.** Some fields a parliament never
+publishes: Sachsen-Anhalt prints question and answer as one Drucksache dated by the
+answer, and neither the Parlamentsspiegel row nor (but for about 1.5%) the paper names
+the question's date. Such a field is declared once per parliament (`ka sources show
+sachsen-anhalt`, "never has:"). A record whose *only* holes are such fields stays in
+`abstained_fields` — it does not pretend to know — but is left out of the review queue,
+with a note saying how many and why; `--include-known-gaps` lists them too, and `--group-by
+field` marks the field "(never provided by the parliament)". `ka stats` counts them
+apart: "855 with abstained fields (830 only where the parliament never provides the
+field)". A record that also misses a question or an answer stays in the queue — those
+are what the queue is for. Two dates in a Sachsen-Anhalt Fundstelle ("03.12.2025,
+10.12.2025 … (Nachtrag 10.12.2025)") are the paper's and its Nachtrag's, not the
+question's, and are not read as one.
 
 Marking a record verified does **not** fill its holes; it records that someone
 looked. The mark survives `ka sync --force` when re-extraction yields the same record

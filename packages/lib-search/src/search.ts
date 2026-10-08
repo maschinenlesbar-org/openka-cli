@@ -4,6 +4,7 @@
 // or a snippet is requested.
 
 import { assertValid } from "@maschinenlesbar.org/openka-lib-errors";
+import { isKnownGap, onlyKnownGaps } from "@maschinenlesbar.org/openka-lib-models";
 import { containsPhrase, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, type ParsedQuery, type Posting } from "@maschinenlesbar.org/openka-lib-store";
 import type { CatalogEntry, Store } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_SEARCH_LIMIT, assertPaging, normalizeSearchFilters, partyKey, searchableQueryProblem } from "./filters.js";
@@ -283,6 +284,12 @@ export interface ReviewQueueOptions {
   parliament?: string;
   /** At most this many rows; `DEFAULT_REVIEW_LIMIT` when omitted. */
   limit?: number;
+  /**
+   * Also the records whose only holes are fields their parliament never provides
+   * (`onlyKnownGaps`, lib-models). Left out by default: nothing in them is the
+   * extractor's to read, and in Sachsen-Anhalt they were 98% of the queue.
+   */
+  includeKnownGaps?: boolean;
 }
 
 export interface ReviewQueue {
@@ -294,6 +301,8 @@ export interface ReviewQueue {
    * why they are not in the queue: checked, not filled.
    */
   verified: number;
+  /** Records left out because their only holes are fields their parliament never provides. */
+  knownGapsOnly: number;
 }
 
 /**
@@ -310,13 +319,16 @@ export function reviewQueue(store: Store, options: ReviewQueueOptions = {}): Rev
     ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),
   });
   const withHoles = store.catalog().filter((entry) => matchesFilters(entry, filters));
-  const queue = withHoles
-    .filter((entry) => entry.review_status !== "human_verified")
+  const unverified = withHoles.filter((entry) => entry.review_status !== "human_verified");
+  const known = (entry: CatalogEntry): boolean => options.includeKnownGaps !== true && onlyKnownGaps(entry.parliament, entry.abstained_fields);
+  const queue = unverified
+    .filter((entry) => !known(entry))
     .sort((a, b) => b.abstained - a.abstained || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return {
     total: queue.length,
     entries: queue.slice(0, options.limit ?? DEFAULT_REVIEW_LIMIT),
-    verified: withHoles.length - queue.length,
+    verified: withHoles.length - unverified.length,
+    knownGapsOnly: unverified.length - queue.length,
   };
 }
 
@@ -326,6 +338,8 @@ export const REVIEW_GROUP_EXAMPLES = 3;
 export interface ReviewGroup {
   /** The kind of field, indices dropped: `qa[].question`. */
   field: string;
+  /** True when the parliament never provides this field (`isKnownGap`). */
+  known?: true;
   /** How often it was abstained on, summed over the records. */
   occurrences: number;
   /** How many records abstained on it at least once. */
@@ -342,6 +356,8 @@ export interface ReviewGroups {
   groups: ReviewGroup[];
   /** Queued records whose catalog row predates the field breakdown (`ka reindex` adds it). */
   unknown: number;
+  /** Records left out of the queue: their only holes are fields the parliament never provides. */
+  knownGapsOnly: number;
 }
 
 /**
@@ -351,27 +367,36 @@ export interface ReviewGroups {
  * common layout, with example ids to start from. Read from the catalog alone; the
  * same records as `reviewQueue` (verified ones have left the queue).
  */
-export function reviewGroups(store: Pick<Store, "catalog">, options: { parliament?: string } = {}): ReviewGroups[] {
+export function reviewGroups(store: Pick<Store, "catalog">, options: { parliament?: string; includeKnownGaps?: boolean } = {}): ReviewGroups[] {
   const filters = normalizeSearchFilters({
     onlyAbstained: true,
     ...(options.parliament === undefined ? {} : { parliament: [options.parliament] }),
   });
-  const queued = store
+  const unverified = store
     .catalog()
     .filter((entry) => matchesFilters(entry, filters) && entry.review_status !== "human_verified");
-  const byParliament = new Map<string, { queued: number; unknown: number; fields: Map<string, ReviewGroup> }>();
-  for (const entry of queued) {
-    const bucket = byParliament.get(entry.parliament) ?? { queued: 0, unknown: 0, fields: new Map() };
+  type Bucket = { queued: number; unknown: number; knownGapsOnly: number; fields: Map<string, ReviewGroup> };
+  const byParliament = new Map<string, Bucket>();
+  const bucketOf = (parliament: string): Bucket => {
+    const bucket = byParliament.get(parliament) ?? { queued: 0, unknown: 0, knownGapsOnly: 0, fields: new Map() };
+    byParliament.set(parliament, bucket);
+    return bucket;
+  };
+  for (const entry of unverified) {
+    const bucket = bucketOf(entry.parliament);
+    if (options.includeKnownGaps !== true && onlyKnownGaps(entry.parliament, entry.abstained_fields)) {
+      bucket.knownGapsOnly++;
+      continue;
+    }
     bucket.queued++;
     if (entry.abstained_fields === undefined) bucket.unknown++;
     for (const [field, count] of Object.entries(entry.abstained_fields ?? {})) {
-      const group = bucket.fields.get(field) ?? { field, occurrences: 0, records: 0, examples: [] };
+      const group: ReviewGroup = bucket.fields.get(field) ?? { field, occurrences: 0, records: 0, examples: [], ...(isKnownGap(entry.parliament, field) ? { known: true as const } : {}) };
       group.occurrences += count;
       group.records++;
       if (group.examples.length < REVIEW_GROUP_EXAMPLES) group.examples.push(entry.id);
       bucket.fields.set(field, group);
     }
-    byParliament.set(entry.parliament, bucket);
   }
   return [...byParliament]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -382,5 +407,6 @@ export function reviewGroups(store: Pick<Store, "catalog">, options: { parliamen
         (a, b) => b.occurrences - a.occurrences || (a.field < b.field ? -1 : a.field > b.field ? 1 : 0),
       ),
       unknown: bucket.unknown,
+      knownGapsOnly: bucket.knownGapsOnly,
     }));
 }

@@ -429,6 +429,10 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     if (role === "question_pdf") ref.dates.submitted = rowDate;
     else ref.dates.answered = rowDate;
   }
+  // A combined paper's question date is not in the row. Sachsen-Anhalt's Fundstelle
+  // sometimes prints two dates ("03.12.2025, 10.12.2025 Drucksache 8/6307 … (Nachtrag
+  // 10.12.2025)"): the paper's and its Nachtrag's, not the question's — so none is
+  // taken for it (issue #22; the parliament table names the gap, `knownGaps`).
   if (answer?.date !== undefined) ref.dates.answered = answer.date;
   return ref;
 }

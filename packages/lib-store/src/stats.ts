@@ -4,12 +4,15 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { CatalogEntry, CatalogStore, RecordStore } from "./store.js";
 import { catalogGaps } from "./indexer.js";
+import { onlyKnownGaps } from "@maschinenlesbar.org/openka-lib-models";
 import { isPlatformFile, type FileStore } from "./file-store.js";
 
 export interface ParliamentStats {
   records: number;
   /** Records with at least one abstained field. */
   abstained: number;
+  /** Of those, records whose only holes are fields the parliament never provides (`onlyKnownGaps`). */
+  known_gaps_only: number;
   /**
    * How often each kind of field was abstained on (`qa[].question`, …), summed over
    * the records, keys sorted — where a heal-loop session pays off most, and, saved
@@ -29,6 +32,11 @@ export interface CorpusStats {
   parse_complete: number;
   /** Records with at least one abstained field — verified by a person or not. */
   needs_review: number;
+  /**
+   * Of those, records whose only holes are fields their parliament never provides
+   * (`knownGaps`, lib-models) — counted apart, since no extractor could fill them.
+   */
+  known_gaps_only: number;
   /** Per parliament, keys sorted. */
   by_parliament: Record<string, ParliamentStats>;
   /** Records per extraction tier, keys sorted. */
@@ -82,13 +90,18 @@ export function corpusStats(
   const versions = new Map<string, number>();
   let versionsUnknown = 0;
   const abstainedByField: Record<string, number> = {};
+  let knownGapsOnly = 0;
   const byParliament = new Map<string, ParliamentStats>();
   const byTier = new Map<string, number>();
   for (const entry of catalog) {
-    const bucket = byParliament.get(entry.parliament) ?? { records: 0, abstained: 0, abstained_by_field: {}, abstained_fields_unknown: 0 };
+    const bucket = byParliament.get(entry.parliament) ?? { records: 0, abstained: 0, known_gaps_only: 0, abstained_by_field: {}, abstained_fields_unknown: 0 };
     bucket.records++;
     if (entry.abstained > 0) {
       bucket.abstained++;
+      if (onlyKnownGaps(entry.parliament, entry.abstained_fields)) {
+        bucket.known_gaps_only++;
+        knownGapsOnly++;
+      }
       if (entry.abstained_fields === undefined) bucket.abstained_fields_unknown++;
       for (const [kind, count] of Object.entries(entry.abstained_fields ?? {})) {
         bucket.abstained_by_field[kind] = (bucket.abstained_by_field[kind] ?? 0) + count;
@@ -114,6 +127,7 @@ export function corpusStats(
     records: catalog.length,
     parse_complete: complete,
     needs_review: catalog.length - complete,
+    known_gaps_only: knownGapsOnly,
     by_parliament: Object.fromEntries(
       [...byParliament].sort(byKey).map(([key, bucket]) => [
         key,

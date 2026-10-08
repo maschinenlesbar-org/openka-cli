@@ -210,9 +210,10 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       // No catalogued record (only uncatalogued files, noted above): there is no rate to
       // give — dividing by zero printed "NaN%".
       const rate = summary.records === 0 ? "" : ` (${((summary.parse_complete / summary.records) * 100).toFixed(1)}%)`;
-      io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields`);
+      const knownOnly = (n: number): string => (n === 0 ? "" : ` (${formatCount(n)} only where the parliament never provides the field)`);
+      io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields${knownOnly(summary.known_gaps_only)}`);
       for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
-        io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
+        io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review${knownOnly(bucket.known_gaps_only)}`);
       }
       printCoverage(ctx, summary);
       printVersions(ctx, summary);

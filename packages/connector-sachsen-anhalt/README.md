@@ -33,6 +33,13 @@ with `--json`. The records themselves do not carry it (their schema has no place
 it), so a corpus passed on does not show which documents were fetched under the
 override: keep the sync's output if that matters.
 
+**No question date, as a rule.** Question and answer are one Drucksache, dated by the
+answer; the Parlamentsspiegel row does not name the question's date (two dates in a
+Fundstelle are the paper's and its Nachtrag's), and the paper names it in about 1.5%. So
+`dates.submitted` is a known gap of the parliament (`knownGaps`, lib-models): records
+missing only it stay out of `ka review`, and `--since/--until` apply to the answer's
+date here.
+
 **And when it does fetch, it goes slowly.** `minHostIntervalMs` is 4000 — eight times
 the default. A server that asked not to be crawled at all should not then be hit at
 the usual rate. `minHostIntervalReason` says why, in `ka sources show` and in a note

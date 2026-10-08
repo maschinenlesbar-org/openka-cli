@@ -11,10 +11,10 @@ import { countSources, sourceStatus } from "@maschinenlesbar.org/openka-lib-pipe
 import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewGroups, reviewQueue } from "@maschinenlesbar.org/openka-lib-search";
 import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@maschinenlesbar.org/openka-lib-registry";
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
-import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
+import { PERIOD_RANGE, knownGaps, onlyKnownGaps } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
 import { describeRequestFloor } from "@maschinenlesbar.org/openka-lib-source";
-import { action, apiKeyLookup, noteRequestFloors, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
+import { action, apiKeyLookup, noteRequestFloors, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions, type ActionContext } from "../shared.js";
 import { formatCount, pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
@@ -93,7 +93,9 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
   program
     .command("review")
     .description("work the abstention queue: records the extractor refused to complete")
-    .option("--source <key>", "restrict to one parliament", parseParliament)
+    .option("--parliament <key>", "restrict to one parliament (as in search, export and stats)", parseParliament)
+    .option("--source <key>", "the same as --parliament", parseParliament)
+    .option("--include-known-gaps", "also the records whose only holes are fields their parliament never provides (ka sources show <key>)")
     .option("--limit <n>", `how many records to list (default: ${DEFAULT_REVIEW_LIMIT})`, parseBoundedInt(LIMIT_MIN, 10_000))
     .option("--mark-verified <id>", "record that a human checked this record against its source", parseRecordId)
     .addOption(choiceOption("--group-by <what>", "summarise the queue per source by the kind of field abstained on, with example ids", ["field"]))
@@ -101,33 +103,43 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .action(
       action(deps, async (ctx) => {
         const store = ctx.existingStore();
+        // One name everywhere: `--parliament`, as search, export and stats call it;
+        // `--source` is kept for the scripts that used it (issue #22).
+        if (ctx.opts["parliament"] !== undefined && ctx.opts["source"] !== undefined) {
+          throw new UsageError("--source is another name for --parliament; give one of them.");
+        }
+        const chosen = (ctx.opts["parliament"] ?? ctx.opts["source"]) as string | undefined;
+        const includeKnownGaps = ctx.opts["includeKnownGaps"] === true;
         if (ctx.opts["groupBy"] !== undefined) {
           for (const [key, flag] of [["markVerified", "--mark-verified"], ["limit", "--limit"]] as const) {
             if (ctx.opts[key] !== undefined) throw new UsageError(`${flag} does not apply to --group-by, which summarises the whole queue.`);
           }
-          const parliament = ctx.opts["source"] as string | undefined;
-          const grouped = reviewGroups(store, parliament === undefined ? {} : { parliament });
+          const grouped = reviewGroups(store, { ...(chosen === undefined ? {} : { parliament: chosen }), ...(includeKnownGaps ? { includeKnownGaps } : {}) });
           if (ctx.opts["json"] === true) {
             printJson(ctx, grouped);
             return;
           }
           const io = ctx.deps.io;
-          if (grouped.length === 0) {
+          if (grouped.every((set) => set.queued === 0)) {
             io.out("Nothing in the review queue.");
+            noteKnownGaps(ctx, grouped.reduce((sum, set) => sum + set.knownGapsOnly, 0), grouped.filter((set) => set.knownGapsOnly > 0).map((set) => set.parliament));
             return;
           }
           for (const set of grouped) {
+            if (set.queued === 0 && set.knownGapsOnly === 0) continue;
             io.out(`${set.parliament}: ${formatCount(set.queued)} record(s) in the queue`);
             if (set.groups.length > 0) io.out(`  ${pad("FIELD", 22)} ${"OCCURRENCES".padStart(11)} ${"RECORDS".padStart(8)}  EXAMPLES`);
             for (const group of set.groups) {
               io.out(
-                `  ${pad(group.field, 22)} ${formatCount(group.occurrences).padStart(11)} ${formatCount(group.records).padStart(8)}  ${group.examples.join(", ")}`,
+                `  ${pad(group.field, 22)} ${formatCount(group.occurrences).padStart(11)} ${formatCount(group.records).padStart(8)}  ${group.examples.join(", ")}` +
+                  (group.known === true ? "  (never provided by the parliament)" : ""),
               );
             }
             if (set.unknown > 0) {
               io.err(`note: ${set.parliament}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
             }
           }
+          noteKnownGaps(ctx, grouped.reduce((sum, set) => sum + set.knownGapsOnly, 0), grouped.filter((set) => set.knownGapsOnly > 0).map((set) => set.parliament));
           return;
         }
 
@@ -144,12 +156,13 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           return;
         }
 
-        const parliament = ctx.opts["source"] as string | undefined;
         const limit = ctx.opts["limit"] as number | undefined;
         const queue = reviewQueue(store, {
-          ...(parliament === undefined ? {} : { parliament }),
+          ...(chosen === undefined ? {} : { parliament: chosen }),
           ...(limit === undefined ? {} : { limit }),
+          ...(includeKnownGaps ? { includeKnownGaps } : {}),
         });
+        const knownGapParliaments = [...new Set(store.catalog().filter((entry) => onlyKnownGaps(entry.parliament, entry.abstained_fields)).map((entry) => entry.parliament))];
 
         if (ctx.opts["json"] === true) {
           printJson(ctx, { total: queue.total, records: queue.entries });
@@ -157,13 +170,17 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         }
         if (queue.total === 0) {
           // A verified record left the queue with its holes: "extracted completely"
-          // would claim something nobody did.
+          // would claim something nobody did — and nor would a record whose holes the
+          // parliament never fills.
           ctx.deps.io.out(
-            queue.verified === 0
+            queue.verified === 0 && queue.knownGapsOnly === 0
               ? "Nothing in the review queue — every stored record extracted completely."
-              : `Nothing left to review — ${queue.verified} record(s) with abstained fields were checked by a ` +
-                  "person (human_verified); their holes stay, see `ka search --needs-review`.",
+              : queue.verified > 0
+                ? `Nothing left to review — ${queue.verified} record(s) with abstained fields were checked by a ` +
+                  "person (human_verified); their holes stay, see `ka search --needs-review`."
+                : "Nothing in the review queue that the extractor could have read.",
           );
+          noteKnownGaps(ctx, queue.knownGapsOnly, knownGapParliaments);
           return;
         }
         for (const entry of queue.entries) {
@@ -177,6 +194,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           `${queue.entries.length} of ${queue.total} record(s) with abstentions. ` +
             "Check one against its source with `ka open <id>`, then `ka review --mark-verified <id>`.",
         );
+        noteKnownGaps(ctx, queue.knownGapsOnly, knownGapParliaments);
       }),
     );
 
@@ -301,6 +319,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           io.out(`homepage:   ${source.homepage}`);
           if (source.apiKeyEnv !== undefined) io.out(`credential: --api-key, ${source.apiKeyEnv} or \`ka config set ${source.key}.api-key\``);
           io.out(`requests:   ${describeRequestFloor(source)}`);
+          for (const gap of knownGaps(entry.parliament ?? "")) io.out(`never has: ${gap.field} — ${gap.reason}`);
           io.out("");
           io.out(source.notes);
         }
@@ -311,4 +330,18 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
 /** commander accumulator for a repeatable `--source`: each a key the registry knows. */
 function collectSourceKey(value: string, previous: string[] = []): string[] {
   return previous.concat([problemParser(sourceKeyProblem)(value)]);
+}
+
+/**
+ * Say that records were left out of the review queue because their only holes are
+ * fields their parliament never provides — and which fields, and how to see them.
+ * In Sachsen-Anhalt that was 98% of the queue, hiding the records with unread answers.
+ */
+function noteKnownGaps(ctx: ActionContext, count: number, parliaments: readonly string[]): void {
+  if (count === 0) return;
+  const which = parliaments.map((parliament) => `${parliament}: ${knownGaps(parliament).map((gap) => gap.field).join(", ")}`).join("; ");
+  ctx.deps.io.err(
+    `Note: ${formatCount(count)} record(s) left out: their only holes are fields the parliament never provides (${which}). ` +
+      "--include-known-gaps lists them too.",
+  );
 }

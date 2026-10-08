@@ -375,3 +375,20 @@ describe("a document link holding several URLs", () => {
     match(warnings.join("\n"), /document link holds 2 URLs glued together/);
   });
 });
+
+// Issue #22: Sachsen-Anhalt's combined papers carry no question date in the row.
+describe("a Sachsen-Anhalt combined paper", () => {
+  it("is dated by the answer, and the Nachtrag's second date is not taken for the question's", () => {
+    // Recorded 2026-10-08 (qyHerk=SACA, 2025): 8/6424 prints one date; 8/6307 prints
+    // "03.12.2025, 10.12.2025 … (Nachtrag 10.12.2025)" — the paper's and its Nachtrag's.
+    const html = readFixtureText("payloads", "parlamentsspiegel-sachsen-anhalt-combined.html");
+    const refs = blocksWithClass(html, "ps-vorgang", /<hr\s*\/?>/).map((block) => parseVorgangBlock(block, []));
+    deepStrictEqual(
+      refs.map((ref) => [ref?.reference, ref?.documents[0]?.role, ref?.dates]),
+      [
+        ["08/6424", "combined_pdf", { answered: "2025-12-22" }],
+        ["08/6307", "combined_pdf", { answered: "2025-12-10" }],
+      ],
+    );
+  });
+});

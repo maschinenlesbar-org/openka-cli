@@ -9,7 +9,7 @@ import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } f
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
-import { CredentialStore, FileStore, RunStatusRecorder, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import { CredentialStore, FileStore, RunStatusRecorder, indexRecord, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { hostname, tmpdir } from "node:os";
 import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { formatHit, renderShowLines } from "../src/commands/query.js";
@@ -1335,6 +1335,64 @@ describe("ka", () => {
         doesNotMatch(plain.stderr(), /request per/, "a source at the default says nothing");
       } finally {
         plain.cleanup();
+      }
+    });
+  });
+
+  describe("fields a parliament never provides (issue #22)", () => {
+    /** Two Sachsen-Anhalt records without a question date, one of them also without an answer. */
+    const seedSaxony = (corpus: string): void => {
+      const store = new FileStore(corpus);
+      for (const [n, fields] of [[1, ["dates.submitted"]], [2, ["dates.submitted", "qa[0].answer"]]] as const) {
+        const record = sampleRecord({
+          id: `sachsen-anhalt-8-${n}`,
+          parliament: "sachsen-anhalt",
+          reference: `8/${n}`,
+          legislative_period: 8,
+          extraction: { ...sampleRecord().extraction, parse_complete: false, abstained_fields: [...fields], review_status: "needs_review" },
+        });
+        store.putRecord(record);
+        indexRecord(store, record);
+      }
+    };
+
+    it("keeps them out of ka review, says so, and lists them with --include-known-gaps", async () => {
+      const harness = cliHarness();
+      try {
+        seedSaxony(harness.corpus);
+        strictEqual(await run(["--corpus", harness.corpus, "review", "--parliament", "sachsen-anhalt"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^sachsen-anhalt-8-2 /m);
+        doesNotMatch(harness.stdout(), /^sachsen-anhalt-8-1 /m);
+        match(harness.stderr(), /^Note: 1 record\(s\) left out: their only holes are fields the parliament never provides \(sachsen-anhalt: dates\.submitted\)\. --include-known-gaps lists them too\.$/m);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "review", "--source", "sachsen-anhalt", "--include-known-gaps"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^sachsen-anhalt-8-1 /m);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "review", "--group-by", "field"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^sachsen-anhalt: 1 record\(s\) in the queue$/m);
+        match(harness.stdout(), /^ {2}dates\.submitted +1 +1 {2}sachsen-anhalt-8-2 {2}\(never provided by the parliament\)$/m);
+
+        strictEqual(await run(["--corpus", harness.corpus, "review", "--parliament", "berlin", "--source", "berlin"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /--source is another name for --parliament; give one of them\./);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("counts them apart in ka stats, and names them in ka sources show", async () => {
+      const harness = cliHarness();
+      try {
+        seedSaxony(harness.corpus);
+        strictEqual(await run(["--corpus", harness.corpus, "stats", "--no-disk"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^0 parse-complete \(0\.0%\), 2 with abstained fields \(1 only where the parliament never provides the field\)$/m);
+        match(harness.stdout(), /^ {2}sachsen-anhalt: 2 record\(s\), 2 needing review \(1 only where the parliament never provides the field\)$/m);
+        harness.out.length = 0;
+        strictEqual(await run(["sources", "show", "sachsen-anhalt"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^never has: dates\.submitted — question and answer are published as one Drucksache, dated by the answer; /m);
+      } finally {
+        harness.cleanup();
       }
     });
   });

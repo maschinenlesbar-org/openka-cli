@@ -94,6 +94,10 @@ npm test -w @maschinenlesbar.org/openka-lib-parlamentsspiegel
   `qyHerk=SACA` of 2026-10-07 (exploratory review, result 05), trimmed to three
   unanswered rows: 08/4004 and 08/4010 (one asker), 08/4011 (two Grünen askers);
   documents under `/files/drs/wp8/dkl_anfr/`
+- `fixtures/payloads/parlamentsspiegel-sachsen-anhalt-combined.html` — two rows of the live
+  answer to `qyHerk=SACA` for 2025, recorded 2026-10-08 (issue #22): 08/6424, a combined
+  paper with one date, and 08/6307, whose Fundstelle prints "03.12.2025, 10.12.2025 … (Nachtrag
+  10.12.2025)" — the paper's and its Nachtrag's dates, neither the question's
 - `fixtures/payloads/parlamentsspiegel-glued-href.html` — the live answer to `qyHerk=SACA`
   with `query=7036` of 2026-10-08, trimmed to its one row, 08/7036, whose document link is
   `…/d7036dak.pdfhttps://…/d7036dak.doc` (issue #20)

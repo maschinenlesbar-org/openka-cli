@@ -350,6 +350,13 @@ What the library now computes that a `ka` action used to compute on its own:
   through `CliIO.readSecret` — a prompt without echo, or stdin — and never from argv; the
   CLI harness gives every test a config directory of its own, so no test touches the
   user's file.
+- **Holes a parliament never fills** — `Parliament.knownGaps` (`lib-models`) declares a
+  field a parliament's publications never carry, with the reason (Sachsen-Anhalt:
+  `dates.submitted`). `onlyKnownGaps(parliament, abstained_fields)` is true for a record
+  whose every hole is such a field: `reviewQueue`/`reviewGroups` (`lib-search`) leave it
+  out unless `includeKnownGaps`, and `corpusStats` (`lib-store`) counts it as
+  `known_gaps_only`. The record is not changed — its `abstained_fields` and
+  `parse_complete` still say what was not read.
 - **What a running sync is doing** — `RunStatusRecorder` (`lib-store`) keeps
   `<corpus>/run/status.json` from `syncJobs`' callbacks, on the CLI's clock, and never
   throws: a status that cannot be written is a warning, not a stopped sync.
