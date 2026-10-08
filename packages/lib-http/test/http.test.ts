@@ -7,6 +7,7 @@ import { once } from "node:events";
 import { describe, it } from "node:test";
 import { MAX_TIMEOUT_MS, nodeHttpTransport } from "../src/http.js";
 import {
+  DEFAULT_MAX_RESPONSE_BYTES,
   DEFAULT_USER_AGENT,
   FetchEngine,
   HostPacer,
@@ -180,6 +181,27 @@ describe("fetch engine", () => {
       strictEqual(error.failure, "too_large");
       const bad = await nodeHttpTransport({ method: "GET", url: "ftp://example.invalid/", headers: {} }).catch((err: unknown) => err);
       strictEqual((bad as NetworkError).failure, "bad_url");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("refuses a body that declares more than the cap before reading it, and names its size — but not a HEAD's", async () => {
+    // Issue #23: what the caller needs to fetch it is the document's own size.
+    strictEqual(DEFAULT_MAX_RESPONSE_BYTES, 128 * 1024 * 1024);
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-length": "4096" });
+      response.end(_request.method === "HEAD" ? undefined : Buffer.alloc(4096, 0x41));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const { port } = server.address() as { port: number };
+    try {
+      const url = `http://127.0.0.1:${port}/`;
+      const error = await nodeHttpTransport({ method: "GET", url, headers: {}, maxResponseBytes: 1024 }).then(() => undefined, (err: unknown) => err);
+      ok(error instanceof NetworkError);
+      deepStrictEqual([error.failure, error.bytes, error.message], ["too_large", 4096, "Response of 4096 bytes exceeds maxResponseBytes (1024)"]);
+      strictEqual((await nodeHttpTransport({ method: "HEAD", url, headers: {}, maxResponseBytes: 1024 })).status, 200);
     } finally {
       server.close();
     }

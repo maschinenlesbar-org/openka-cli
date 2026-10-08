@@ -352,7 +352,7 @@ describe("nesting depth", () => {
 
 describe("decompression limits", () => {
   it("refuses a stream that expands past the cap instead of taking the heap", () => {
-    // The fetch engine caps a response at 64 MiB; without a cap here that budget
+    // The fetch engine caps a response at 128 MiB; without a cap here that budget
     // buys unbounded memory. 199 KiB of deflate expands to 200 MiB at 1029:1.
     const bomb = deflateSync(Buffer.alloc(200 * 1024 * 1024, 0x20));
     ok(bomb.length < 1024 * 1024, "the bomb should be small on the wire");

@@ -6,7 +6,7 @@
 // window that has not moved therefore does nothing, costs one conditional request
 // per feed, and leaves the corpus byte-identical.
 
-import { OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
@@ -434,17 +434,17 @@ async function syncRef(
         // they are read again, dated when they were actually retrieved.
         const archived = existing?.source_documents.find((document) => document.url === wanted.url);
         if (archived?.sha256 === undefined) {
-          if (fetched.gap !== "robots") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}`);
+          if (fetched.gap !== "robots") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched)}`);
           continue;
         }
         if (!store.hasBlob(archived.sha256)) {
           throw new OpenKaError(
-            `${wanted.url} ${gapText(fetched.gap)}, and the archived copy the stored record was built from is missing; ` +
+            `${wanted.url} ${gapText(fetched)}, and the archived copy the stored record was built from is missing; ` +
               "the stored record was left as it was",
           );
         }
         run.warnings.push(
-          `${ref.reference}: ${wanted.url} ${gapText(fetched.gap)}; ` +
+          `${ref.reference}: ${wanted.url} ${gapText(fetched)}; ` +
             `kept the archived copy${archived.retrieved_at === undefined ? "" : ` retrieved ${archived.retrieved_at}`}`,
         );
         documents.push({
@@ -610,12 +610,25 @@ export interface FetchedBytes {
 }
 
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
-export type FetchGap = { gap: "404" | "robots" | "not-pdf" | "glued" };
+export type FetchGap =
+  | { gap: "404" | "robots" | "not-pdf" | "glued" }
+  /** Larger than the engine takes (`maxResponseBytes`); `bytes` when the response declared its size. */
+  | { gap: "too-large"; limit: number; bytes?: number };
 
-function gapText(gap: FetchGap["gap"]): string {
-  if (gap === "not-pdf") return "answered something that is not a PDF; nothing was archived";
-  if (gap === "glued") return "is several URLs glued together, not one; nothing was fetched";
-  return gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
+function gapText(fetched: FetchGap): string {
+  if (fetched.gap === "not-pdf") return "answered something that is not a PDF; nothing was archived";
+  if (fetched.gap === "glued") return "is several URLs glued together, not one; nothing was fetched";
+  if (fetched.gap === "too-large") {
+    // What to pass to fetch it: its own size rounded up to a MiB, or twice the cap.
+    const MIB = 1024 * 1024;
+    const suggest = fetched.bytes === undefined ? fetched.limit * 2 : Math.ceil(fetched.bytes / MIB) * MIB;
+    const size = fetched.bytes === undefined ? "" : ` (${(fetched.bytes / MIB).toFixed(1)} MiB)`;
+    return (
+      `is larger than --max-response-bytes (${fetched.limit / MIB} MiB)${size}, so the record is stored without it; ` +
+      `rerun with --max-response-bytes ${suggest} to fetch it`
+    );
+  }
+  return fetched.gap === "404" ? "now answers 404" : "is disallowed by its host's robots.txt";
 }
 
 /**
@@ -689,6 +702,11 @@ async function fetchDocumentOnce(
     });
   } catch (err) {
     if (err instanceof OpenKaApiError && err.status === 404) return { gap: "404" };
+    // A document over the size cap used to fail the whole Anfrage, which was then
+    // missing from the corpus (issue #23): it is a gap in the record, like a 404.
+    if (err instanceof NetworkError && err.failure === "too_large") {
+      return { gap: "too-large", limit: engine.maxResponseBytes, ...(err.bytes === undefined ? {} : { bytes: err.bytes }) };
+    }
     if (err instanceof RedirectRefused) return { gap: "robots" };
     throw err;
   }

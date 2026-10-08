@@ -192,6 +192,7 @@ function evenSample<T>(items: readonly T[], n: number): T[] {
 
 async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPolicy, warnings: string[]): Promise<number[]> {
   const sizes: number[] = [];
+  const oversize: string[] = [];
   let refused = 0;
   for (const url of urls) {
     const verdict = await robots.decide(url);
@@ -217,12 +218,23 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
         continue;
       }
       const length = Number(firstHeader(response.headers["content-length"]));
-      if (response.status === 200 && Number.isSafeInteger(length) && length > 0) sizes.push(length);
+      if (response.status === 200 && Number.isSafeInteger(length) && length > 0) {
+        sizes.push(length);
+        if (length > engine.maxResponseBytes) oversize.push(`${url} (${(length / 1024 / 1024).toFixed(1)} MiB)`);
+      }
     } catch {
       // A failed HEAD is a sample not taken, not a failed plan.
     }
   }
   if (refused > 0) warnings.push(`${refused} of ${urls.length} sampled document(s) are disallowed by robots.txt and were not asked for`);
+  // A sync stores such a record without its document (issue #23): better known now.
+  if (oversize.length > 0) {
+    warnings.push(
+      `${oversize.length} of ${urls.length} sampled document(s) are larger than --max-response-bytes ` +
+        `(${engine.maxResponseBytes / 1024 / 1024} MiB): ${oversize.join(", ")}; a sync stores their records without them ` +
+        "unless it is raised",
+    );
+  }
   return sizes;
 }
 

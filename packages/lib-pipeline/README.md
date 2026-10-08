@@ -96,6 +96,15 @@ what an interrupted run left behind, before the checkpoints — is indexed again
 counted in `recatalogued`, so the next sync over the window repairs it; before, every
 later run called it "unchanged" and it stayed invisible to search, stats and export.
 
+## A document over the size cap
+
+A document larger than the engine's `maxResponseBytes` is a gap in its record, like
+one that answers 404 (`gap: "too-large"`): the record is stored with what is known and
+abstains on what the document would have given, and the warning names the size and the
+`--max-response-bytes` that fetches it. It used to fail the whole Anfrage, which was then
+missing from the corpus (issue #23). `planSync` warns for sampled documents whose
+`Content-Length` is over the cap.
+
 ## A run that runs out of room
 
 `space` (a `SpaceGuard`, `spaceGuard` in lib-store) guards the disk. After discovery,

@@ -1307,6 +1307,7 @@ describe("ka", () => {
         harness.out.length = 0;
         strictEqual(await run(["--help"], harness.deps), EXIT_OK);
         match(harness.stdout().replace(/\s+/g, " "), /--min-host-interval <ms> minimum delay between requests to one host \(default: 500\); a source's own floor \(ka sources show <key>\) is never lowered by it/);
+        match(harness.stdout().replace(/\s+/g, " "), /--max-response-bytes <n> hard cap on a single response body \(default: 134217728, 128 MiB\); a document over it is left out of its record, with a warning/);
       } finally {
         harness.cleanup();
       }

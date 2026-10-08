@@ -127,9 +127,9 @@ function numberOf(value: PdfValue | undefined, fallback: number): number {
 
 /**
  * The most a single stream may decode to, whichever filter expands it. The fetch
- * engine caps a *response* at 64 MiB, and without a cap here that budget buys an
+ * engine caps a *response* at 128 MiB, and without a cap here that budget buys an
  * unbounded amount of heap: a 199 KiB deflate stream of repeated bytes expands to
- * 200 MiB, so a 64 MiB body at that ratio is tens of gigabytes. LZW and RunLength
+ * 200 MiB, so a 128 MiB body at that ratio is tens of gigabytes. LZW and RunLength
  * expand just as well — a 230 KB LZW stream cost 3.7 GB before it failed — so they
  * are held to the same cap. 128 MiB is far beyond any real Drucksache and turns
  * the bomb into an abstention.

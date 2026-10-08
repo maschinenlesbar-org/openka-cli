@@ -21,8 +21,12 @@ export const DEFAULT_USER_AGENT =
 /** Default per-request timeout. Parliament sites are not fast. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** 64 MiB — a Landtag PDF is rarely over 20 MiB, a Wahlperiode XML export can be 60. */
-export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+/**
+ * 128 MiB — a Landtag PDF is rarely over 20 MiB and a Wahlperiode XML export can be
+ * 60, but Sachsen-Anhalt's 08/7068 was over 64 MiB, and an Anfrage whose document
+ * did not fit used to be lost whole (issue #23).
+ */
+export const DEFAULT_MAX_RESPONSE_BYTES = 128 * 1024 * 1024;
 
 /** Retries of a transient failure when none is set. */
 export const DEFAULT_MAX_RETRIES = 3;
@@ -210,7 +214,8 @@ export class FetchEngine {
   /** The User-Agent every request carries — what a robots.txt rule is matched against. */
   readonly userAgent: string;
   private readonly maxRetries: number;
-  private readonly maxResponseBytes: number;
+  /** The most bytes one response may have — for a caller's message about one that had more. */
+  readonly maxResponseBytes: number;
   private readonly maxRedirects: number;
   /** Engine-wide interval: the option, raised by any floor a caller set since (`raiseMinHostInterval`). */
   private minHostIntervalMs: number;
@@ -452,7 +457,7 @@ export class FetchEngine {
         lastError = err;
         if (attempt >= maxRetries) break;
         // Every failure used to be retried maxRetries times: an over-size body was
-        // downloaded four times (4 × 64 MiB per document on a parliament server)
+        // downloaded four times (4 × the cap per document on a parliament server)
         // and a hanging host cost four timeouts plus backoff. A size or URL
         // failure is deterministic and is not retried; a timeout is retried once.
         const failure = err instanceof NetworkError ? err.failure : undefined;

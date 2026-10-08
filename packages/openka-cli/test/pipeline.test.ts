@@ -31,7 +31,7 @@ import {
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import { verifyRecord, diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
-import { CorpusLockedError, OpenKaValidationError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, NetworkError, OpenKaValidationError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
@@ -747,6 +747,41 @@ describe("sync pipeline", () => {
     const mirrored = `${PDF_URL}?mirror=https://example.invalid/x.pdf`;
     const third = await sync({ source: withUrl(mirrored), store: new MemoryStore(), engine: testEngine(transport) });
     deepStrictEqual([third.stored, third.warnings], [1, []]);
+  });
+
+  it("stores the record without a document over the size cap, and says how to fetch it", async () => {
+    // Issue #23: 08/7068 was over 64 MiB, and the whole Anfrage was lost.
+    const { transport: robots } = scriptedTransport([{ match: "robots.txt", status: 404 }]);
+    const tooLarge: Transport = async (request) => {
+      if (request.url.endsWith("/robots.txt")) return robots(request);
+      throw new NetworkError("Response of 140000000 bytes exceeds maxResponseBytes (134217728)", { failure: "too_large", bytes: 140_000_000 });
+    };
+    const store = new MemoryStore();
+    const report = await sync({ source: new StubSource(), store, engine: testEngine(tooLarge) });
+    deepStrictEqual([report.stored, report.failed, report.errors], [1, 0, []]);
+    deepStrictEqual(report.warnings, [
+      `19/10006: ${PDF_URL} is larger than --max-response-bytes (128 MiB) (133.5 MiB), so the record is stored without it; ` +
+        "rerun with --max-response-bytes 140509184 to fetch it",
+    ]);
+    const record = store.getRecord("berlin-19-10006");
+    deepStrictEqual(record?.source_documents, []);
+    ok(record?.extraction.abstained_fields.includes("qa"), JSON.stringify(record?.extraction.abstained_fields));
+
+    // Without a declared size, twice the cap is the suggestion.
+    const undeclared: Transport = async (request) => {
+      if (request.url.endsWith("/robots.txt")) return robots(request);
+      throw new NetworkError("Response exceeded maxResponseBytes (134217728)", { failure: "too_large" });
+    };
+    match((await sync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(undeclared) })).warnings[0] ?? "", /rerun with --max-response-bytes 268435456 to fetch it$/);
+  });
+
+  it("says in a dry run which sampled documents are over the size cap", async () => {
+    const { transport } = scriptedTransport([{ match: ".pdf", headers: { "content-length": String(200 * 1024 * 1024) } }]);
+    const plan = await planSync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(transport) });
+    ok(
+      plan.warnings.includes(`1 of 1 sampled document(s) are larger than --max-response-bytes (128 MiB): ${PDF_URL} (200.0 MiB); a sync stores their records without them unless it is raised`),
+      plan.warnings.join("\n"),
+    );
   });
 
   it("reports the discovered count before the first record, for a progress display", async () => {

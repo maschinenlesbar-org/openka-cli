@@ -20,6 +20,12 @@ a timeout is retried once (`timeoutMs` is per attempt); a response over
 would fail the same way at the same cost. The transport says which it was through
 `NetworkError.failure`.
 
+**The size cap** (`DEFAULT_MAX_RESPONSE_BYTES`, 128 MiB since 2026-10-08; 64 MiB lost
+Sachsen-Anhalt's 08/7068) is enforced while the body streams in, and before it when the
+response declares a larger `Content-Length` — then `NetworkError.bytes` carries that
+size. A HEAD answer is exempt: it declares a body it does not send. `engine.maxResponseBytes`
+is readable, so the pipeline can say what to pass to fetch a document over it.
+
 `--base-url` is trusted input but only `http:` and `https:` are accepted, checked at
 parse time, in the engine, and again per hop.
 

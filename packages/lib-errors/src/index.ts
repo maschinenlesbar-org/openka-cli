@@ -41,10 +41,13 @@ export type NetworkFailure = "timeout" | "too_large" | "bad_url";
 /** A transport-level failure (DNS, connection reset, timeout, ...). */
 export class NetworkError extends OpenKaError {
   readonly failure?: NetworkFailure;
+  /** For `too_large`: the size the response declared (`Content-Length`), when it did. */
+  readonly bytes?: number;
 
-  constructor(message: string, options?: { cause?: unknown; failure?: NetworkFailure }) {
+  constructor(message: string, options?: { cause?: unknown; failure?: NetworkFailure; bytes?: number }) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     if (options?.failure !== undefined) this.failure = options.failure;
+    if (options?.bytes !== undefined) this.bytes = options.bytes;
   }
 }
 

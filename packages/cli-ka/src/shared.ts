@@ -18,6 +18,7 @@ import {
 import { statSync } from "node:fs";
 import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import {
+  DEFAULT_MAX_RESPONSE_BYTES,
   DEFAULT_MIN_HOST_INTERVAL_MS,
   MAX_HOST_INTERVAL_MS,
   MAX_REDIRECTS,
@@ -451,7 +452,11 @@ export function addGlobalOptions(program: Command): Command {
     // these parsers only read argv into numbers and strings.
     .option("--user-agent <ua>", "User-Agent sent to upstreams", problemParser(userAgentProblem))
     .option("--max-retries <n>", "retries for a transient 429/503 or a dropped connection (never an over-size response)", parseBoundedInt(0, MAX_RETRIES))
-    .option("--max-response-bytes <n>", "hard cap on a single response body", parseBoundedInt(MIN_RESPONSE_BYTES))
+    .option(
+      "--max-response-bytes <n>",
+      `hard cap on a single response body (default: ${DEFAULT_MAX_RESPONSE_BYTES}, 128 MiB); a document over it is left out of its record, with a warning`,
+      parseBoundedInt(MIN_RESPONSE_BYTES),
+    )
     .option(
       "--min-host-interval <ms>",
       `minimum delay between requests to one host (default: ${DEFAULT_MIN_HOST_INTERVAL_MS}); a source's own floor ` +

@@ -72,6 +72,16 @@ export const nodeHttpTransport: Transport = (request) =>
       let received = 0;
       let aborted = false;
 
+      // A body that says up front it will not fit is not downloaded to find out. A HEAD
+      // answer declares the length of a body it does not send, so it is not one.
+      const declared = Number(res.headers["content-length"]);
+      if (request.method !== "HEAD" && maxBytes !== undefined && Number.isSafeInteger(declared) && declared > maxBytes) {
+        clearDeadline();
+        res.destroy();
+        reject(new NetworkError(`Response of ${declared} bytes exceeds maxResponseBytes (${maxBytes})`, { failure: "too_large", bytes: declared }));
+        return;
+      }
+
       res.on("data", (chunk: Buffer) => {
         if (aborted) return;
         received += chunk.length;
