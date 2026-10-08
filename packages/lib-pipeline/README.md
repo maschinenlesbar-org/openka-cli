@@ -122,6 +122,13 @@ run will handle, and `onProgress(event)` after each ref with its `index` of `tot
 and what happened to it. `ka sync` builds its progress line from the two; it used to
 have no total until the first record and printed nothing but failures.
 
+Each event carries `timing` (`SyncTiming`), and the report the final one: the requests,
+retries and 429/503 answers since the run began and the time inside them (average and
+95th percentile), from the engine's `metrics` (lib-http); the time spent waiting before
+requests; and the time the pipeline spent extracting and storing, on its clock
+(`now`). It is what says whether a slow run waits on the upstream, on politeness or on
+extraction (issue #14).
+
 ## A person's mark
 
 A record a person marked `human_verified` keeps the mark when it is re-extracted

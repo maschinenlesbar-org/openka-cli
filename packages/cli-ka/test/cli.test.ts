@@ -379,7 +379,8 @@ describe("ka", () => {
       const harness = cliHarness({ transport: berlinTransport().transport });
       try {
         strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK);
-        const progress = /^berlin: \d+ Anfragen discovered$[\s\S]*^berlin: (\d+)\/\1 · 0 failed$/m;
+        // With the harness's frozen clock there is no rate; the timing still follows.
+        const progress = /^berlin: \d+ Anfragen discovered$[\s\S]*^berlin: (\d+)\/\1 · 0 failed · upstream [\d.]+ s\/req/m;
         if (expected) match(harness.stderr(), progress, argv.join(" "));
         else strictEqual(harness.stderr(), "", argv.join(" "));
         if ((argv as readonly string[]).includes("--json")) JSON.parse(harness.stdout());

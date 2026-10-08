@@ -170,6 +170,24 @@ redrawn in place; written to a file or a pipe it is a plain line every 25 Anfrag
 30 seconds, so a log shows how far the run got. `--json` shapes stdout only and keeps
 it; `--quiet` silences it.
 
+**The pace is the recent one, and the line says where the time goes.** The rate and
+the time left are taken over the last ten minutes, so a run whose upstream slows down
+says so within minutes rather than hours; once the recent pace parts from the average
+by more than 15%, both are shown:
+
+```
+berlin: 1514/2471 · 0 failed · 17/min now (34/min avg) · ~56 min left · upstream 3.4 s/req · waiting 12% · extract 0.1 s
+```
+
+`upstream … s/req` is the average time a request takes; `waiting` the share of the run
+spent waiting before requests — the host's interval (`--min-host-interval`, a source's
+own floor) and the backoff after a 429/503; `extract` the time per Anfrage spent
+extracting; then `retries N` and `throttled N×` (429/503 answers) when there were any.
+A slow upstream reads as a high `upstream`; one asking us to slow down as `throttled`;
+a polite floor as a high `waiting`. The report has the same as `timing`, in `--json` too:
+`elapsedMs`, `requests`, `retries`, `throttled`, `upstreamMsAvg`, `upstreamMsP95`,
+`waitMs`, `extractMs`, `storeMs` (and, as before, `bytesFetched`).
+
 **One writer at a time.** `sync`, `reindex` and `review --mark-verified` hold the
 corpus's `lock` file while they write; a second writer exits 3 with "The corpus is in
 use by another run (…)", where two syncs used to lose index entries and catalog rows

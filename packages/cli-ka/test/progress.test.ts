@@ -3,7 +3,7 @@
 
 import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { EVERY_MS, EVERY_REFS, SyncProgress, duration } from "../src/progress.js";
+import { EVERY_MS, EVERY_REFS, RECENT_MS, SyncProgress, duration } from "../src/progress.js";
 import type { CliIO } from "../src/io.js";
 
 function io(terminal: boolean): { io: CliIO; lines: string[]; raw: string[] } {
@@ -98,6 +98,42 @@ describe("sync progress", () => {
     progress.discovered("berlin", 1);
     progress.update("berlin", event(1, 1));
     strictEqual(lines.at(-1), "berlin: 1/1 · 0 failed");
+  });
+
+  it("takes the rate and the time left from the last ten minutes, beside the average once they part", () => {
+    // Issue #14: Berlin 2026 went from 64/min to 17/min and the line kept "~31 min left".
+    const { io: sink, lines } = io(false);
+    const time = clock();
+    const progress = new SyncProgress(sink, time.now);
+    progress.discovered("berlin", 2000);
+    for (let i = 1; i <= 600; i++) {
+      time.advance(1_000); // 60/min for ten minutes
+      progress.update("berlin", event(i, 2000));
+    }
+    strictEqual(lines.at(-1), "berlin: 600/2000 · 0 failed · 60/min · ~23 min left");
+    for (let i = 601; i <= 700; i++) {
+      time.advance(6_000); // then 10/min for ten minutes
+      progress.update("berlin", event(i, 2000));
+    }
+    // The recent window is all slow now; the average is still 35/min.
+    strictEqual(lines.at(-1), "berlin: 700/2000 · 0 failed · 10/min now (35/min avg) · ~2h 09m left");
+    strictEqual(RECENT_MS, 600_000);
+  });
+
+  it("says where the time goes: upstream per request, waiting, extraction, retries and throttling", () => {
+    const { io: sink, lines } = io(false);
+    const time = clock();
+    const progress = new SyncProgress(sink, time.now);
+    progress.discovered("sachsen-anhalt", 25);
+    const timing = { elapsedMs: 100_000, requests: 75, retries: 3, throttled: 2, upstreamMsAvg: 4100, upstreamMsP95: 9000, waitMs: 40_000, extractMs: 5_000, storeMs: 1_000 };
+    for (let i = 1; i <= 25; i++) {
+      time.advance(4_000);
+      progress.update("sachsen-anhalt", { ...event(i, 25), timing });
+    }
+    strictEqual(
+      lines.at(-1),
+      "sachsen-anhalt: 25/25 · 0 failed · 15/min · done in 2 min · upstream 4.1 s/req · waiting 40% · extract 0.2 s · retries 3 · throttled 2×",
+    );
   });
 
   it("writes durations for people", () => {

@@ -20,6 +20,12 @@ a timeout is retried once (`timeoutMs` is per attempt); a response over
 would fail the same way at the same cost. The transport says which it was through
 `NetworkError.failure`.
 
+**Where the time went.** `engine.metrics` counts requests (attempts and redirect hops),
+retries, 429/503 answers, the milliseconds inside the transport (in all and per call)
+and the milliseconds spent waiting before requests — pacing and retry backoff — on the
+engine's own clock (`now`), so a test with an injected one gets exact numbers. The
+pipeline turns them into a run's `timing`.
+
 **The size cap** (`DEFAULT_MAX_RESPONSE_BYTES`, 128 MiB since 2026-10-08; 64 MiB lost
 Sachsen-Anhalt's 08/7068) is enforced while the body streams in, and before it when the
 response declares a larger `Content-Length` — then `NetworkError.bytes` carries that

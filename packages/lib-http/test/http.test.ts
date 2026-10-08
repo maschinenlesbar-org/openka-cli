@@ -207,6 +207,40 @@ describe("fetch engine", () => {
     }
   });
 
+  it("counts where its time went: requests, retries, 429/503 answers, upstream time and waiting", async () => {
+    // Issue #14: a slow sync could not tell the upstream from the pacing from extraction.
+    let t = 0;
+    let calls = 0;
+    const engine = new FetchEngine({
+      minHostIntervalMs: 1000,
+      maxRetries: 2,
+      now: () => t,
+      sleep: async (ms) => {
+        t += ms;
+      },
+      transport: async () => {
+        t += 300;
+        calls++;
+        return calls === 1
+          ? { status: 503, headers: { "retry-after": "2" }, body: Buffer.alloc(0) }
+          : { status: 200, headers: {}, body: Buffer.from("ok") };
+      },
+    });
+    await engine.get("https://example.invalid/a");
+    // The 503 waited its Retry-After (2 s), past the 1 s interval: no pacing wait on top.
+    deepStrictEqual({ ...engine.metrics, durations: [...engine.metrics.durations] }, {
+      requests: 2,
+      retries: 1,
+      throttled: 1,
+      upstreamMs: 600,
+      durations: [300, 300],
+      waitMs: 2000,
+    });
+    await engine.get("https://example.invalid/b");
+    // The second request waited for the host's interval: 1000 ms after the last, 300 ms of it gone.
+    deepStrictEqual([engine.metrics.requests, engine.metrics.waitMs], [3, 2700]);
+  });
+
   it("reports a 304 as not-modified rather than an error", async () => {
     const { transport } = scriptedTransport([{ match: "cached", status: 304, headers: { etag: '"v2"' } }]);
     const result = await testEngine(transport).get("https://example.invalid/cached", {

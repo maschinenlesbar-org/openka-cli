@@ -208,7 +208,35 @@ export interface FetchResult {
   finalUrl: string;
 }
 
+/**
+ * Where an engine's time went, counted as it goes (issue #14): a slow sync could not
+ * tell waiting on the upstream from extracting without `ps`, `iostat` and `nettop`.
+ * Read by the pipeline for a run's `timing` and progress line. On the engine's own
+ * clock, so a test with an injected one gets exact numbers.
+ */
+export interface EngineMetrics {
+  /** Calls to the transport: every attempt and every redirect hop. */
+  requests: number;
+  /** Of those, attempts after the first of one request. */
+  retries: number;
+  /** 429 and 503 answers: the upstream asking to slow down. */
+  throttled: number;
+  /** Milliseconds inside the transport, summed. */
+  upstreamMs: number;
+  /** Each transport call's milliseconds, in order — for a percentile. */
+  durations: number[];
+  /** Milliseconds spent waiting before a request: pacing (`--min-host-interval`, a source's floor) and retry backoff. */
+  waitMs: number;
+}
+
 export class FetchEngine {
+  private readonly counters: EngineMetrics = { requests: 0, retries: 0, throttled: 0, upstreamMs: 0, durations: [], waitMs: 0 };
+
+  /** Where this engine's time went so far (`EngineMetrics`), live; callers read it. */
+  get metrics(): Readonly<Omit<EngineMetrics, "durations">> & { readonly durations: readonly number[] } {
+    return this.counters;
+  }
+
   private readonly baseUrl: string | undefined;
   private readonly timeoutMs: number;
   /** The User-Agent every request carries — what a robots.txt rule is matched against. */
@@ -439,6 +467,15 @@ export class FetchEngine {
     let timeouts = 0;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       await this.throttle(url);
+      const counters = this.counters;
+      counters.requests++;
+      if (attempt > 0) counters.retries++;
+      const started = this.now();
+      const spent = (): void => {
+        const ms = Math.max(0, this.now() - started);
+        counters.upstreamMs += ms;
+        counters.durations.push(ms);
+      };
       try {
         const response = await this.transport({
           method,
@@ -448,12 +485,15 @@ export class FetchEngine {
           timeoutMs: this.timeoutMs,
           maxResponseBytes: this.maxResponseBytes,
         });
+        spent();
+        if (response.status === 429 || response.status === 503) counters.throttled++;
         if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
-          await this.sleep(retryDelayMs(response.headers["retry-after"], attempt));
+          await this.backoff(retryDelayMs(response.headers["retry-after"], attempt));
           continue;
         }
         return response;
       } catch (err) {
+        spent();
         lastError = err;
         if (attempt >= maxRetries) break;
         // Every failure used to be retried maxRetries times: an over-size body was
@@ -463,7 +503,7 @@ export class FetchEngine {
         const failure = err instanceof NetworkError ? err.failure : undefined;
         if (failure === "too_large" || failure === "bad_url") break;
         if (failure === "timeout" && ++timeouts > 1) break;
-        await this.sleep(retryDelayMs(undefined, attempt));
+        await this.backoff(retryDelayMs(undefined, attempt));
       }
     }
     // The loop always runs once (maxRetries >= 0) and leaves only through a
@@ -495,11 +535,20 @@ export class FetchEngine {
     this.minHostIntervalMs = Math.max(this.minHostIntervalMs, ms);
   }
 
+  /** Sleep before a retry, counted as waiting. */
+  private async backoff(ms: number): Promise<void> {
+    const before = this.now();
+    await this.sleep(ms);
+    this.counters.waitMs += Math.max(0, this.now() - before);
+  }
+
   /** Keep at least the host's interval between two requests to the same host. */
   private async throttle(url: string): Promise<void> {
     const host = new URL(url).host;
     const interval = Math.max(this.minHostIntervalMs, this.hostIntervals.get(host) ?? 0, this.pacer.floorFor(host));
+    const before = this.now();
     await this.pacer.wait(host, interval, { now: this.now, sleep: this.sleep });
+    this.counters.waitMs += Math.max(0, this.now() - before);
   }
 }
 

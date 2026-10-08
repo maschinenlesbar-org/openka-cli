@@ -92,6 +92,32 @@ export interface ProgressEvent {
   id: string;
   action: "stored" | "unchanged" | "failed";
   detail?: string;
+  /** Where the run's time has gone so far — for a progress line that says why it is slow. */
+  timing?: SyncTiming;
+}
+
+/**
+ * Where a run's time went (issue #14): waiting on the upstream, waiting to be polite,
+ * or extracting and storing. A slow sync could not tell these apart without `ps`,
+ * `iostat` and `nettop`. Upstream numbers are the engine's (`EngineMetrics`) since the
+ * run began; the rest are the pipeline's, on its clock (`SyncOptions.now`).
+ */
+export interface SyncTiming {
+  /** Since the run began, discovery included. */
+  elapsedMs: number;
+  /** Requests sent (attempts and redirect hops), and how many were retries. */
+  requests: number;
+  retries: number;
+  /** 429/503 answers: the upstream asking to slow down. */
+  throttled: number;
+  /** Time inside one request, on average and at the 95th percentile; absent before the first. */
+  upstreamMsAvg?: number;
+  upstreamMsP95?: number;
+  /** Time spent waiting before requests: pacing (`--min-host-interval`, a source's floor) and retry backoff. */
+  waitMs: number;
+  /** Time spent extracting records, and writing them with their index. */
+  extractMs: number;
+  storeMs: number;
 }
 
 export interface SyncReport {
@@ -120,6 +146,8 @@ export interface SyncReport {
   recatalogued: number;
   /** True when `signal` stopped the run before every ref was handled. */
   interrupted: boolean;
+  /** Where the run's time went (`SyncTiming`). */
+  timing: SyncTiming;
   /**
    * Why the run stopped before every ref was handled because a volume ran low on
    * space (`SyncOptions.space`). Like an interrupted run, it keeps what it stored and
@@ -149,6 +177,46 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
 }
 
 async function syncLocked(options: SyncOptions): Promise<SyncReport> {
+  const clock = options.now ?? (() => new Date());
+  const watch: Stopwatch = { extractMs: 0, storeMs: 0 };
+  const timing = timingSince(options.engine, clock, watch);
+  const report = await syncTimed(options, watch, timing);
+  report.timing = timing();
+  return report;
+}
+
+/** What the pipeline times itself: extraction and writing. */
+interface Stopwatch {
+  extractMs: number;
+  storeMs: number;
+}
+
+/** A function that says where the time has gone since now, on `engine` and `watch`. */
+function timingSince(engine: FetchEngine, clock: () => Date, watch: Stopwatch): () => SyncTiming {
+  const startedAt = clock().getTime();
+  const base = { ...engine.metrics, durations: engine.metrics.durations.length };
+  return () => {
+    const m = engine.metrics;
+    const durations = m.durations.slice(base.durations);
+    const timing: SyncTiming = {
+      elapsedMs: Math.max(0, clock().getTime() - startedAt),
+      requests: m.requests - base.requests,
+      retries: m.retries - base.retries,
+      throttled: m.throttled - base.throttled,
+      waitMs: m.waitMs - base.waitMs,
+      extractMs: watch.extractMs,
+      storeMs: watch.storeMs,
+    };
+    if (durations.length > 0) {
+      timing.upstreamMsAvg = Math.round((m.upstreamMs - base.upstreamMs) / durations.length);
+      const sorted = [...durations].sort((a, b) => a - b);
+      timing.upstreamMsP95 = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] as number;
+    }
+    return timing;
+  };
+}
+
+async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => SyncTiming): Promise<SyncReport> {
   const { source, store, engine } = options;
   // A blob directory on an unplugged drive is the corpus's problem, named before
   // any request — not a failed fetch per Anfrage. Also with --metadata-only, which
@@ -170,6 +238,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
     upstreamUnchanged: false,
     recatalogued: 0,
     interrupted: false,
+    timing: timing(),
   };
 
   const startedAt = isoInstant(now());
@@ -241,6 +310,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   // that were never stored.
   const httpCache = { ...(discovered.state ?? state).http_cache };
   const run: RunContext = {
+    watch,
     robots,
     warnings: report.warnings,
     notedOrigins: new Set(),
@@ -266,12 +336,12 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
         report.unchanged++;
       }
       report.bytesFetched += outcome.bytesFetched;
-      options.onProgress?.({ index, total: refs.length, id: outcome.id, action: outcome.action });
+      options.onProgress?.({ index, total: refs.length, id: outcome.id, action: outcome.action, timing: timing() });
     } catch (err) {
       report.failed++;
       const message = err instanceof Error ? err.message : String(err);
       report.errors.push(`${ref.reference}: ${message}`);
-      options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message });
+      options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message, timing: timing() });
     }
   };
   for (let start = 0; start < refs.length && !report.interrupted && report.lowSpace === undefined; start += CATALOG_CHECKPOINT) {
@@ -311,6 +381,8 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
 
 /** What every document fetch of one run shares: the robots.txt verdicts and where to say so. */
 interface RunContext {
+  /** Where extraction and writing time is added up. */
+  watch: Stopwatch;
   robots: RobotsPolicy;
   warnings: string[];
   /** Hosts already warned about, so a hundred documents on one host warn once. */
@@ -490,7 +562,9 @@ async function syncRef(
     return { id: existing.id, action: "unchanged", bytesFetched };
   }
 
+  const extractStart = now().getTime();
   const { record } = await extract(request);
+  run.watch.extractMs += Math.max(0, now().getTime() - extractStart);
   // A source that can tell whether the document is the paper the ref names says so
   // here; a mismatch stores nothing. A row and its PDF are joined only by a URL, and a
   // record that paired one paper's metadata with another's text verified fine.
@@ -509,9 +583,11 @@ async function syncRef(
       );
     }
   }
+  const storeStart = now().getTime();
   store.putRecord(record);
   // The postings in the index are the stored record's, which putRecord just replaced.
   indexRecord(store, record, existing);
+  run.watch.storeMs += Math.max(0, now().getTime() - storeStart);
   return { id: record.id, action: "stored", bytesFetched, record };
 }
 

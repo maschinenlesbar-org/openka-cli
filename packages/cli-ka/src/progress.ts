@@ -13,7 +13,7 @@
 // It goes to stderr, so `--json` (which shapes stdout) leaves it on; `--quiet` is
 // the switch that silences it. Time comes from `CliDeps.now`, the CLI's one clock.
 
-import type { ProgressEvent } from "@maschinenlesbar.org/openka-lib-pipeline";
+import type { ProgressEvent, SyncTiming } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliIO } from "./io.js";
 import { truncate } from "./text.js";
 
@@ -21,6 +21,14 @@ import { truncate } from "./text.js";
 export const EVERY_REFS = 25;
 /** …or once this much time has passed since the last one. */
 export const EVERY_MS = 30_000;
+/**
+ * The rate and the time left are taken over this much of the recent past, not since
+ * the start: a Berlin run whose upstream halved its pace kept saying "~31 min left"
+ * for half an hour (issue #14).
+ */
+export const RECENT_MS = 10 * 60_000;
+/** A recent rate this far from the average is shown beside it ("7/min now (10/min avg)"). */
+const RATE_DRIFT = 0.15;
 
 interface SourceProgress {
   total: number | undefined;
@@ -29,6 +37,9 @@ interface SourceProgress {
   /** When discovery finished: the rate is measured from there, not from the start. */
   startedAt: number | undefined;
   lastPrinted: { done: number; at: number } | undefined;
+  /** `[at, done]` of the last `RECENT_MS`, the first one just before it — for the recent rate. */
+  samples: [number, number][];
+  timing: SyncTiming | undefined;
 }
 
 export class SyncProgress {
@@ -43,7 +54,7 @@ export class SyncProgress {
 
   /** Register a source before it starts, so a terminal line shows it while it discovers. */
   start(source: string): void {
-    this.sources.set(source, { total: undefined, done: 0, failed: 0, startedAt: undefined, lastPrinted: undefined });
+    this.sources.set(source, fresh());
     this.redraw();
   }
 
@@ -51,6 +62,7 @@ export class SyncProgress {
     const state = this.state(source);
     state.total = total;
     state.startedAt = this.now().getTime();
+    state.samples = [[state.startedAt, 0]];
     if (this.terminal()) this.redraw();
     else if (total > 0) this.io.err(`${source}: ${total} Anfragen discovered`);
   }
@@ -59,6 +71,10 @@ export class SyncProgress {
     const state = this.state(source);
     state.done = event.index;
     state.total = event.total;
+    if (event.timing !== undefined) state.timing = event.timing;
+    const at = this.now().getTime();
+    state.samples.push([at, event.index]);
+    while (state.samples.length > 2 && at - (state.samples[1] as [number, number])[0] > RECENT_MS) state.samples.shift();
     if (event.action === "failed") {
       state.failed++;
       this.line(`  ! ${source} ${truncate(event.id, 40)}: ${truncate(event.detail ?? "failed", 100)}`);
@@ -67,7 +83,6 @@ export class SyncProgress {
       this.redraw();
       return;
     }
-    const at = this.now().getTime();
     const last = state.lastPrinted;
     const due =
       event.index === event.total ||
@@ -110,7 +125,7 @@ export class SyncProgress {
   private state(source: string): SourceProgress {
     let state = this.sources.get(source);
     if (state === undefined) {
-      state = { total: undefined, done: 0, failed: 0, startedAt: undefined, lastPrinted: undefined };
+      state = fresh();
       this.sources.set(source, state);
     }
     return state;
@@ -132,15 +147,57 @@ export class SyncProgress {
   private describe(source: string, state: SourceProgress): string {
     if (state.total === undefined) return `${source}: discovering…`;
     const parts = [`${source}: ${state.done}/${state.total}`, `${state.failed} failed`];
-    const elapsedMs = state.startedAt === undefined ? 0 : this.now().getTime() - state.startedAt;
+    const now = this.now().getTime();
+    const elapsedMs = state.startedAt === undefined ? 0 : now - state.startedAt;
     if (state.done > 0 && elapsedMs > 0) {
-      const perMinute = (state.done / elapsedMs) * 60_000;
-      parts.push(`${perMinute >= 10 ? Math.round(perMinute) : perMinute.toFixed(1)}/min`);
+      const average = (state.done / elapsedMs) * 60_000;
+      const recent = recentRate(state.samples) ?? average;
+      // The time left follows the recent pace; the average stays beside it once the two part.
+      const drifted = Math.abs(recent - average) > average * RATE_DRIFT;
+      parts.push(drifted ? `${perMinute(recent)}/min now (${perMinute(average)}/min avg)` : `${perMinute(average)}/min`);
       const remaining = state.total - state.done;
-      parts.push(remaining === 0 ? `done in ${duration(elapsedMs)}` : `~${duration((remaining / perMinute) * 60_000)} left`);
+      if (remaining === 0) parts.push(`done in ${duration(elapsedMs)}`);
+      else if (recent > 0) parts.push(`~${duration((remaining / recent) * 60_000)} left`);
     }
+    if (state.timing !== undefined) parts.push(...where(state.timing, state.done));
     return parts.join(" · ");
   }
+}
+
+function fresh(): SourceProgress {
+  return { total: undefined, done: 0, failed: 0, startedAt: undefined, lastPrinted: undefined, samples: [], timing: undefined };
+}
+
+function perMinute(rate: number): string {
+  return rate >= 10 ? String(Math.round(rate)) : rate.toFixed(1);
+}
+
+/** Anfragen per minute over the samples kept (the last `RECENT_MS`); undefined until they span time. */
+function recentRate(samples: readonly [number, number][]): number | undefined {
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (first === undefined || last === undefined || last[0] <= first[0]) return undefined;
+  return ((last[1] - first[1]) / (last[0] - first[0])) * 60_000;
+}
+
+/**
+ * Where the time goes, in a few words: the average time a request takes upstream, the
+ * share of the run spent waiting to be polite, extraction per Anfrage, and retries and
+ * 429/503 answers when there were any — so "it is slow" reads as "the upstream is
+ * slow", "it is throttling us" or "extraction is slow".
+ */
+function where(timing: SyncTiming, done: number): string[] {
+  const parts: string[] = [];
+  if (timing.upstreamMsAvg !== undefined) parts.push(`upstream ${seconds(timing.upstreamMsAvg)}/req`);
+  if (timing.elapsedMs > 0 && timing.waitMs > 0) parts.push(`waiting ${Math.round((timing.waitMs / timing.elapsedMs) * 100)}%`);
+  if (done > 0 && timing.extractMs > 0) parts.push(`extract ${seconds(timing.extractMs / done)}`);
+  if (timing.retries > 0) parts.push(`retries ${timing.retries}`);
+  if (timing.throttled > 0) parts.push(`throttled ${timing.throttled}×`);
+  return parts;
+}
+
+function seconds(ms: number): string {
+  return ms >= 10_000 ? `${Math.round(ms / 1000)} s` : `${(ms / 1000).toFixed(1)} s`;
 }
 
 /** A duration for people: "40s", "12 min", "5h 05m". */

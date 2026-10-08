@@ -784,6 +784,33 @@ describe("sync pipeline", () => {
     );
   });
 
+  it("says where the run's time went, in the report and in every progress event", async () => {
+    // Issue #14. One clock for the engine and the pipeline: every request takes 2 s,
+    // every reading of the pipeline's clock 1 ms.
+    let t = Date.parse("2026-10-08T10:00:00Z");
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const slow: Transport = async (request) => {
+      t += 2000;
+      return transport(request);
+    };
+    const engine = testEngine(slow, { now: () => t });
+    const timings: (number | undefined)[] = [];
+    const report = await sync({
+      source: new ManySource(2),
+      store: new MemoryStore(),
+      engine,
+      now: () => new Date((t += 1)),
+      onProgress: (event) => timings.push(event.timing?.requests),
+    });
+    const timing = report.timing;
+    deepStrictEqual([timing.requests, timing.retries, timing.throttled, timing.upstreamMsAvg, timing.upstreamMsP95], [2, 0, 0, 2000, 2000]);
+    ok(timing.elapsedMs >= 4000 && timing.extractMs > 0 && timing.storeMs > 0, JSON.stringify(timing));
+    // robots.txt and the document, both for the first ref; the second shares the document.
+    deepStrictEqual(timings, [2, 2]);
+    // Counted from the run's start: an engine reused for a second run starts again at zero.
+    deepStrictEqual((await sync({ source: new ManySource(1), store: new MemoryStore(), engine })).timing.requests, 2);
+  });
+
   it("reports the discovered count before the first record, for a progress display", async () => {
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
     const seen: string[] = [];
