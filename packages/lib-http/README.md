@@ -20,8 +20,18 @@ a timeout is retried once (`timeoutMs` is per attempt); a response over
 would fail the same way at the same cost. The transport says which it was through
 `NetworkError.failure`.
 
+**A kept-alive connection the server closed is not a retry** (issue #31). Connections
+are kept alive, and a server closes an idle one after its own timeout. The pool learns
+of that only when the event loop runs, and a sync stores a record synchronously between
+two requests. So `nodeHttpTransport` lets the event loop take one turn
+(`setImmediate`) before it sends. A GET, HEAD or OPTIONS that still fails with
+ECONNRESET, EPIPE or ECONNABORTED on a reused socket, before any answer, is sent once
+more on a connection of its own and marked `HttpResponse.reconnected`. The engine counts
+those as `reconnects`, and each retry by its reason (`retryReasons`: throttled, timeout,
+connection, other).
+
 **Where the time went.** `engine.metrics` counts requests (attempts and redirect hops),
-retries, 429/503 answers, the milliseconds inside the transport (in all and per call)
+retries (and why: `retryReasons`), reconnects, 429/503 answers, the milliseconds inside the transport (in all and per call)
 and the milliseconds spent waiting before requests — pacing and retry backoff — on the
 engine's own clock (`now`), so a test with an injected one gets exact numbers. The
 pipeline turns them into a run's `timing`.
@@ -69,7 +79,7 @@ request" and go out together.
 Everything is re-exported from the package root:
 
 ```
-DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_RETRIES, MAX_RETRIES, DEFAULT_MAX_REDIRECTS, MAX_REDIRECTS, DEFAULT_MIN_HOST_INTERVAL_MS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES, userAgentProblem, assertEngineOptions, EngineOptions, HostPacer, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, QueryValue, QueryParams, buildQuery
+DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_RETRIES, MAX_RETRIES, DEFAULT_MAX_REDIRECTS, MAX_REDIRECTS, DEFAULT_MIN_HOST_INTERVAL_MS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES, userAgentProblem, assertEngineOptions, EngineOptions, HostPacer, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, RetryReasons, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, QueryValue, QueryParams, buildQuery
 ```
 
 ## Depends on

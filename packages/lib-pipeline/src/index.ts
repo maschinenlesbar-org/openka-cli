@@ -7,7 +7,7 @@
 // per feed, and leaves the corpus byte-identical.
 
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
+import type { FetchEngine, RetryReasons } from "@maschinenlesbar.org/openka-lib-http";
 import { currentReference, makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, unindexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
@@ -123,6 +123,10 @@ export interface SyncTiming {
   retries: number;
   /** 429/503 answers: the upstream asking to slow down. */
   throttled: number;
+  /** The retries by reason: a 429/503, a timeout, a failed connection, anything else (issue #31). */
+  retryReasons: RetryReasons;
+  /** Requests sent again at once on a new connection, the kept-alive one having been closed by the server; not retries. */
+  reconnects: number;
   /** Time inside one request, on average and at the 95th percentile; absent before the first. */
   upstreamMsAvg?: number;
   upstreamMsP95?: number;
@@ -209,7 +213,7 @@ interface Stopwatch {
 /** A function that says where the time has gone since now, on `engine` and `watch`. */
 function timingSince(engine: FetchEngine, clock: () => Date, watch: Stopwatch): () => SyncTiming {
   const startedAt = clock().getTime();
-  const base = { ...engine.metrics, durations: engine.metrics.durations.length };
+  const base = { ...engine.metrics, retryReasons: { ...engine.metrics.retryReasons }, durations: engine.metrics.durations.length };
   return () => {
     const m = engine.metrics;
     const durations = m.durations.slice(base.durations);
@@ -218,6 +222,13 @@ function timingSince(engine: FetchEngine, clock: () => Date, watch: Stopwatch): 
       requests: m.requests - base.requests,
       retries: m.retries - base.retries,
       throttled: m.throttled - base.throttled,
+      retryReasons: {
+        throttled: m.retryReasons.throttled - base.retryReasons.throttled,
+        timeout: m.retryReasons.timeout - base.retryReasons.timeout,
+        connection: m.retryReasons.connection - base.retryReasons.connection,
+        other: m.retryReasons.other - base.retryReasons.other,
+      },
+      reconnects: m.reconnects - base.reconnects,
       waitMs: m.waitMs - base.waitMs,
       extractMs: watch.extractMs,
       storeMs: watch.storeMs,

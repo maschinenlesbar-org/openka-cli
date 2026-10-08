@@ -221,6 +221,14 @@ export interface EngineMetrics {
   retries: number;
   /** 429 and 503 answers: the upstream asking to slow down. */
   throttled: number;
+  /** Why each retry was made (issue #31): a 429/503, a timeout, a failed connection, anything else. */
+  retryReasons: RetryReasons;
+  /**
+   * Requests sent again at once on a new connection, because the kept-alive one had
+   * been closed by the server (`HttpResponse.reconnected`). Not retries: the first
+   * never reached the server.
+   */
+  reconnects: number;
   /** Milliseconds inside the transport, summed. */
   upstreamMs: number;
   /** Each transport call's milliseconds, in order — for a percentile. */
@@ -229,8 +237,35 @@ export interface EngineMetrics {
   waitMs: number;
 }
 
+/** Retries by reason (`EngineMetrics.retryReasons`). */
+export interface RetryReasons {
+  throttled: number;
+  timeout: number;
+  connection: number;
+  other: number;
+}
+
+/** Socket errors that mean the connection failed, not the server's answer. */
+const CONNECTION_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNREFUSED", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH"]);
+
+/** Which `RetryReasons` a failed attempt counts towards. */
+function retryReason(err: unknown): Exclude<keyof RetryReasons, "throttled"> {
+  if (err instanceof NetworkError && err.failure === "timeout") return "timeout";
+  const code = (err as { code?: unknown }).code ?? ((err as { cause?: { code?: unknown } }).cause?.code);
+  return typeof code === "string" && CONNECTION_CODES.has(code) ? "connection" : "other";
+}
+
 export class FetchEngine {
-  private readonly counters: EngineMetrics = { requests: 0, retries: 0, throttled: 0, upstreamMs: 0, durations: [], waitMs: 0 };
+  private readonly counters: EngineMetrics = {
+    requests: 0,
+    retries: 0,
+    throttled: 0,
+    retryReasons: { throttled: 0, timeout: 0, connection: 0, other: 0 },
+    reconnects: 0,
+    upstreamMs: 0,
+    durations: [],
+    waitMs: 0,
+  };
 
   /** Where this engine's time went so far (`EngineMetrics`), live; callers read it. */
   get metrics(): Readonly<Omit<EngineMetrics, "durations">> & { readonly durations: readonly number[] } {
@@ -486,8 +521,10 @@ export class FetchEngine {
           maxResponseBytes: this.maxResponseBytes,
         });
         spent();
+        if (response.reconnected === true) counters.reconnects++;
         if (response.status === 429 || response.status === 503) counters.throttled++;
         if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
+          counters.retryReasons.throttled++;
           await this.backoff(retryDelayMs(response.headers["retry-after"], attempt));
           continue;
         }
@@ -503,6 +540,7 @@ export class FetchEngine {
         const failure = err instanceof NetworkError ? err.failure : undefined;
         if (failure === "too_large" || failure === "bad_url") break;
         if (failure === "timeout" && ++timeouts > 1) break;
+        counters.retryReasons[retryReason(err)]++;
         await this.backoff(retryDelayMs(undefined, attempt));
       }
     }

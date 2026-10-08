@@ -125,14 +125,26 @@ describe("sync progress", () => {
     const time = clock();
     const progress = new SyncProgress(sink, time.now);
     progress.discovered("sachsen-anhalt", 25);
-    const timing = { elapsedMs: 100_000, requests: 75, retries: 3, throttled: 2, upstreamMsAvg: 4100, upstreamMsP95: 9000, waitMs: 40_000, extractMs: 5_000, storeMs: 1_000 };
+    const timing = {
+      elapsedMs: 100_000,
+      requests: 75,
+      retries: 3,
+      throttled: 2,
+      retryReasons: { throttled: 2, timeout: 0, connection: 1, other: 0 },
+      reconnects: 4,
+      upstreamMsAvg: 4100,
+      upstreamMsP95: 9000,
+      waitMs: 40_000,
+      extractMs: 5_000,
+      storeMs: 1_000,
+    };
     for (let i = 1; i <= 25; i++) {
       time.advance(4_000);
       progress.update("sachsen-anhalt", { ...event(i, 25), timing });
     }
     strictEqual(
       lines.at(-1),
-      "sachsen-anhalt: 25/25 · 0 failed · 15/min · done in 2 min · upstream 4.1 s/req · waiting 40% · extract 0.2 s · retries 3 · throttled 2×",
+      "sachsen-anhalt: 25/25 · 0 failed · 15/min · done in 2 min · upstream 4.1 s/req · waiting 40% · extract 0.2 s · retries 3 (2 throttled, 1 connection) · reconnected 4 · throttled 2×",
     );
   });
 

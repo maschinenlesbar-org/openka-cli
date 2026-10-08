@@ -240,11 +240,22 @@ berlin: 1514/2471 · 0 failed · 17/min now (34/min avg) · ~56 min left · upst
 `upstream … s/req` is the average time a request takes; `waiting` the share of the run
 spent waiting before requests — the host's interval (`--min-host-interval`, a source's
 own floor) and the backoff after a 429/503; `extract` the time per Anfrage spent
-extracting; then `retries N` and `throttled N×` (429/503 answers) when there were any.
-A slow upstream reads as a high `upstream`; one asking us to slow down as `throttled`;
-a polite floor as a high `waiting`. The report has the same as `timing`, in `--json` too:
-`elapsedMs`, `requests`, `retries`, `throttled`, `upstreamMsAvg`, `upstreamMsP95`,
-`waitMs`, `extractMs`, `storeMs` (and, as before, `bytesFetched`).
+extracting; then `retries N (… throttled, … timeout, … connection, … other)`,
+`reconnected N` and `throttled N×` (429/503 answers) when there were any. A slow
+upstream reads as a high `upstream`; one asking us to slow down as `throttled`; a polite
+floor as a high `waiting`. `reconnected` counts requests sent again at once on a new
+connection, because the server had closed the kept-alive one. They are not retries,
+since the first never reached the server, and they cost no wait. The report has the same
+as `timing`, in `--json` too: `elapsedMs`, `requests`, `retries`, `retryReasons`,
+`reconnects`, `throttled`, `upstreamMsAvg`, `upstreamMsP95`, `waitMs`, `extractMs`,
+`storeMs` (and, as before, `bytesFetched`).
+
+Until 2026-10-09 a request could go out on a connection the server had already closed
+(Apache closes an idle one after 5 s), because the sync was busy storing a record when the
+close arrived. It failed with ECONNRESET and was retried after a backoff and the host's
+floor: 615 retries in 1,481 requests to Sachsen-Anhalt's document server, none of them the
+server's doing (issue #31). The transport now lets the event loop take a turn before it
+picks a connection, and sends a GET or HEAD that still fails that way again on a new one.
 
 **One writer at a time.** `sync`, `reindex` and `review --mark-verified` hold the
 corpus's `lock` file while they write; a second writer exits 3 with "The corpus is in

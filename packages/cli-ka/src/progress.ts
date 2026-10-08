@@ -191,7 +191,14 @@ function where(timing: SyncTiming, done: number): string[] {
   if (timing.upstreamMsAvg !== undefined) parts.push(`upstream ${seconds(timing.upstreamMsAvg)}/req`);
   if (timing.elapsedMs > 0 && timing.waitMs > 0) parts.push(`waiting ${Math.round((timing.waitMs / timing.elapsedMs) * 100)}%`);
   if (done > 0 && timing.extractMs > 0) parts.push(`extract ${seconds(timing.extractMs / done)}`);
-  if (timing.retries > 0) parts.push(`retries ${timing.retries}`);
+  if (timing.retries > 0) {
+    // Why, so a run that retries without the server asking (issue #31) shows it.
+    const reasons = (["throttled", "timeout", "connection", "other"] as const)
+      .filter((reason) => (timing.retryReasons?.[reason] ?? 0) > 0)
+      .map((reason) => `${timing.retryReasons?.[reason]} ${reason}`);
+    parts.push(`retries ${timing.retries}${reasons.length === 0 ? "" : ` (${reasons.join(", ")})`}`);
+  }
+  if ((timing.reconnects ?? 0) > 0) parts.push(`reconnected ${timing.reconnects}`);
   if (timing.throttled > 0) parts.push(`throttled ${timing.throttled}×`);
   return parts;
 }

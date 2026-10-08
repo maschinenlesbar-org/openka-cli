@@ -3,6 +3,8 @@
 
 import { deepStrictEqual, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import http from "node:http";
+import net from "node:net";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { describe, it } from "node:test";
 import { MAX_TIMEOUT_MS, nodeHttpTransport } from "../src/http.js";
@@ -232,6 +234,8 @@ describe("fetch engine", () => {
       requests: 2,
       retries: 1,
       throttled: 1,
+      retryReasons: { throttled: 1, timeout: 0, connection: 0, other: 0 },
+      reconnects: 0,
       upstreamMs: 600,
       durations: [300, 300],
       waitMs: 2000,
@@ -611,5 +615,80 @@ describe("pacing shared between engines (issue #3)", () => {
     await a.get("https://shared.example.invalid/a");
     await b.get("https://shared.example.invalid/b");
     deepStrictEqual(world.asked.map(([, at]) => at), [0, 0]);
+  });
+});
+
+describe("a kept-alive connection the server has closed (issue #31)", () => {
+  /** A test that starts a server process: process start is real work, so it gets 30 s. */
+  const STARTS_A_PROCESS = { timeout: 30_000 };
+
+  it("sends a GET again on a new connection when the reused one fails before any answer, and not a POST", async () => {
+    // Answers the first request on each connection and drops the second, as a server
+    // does that closed the connection while the client was busy.
+    const server = net.createServer((socket) => {
+      let requests = 0;
+      socket.on("data", () => {
+        if (++requests === 1) socket.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\nKeep-Alive: timeout=5\r\n\r\nok");
+        else socket.destroy();
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
+    const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
+    try {
+      strictEqual((await nodeHttpTransport({ method: "GET", url })).reconnected, undefined);
+      await pause(); // the connection is back in the pool
+      const again = await nodeHttpTransport({ method: "GET", url });
+      deepStrictEqual([again.status, again.body.toString(), again.reconnected], [200, "ok", true]);
+      await nodeHttpTransport({ method: "GET", url });
+      await pause();
+      await rejects(() => nodeHttpTransport({ method: "POST", url, body: "x" }), NetworkError);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("does not hand out a connection the server closed while the event loop was busy", STARTS_A_PROCESS, async () => {
+    // The server in a process of its own, so blocking this one does not hold its timer.
+    const child = spawn(process.execPath, [
+      "-e",
+      `const http = require("node:http");
+       const server = http.createServer((req, res) => { res.setHeader("Keep-Alive", "timeout=5"); res.end("ok"); });
+       server.keepAliveTimeout = 100;
+       server.keepAliveTimeoutBuffer = 0;
+       server.listen(0, "127.0.0.1", () => console.log(server.address().port));`,
+    ], { stdio: ["ignore", "pipe", "inherit"] });
+    try {
+      const [data] = (await once(child.stdout, "data")) as [Buffer];
+      const url = `http://127.0.0.1:${Number(String(data).trim())}/`;
+      await nodeHttpTransport({ method: "GET", url });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // A sync storing a record: the server closes the idle connection meanwhile.
+      const until = Date.now() + 600;
+      while (Date.now() < until) {
+        /* busy */
+      }
+      const next = await nodeHttpTransport({ method: "GET", url });
+      deepStrictEqual([next.status, next.reconnected], [200, undefined], "the closed connection was not used at all");
+    } finally {
+      child.kill();
+    }
+  });
+
+  it("counts reconnects apart from retries, and retries by reason", async () => {
+    const calls: string[] = [];
+    const engine = testEngine(async (request) => {
+      calls.push(request.url);
+      if (calls.length === 1) throw new NetworkError("read ECONNRESET", { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) });
+      if (calls.length === 2) throw new NetworkError("Request timed out after 5ms", { failure: "timeout" });
+      if (calls.length === 3) return { status: 503, headers: {}, body: Buffer.alloc(0) };
+      return { status: 200, headers: {}, body: Buffer.from("ok"), reconnected: true };
+    });
+    await engine.get("https://example.invalid/x");
+    deepStrictEqual(
+      [engine.metrics.retries, engine.metrics.retryReasons, engine.metrics.reconnects],
+      [3, { throttled: 1, timeout: 1, connection: 1, other: 0 }, 1],
+    );
   });
 });

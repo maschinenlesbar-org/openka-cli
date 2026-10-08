@@ -22,6 +22,11 @@ export interface HttpResponse {
   status: number;
   headers: http.IncomingHttpHeaders;
   body: Buffer;
+  /**
+   * True when the request first went out on a kept-alive connection the server had
+   * closed, and was sent again on a new one (`nodeHttpTransport`, issue #31).
+   */
+  reconnected?: true;
 }
 
 export type Transport = (request: HttpRequest) => Promise<HttpResponse>;
@@ -32,12 +37,47 @@ export type Transport = (request: HttpRequest) => Promise<HttpResponse>;
  */
 export const MAX_TIMEOUT_MS = 2_147_483_647;
 
+/** Socket errors that mean the server had closed a kept-alive connection before the request reached it. */
+const STALE_SOCKET_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNABORTED"]);
+
+/** Methods that may be sent twice: a request that never reached the server is sent again only for these. */
+const IDEMPOTENT = new Set(["GET", "HEAD", "OPTIONS"]);
+
 /**
  * Default transport. Resolves with the raw response (including non-2xx) — status
  * interpretation is the engine's job. Rejects only on transport-level failures.
+ *
+ * Connections are kept alive between requests, and a server closes an idle one after
+ * its own timeout (Apache: 5 s). The pool learns of that close only when the event loop
+ * runs, and a sync stores a record synchronously between two requests. The next
+ * request then went out on the dead socket and failed with ECONNRESET: 615 retries in
+ * 1,481 requests to padoka, none of them the server's doing (issue #31). So the
+ * transport first lets the event loop take a turn, and a request that still fails on a
+ * reused socket before any response is sent once more on a new connection — not a
+ * retry, since it never reached the server.
  */
-export const nodeHttpTransport: Transport = (request) =>
-  new Promise<HttpResponse>((resolve, reject) => {
+export const nodeHttpTransport: Transport = async (request) => {
+  // One turn of the event loop: a close the server sent while the loop was busy is
+  // read now, and the pool drops that socket instead of handing it out.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    return await send(request, false);
+  } catch (err) {
+    if (!(err instanceof StaleSocketError)) throw err;
+    if (!IDEMPOTENT.has(request.method.toUpperCase())) throw err.original;
+    return { ...(await send(request, true)), reconnected: true };
+  }
+};
+
+/** A request that failed on a reused socket before any response: the server had closed it. */
+class StaleSocketError extends Error {
+  constructor(readonly original: NetworkError) {
+    super(original.message);
+  }
+}
+
+function send(request: HttpRequest, fresh: boolean): Promise<HttpResponse> {
+  return new Promise<HttpResponse>((resolve, reject) => {
     let url: URL;
     try {
       url = new URL(request.url);
@@ -67,7 +107,10 @@ export const nodeHttpTransport: Transport = (request) =>
       }
     };
 
-    const req = driver.request(url, { method: request.method, headers: request.headers }, (res) => {
+    let responded = false;
+    // `agent: false` is a connection of its own, closed after this request.
+    const req = driver.request(url, { method: request.method, headers: request.headers, ...(fresh ? { agent: false } : {}) }, (res) => {
+      responded = true;
       const chunks: Buffer[] = [];
       let received = 0;
       let aborted = false;
@@ -119,9 +162,16 @@ export const nodeHttpTransport: Transport = (request) =>
 
     req.on("error", (err) => {
       clearDeadline();
-      reject(err instanceof NetworkError ? err : new NetworkError(err.message, { cause: err }));
+      const error = err instanceof NetworkError ? err : new NetworkError(err.message, { cause: err });
+      const code = (err as { code?: unknown }).code;
+      if (!fresh && !responded && req.reusedSocket && typeof code === "string" && STALE_SOCKET_CODES.has(code)) {
+        reject(new StaleSocketError(error));
+        return;
+      }
+      reject(error);
     });
 
     if (request.body !== undefined) req.write(request.body);
     req.end();
   });
+}
