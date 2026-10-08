@@ -382,7 +382,8 @@ describe("corpus summaries (finding 14)", () => {
       seed: seedSummary,
       argv: (corpus) => {
         cliCorpus = corpus;
-        return ["--compact", "--corpus", corpus, "stats", "--json"];
+        // Disk use is the CLI's addition (corpusDiskUsage); the counts are corpusStats'.
+        return ["--compact", "--corpus", corpus, "stats", "--json", "--no-disk"];
       },
       lib: ({ store }) => corpusStats(store),
     });
@@ -1108,7 +1109,7 @@ describe("where the corpus is (finding 19)", () => {
   it("takes OPENKA_CORPUS as given, like --corpus: a trailing space is part of the name", async () => {
     const { dir, done } = shared("spaced ");
     try {
-      for (const argv of [["--compact", "stats", "--json"], ["--compact", "--corpus", dir, "stats", "--json"]]) {
+      for (const argv of [["--compact", "stats", "--json", "--no-disk"], ["--compact", "--corpus", dir, "stats", "--json", "--no-disk"]]) {
         const result = await parity({
           env: { OPENKA_CORPUS: dir },
           argv,

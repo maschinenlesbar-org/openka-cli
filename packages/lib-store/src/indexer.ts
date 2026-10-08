@@ -61,8 +61,18 @@ export function toCatalogEntry(record: KaRecord, terms: number): CatalogEntry {
     review_status: record.extraction.review_status,
     tier: record.extraction.tier,
     abstained: record.extraction.abstained_fields.length,
+    questions: record.qa.length,
+    extractor_version: record.extraction.extractor_version,
     terms,
   };
+  const labels = new Map<string, string>();
+  for (const asker of record.askers) {
+    const label = asker.party?.trim();
+    if (label !== undefined && label !== "" && !labels.has(label.toLowerCase())) labels.set(label.toLowerCase(), label);
+  }
+  if (labels.size > 0) entry.party_labels = [...labels.values()];
+  const ministry = record.answered_by.ministry?.trim();
+  if (ministry !== undefined && ministry !== "") entry.ministry = ministry;
   if (record.dates.submitted !== undefined) entry.submitted = record.dates.submitted;
   if (record.dates.answered !== undefined) entry.answered = record.dates.answered;
   if (year !== undefined) entry.year = year;

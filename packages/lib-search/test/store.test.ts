@@ -8,7 +8,8 @@ import { after, describe, it } from "node:test";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { CorpusLockedError, MissingCorpusError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
-import type { CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import type { CatalogEntry, CatalogStore, EmbeddingStore, FilesystemInfo, VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
+import { NONE, NOT_INDEXED, UNDATED, statsBreakdown, statsSelection, type StatsDimension } from "../src/stats.js";
 import {
   DEFAULT_MIN_FREE_BYTES,
   CredentialStore,
@@ -730,6 +731,10 @@ describe("corpus statistics", () => {
         berlin: { records: 2, abstained: 1, abstained_by_field: { qa: 1 }, abstained_fields_unknown: 0 },
       },
       by_tier: { text_layer: 3 },
+      coverage: { first_asked: "2024-03-01", last_asked: "2024-03-01", undated: 0, questions: 2, questions_unknown: 0, unanswered: 0 },
+      extractor_versions: { "test:1": 3 },
+      extractor_versions_unknown: 0,
+      abstained_by_field: { qa: 1 },
       uncatalogued: [],
       missing_files: [],
     });
@@ -739,6 +744,10 @@ describe("corpus statistics", () => {
       needs_review: 0,
       by_parliament: {},
       by_tier: {},
+      coverage: { undated: 0, questions: 0, questions_unknown: 0, unanswered: 0 },
+      extractor_versions: {},
+      extractor_versions_unknown: 0,
+      abstained_by_field: {},
       uncatalogued: [],
       missing_files: [],
     });
@@ -1633,5 +1642,103 @@ describe("the credentials file", () => {
     strictEqual(resolveCredentialsPath({ XDG_CONFIG_HOME: "relative", HOME: "/h" }), join("/h", ".config", "openka", "credentials"));
     strictEqual(resolveCredentialsPath({ HOME: "/h" }), join("/h", ".config", "openka", "credentials"));
     deepStrictEqual([maskCredential(KEY), maskCredential("short"), maskCredential("x")], ["OSOe…Kkhw", "****", "****"]);
+  });
+});
+
+// Issue #16: the first numbers anyone asks about a corpus, from the catalog.
+describe("stats breakdowns", () => {
+  /** A catalogued record: who asked, who answered, when, and with which extractor. */
+  const row = (n: number, options: { parties?: string[]; ministry?: string; submitted?: string; answered?: string; version?: string; abstained?: string[]; parliament?: "berlin" | "bayern" } = {}): CatalogEntry => {
+    const base = sampleRecord();
+    const record = sampleRecord({
+      id: `${options.parliament ?? "berlin"}-19-${String(n).padStart(5, "0")}`,
+      parliament: options.parliament ?? "berlin",
+      reference: `19/${String(n).padStart(5, "0")}`,
+      askers: (options.parties ?? []).map((party, index) => ({ name: `Person ${index}`, party })),
+      answered_by: options.ministry === undefined ? {} : { ministry: options.ministry },
+      dates: { ...(options.submitted === undefined ? {} : { submitted: options.submitted }), ...(options.answered === undefined ? {} : { answered: options.answered }) },
+      extraction: {
+        ...base.extraction,
+        extractor_version: options.version ?? "test:1",
+        abstained_fields: options.abstained ?? [],
+        parse_complete: (options.abstained ?? []).length === 0,
+        review_status: (options.abstained ?? []).length === 0 ? "ok" : "needs_review",
+      },
+    });
+    return toCatalogEntry(record, 1);
+  };
+
+  it("catalogues the parties as written, the ministry, the questions and the extractor version", () => {
+    const entry = row(1, { parties: ["Grüne", "GRÜNE", "SPD"], ministry: " Senatsverwaltung für Finanzen ", version: "pkg:0.3.1+extract:x" });
+    deepStrictEqual(
+      [entry.parties, entry.party_labels, entry.ministry, entry.questions, entry.extractor_version],
+      [["grüne", "spd"], ["Grüne", "SPD"], "Senatsverwaltung für Finanzen", 1, "pkg:0.3.1+extract:x"],
+    );
+    deepStrictEqual([row(2).party_labels, row(2).ministry], [undefined, undefined]);
+  });
+
+  it("counts coverage and extractor versions, and what predates them", () => {
+    const store = new MemoryStore();
+    const legacy = { ...row(4, { submitted: "2026-02-01" }) };
+    delete legacy.questions;
+    delete legacy.extractor_version;
+    store.putCatalogEntries([
+      row(1, { submitted: "2026-03-01", answered: "2026-03-20", version: "new" }),
+      row(2, { submitted: "2025-12-31", version: "old" }),
+      row(3, { answered: "2026-01-01", version: "new" }),
+      legacy,
+    ]);
+    // Catalog rows alone: the counts come from the catalog, the record files are not read.
+    const stats = corpusStats(store);
+    deepStrictEqual(stats.coverage, { first_asked: "2025-12-31", last_asked: "2026-03-01", undated: 1, questions: 3, questions_unknown: 1, unanswered: 2 });
+    deepStrictEqual([stats.extractor_versions, stats.extractor_versions_unknown], [{ new: 2, old: 1 }, 1]);
+    strictEqual(corpusStats(store, { where: (entry) => entry.extractor_version === "new" }).records, 2);
+  });
+
+  it("groups a party across its spellings, in the spelling most records use, largest first", () => {
+    const entries = [
+      row(1, { parties: ["Grüne"] }),
+      row(2, { parties: ["Grüne"] }),
+      row(3, { parties: ["BÜNDNIS 90/DIE GRÜNEN"], abstained: ["qa[0].answer"] }),
+      row(4, { parties: ["CDU", "SPD"] }),
+      row(5),
+    ];
+    const breakdown = statsBreakdown(entries, ["party"]);
+    deepStrictEqual(
+      breakdown.rows.map((r) => [r.keys[0], r.records, r.needs_review]),
+      [["Grüne", 3, 1], ["CDU", 1, 0], ["SPD", 1, 0], [NONE, 1, 0]],
+    );
+    strictEqual(breakdown.overlapping, true, "a question of two parties counts for both");
+    strictEqual(statsBreakdown([row(1, { parties: ["Grüne"] })], ["party"]).overlapping, false);
+  });
+
+  it("runs time forward with the undated last, and crosses two dimensions", () => {
+    const entries = [
+      row(1, { submitted: "2026-02-10", ministry: "SenFin" }),
+      row(2, { submitted: "2026-01-05", ministry: "SenFin" }),
+      row(3, { submitted: "2025-12-31", ministry: "SenBildJugFam" }),
+      row(4, { ministry: "SenFin" }),
+    ];
+    deepStrictEqual(statsBreakdown(entries, ["month"]).rows.map((r) => r.keys[0]), ["2025-12", "2026-01", "2026-02", UNDATED]);
+    deepStrictEqual(
+      statsBreakdown(entries, ["ministry", "year"]).rows.map((r) => [...r.keys, r.records]),
+      [["SenFin", 2026, 2], ["SenFin", UNDATED, 1], ["SenBildJugFam", 2025, 1]],
+    );
+    const legacy = { ...row(5) };
+    delete legacy.questions;
+    deepStrictEqual(statsBreakdown([legacy], ["ministry"]).rows[0]?.keys, [NOT_INDEXED]);
+  });
+
+  it("refuses an unknown, repeated or third dimension, and selects by the search filters", () => {
+    for (const [by, reason] of [
+      [["colour"], /"colour" is not one of party, ministry, month, year, period, parliament/],
+      [["party", "party"], /named twice/],
+      [["party", "year", "month"], /At most 2 dimensions/],
+    ] as const) {
+      throws(() => statsBreakdown([], by as unknown as StatsDimension[]), (err: unknown) => err instanceof OpenKaValidationError && reason.test(err.message));
+    }
+    const entries = [row(1, { submitted: "2026-01-01" }), row(2, { parliament: "bayern", submitted: "2026-01-01" }), row(3)];
+    const selection = statsSelection(entries, { parliament: ["berlin"], year: [2026] });
+    deepStrictEqual([selection.entries.map((entry) => entry.id), selection.undated], [["berlin-19-00001"], 1]);
   });
 });

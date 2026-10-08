@@ -72,6 +72,12 @@ which jobs of a plan file (`ka sync --plan`) are done in its open round, under
 `state/queues/<key>.json`; `queueProgressKey(planPath)` derives the key from the plan's
 absolute path, and `undefined` closes the round.
 
+**What `ka stats` counts, in the catalog.** A catalog row also carries the askers'
+parties as written (`party_labels`), the answering `ministry`, the number of
+`questions` and the `extractor_version` (since 2026-10-08), so `corpusStats` can give
+coverage, questions and versions, and lib-search's `statsBreakdown` its `--by` tables,
+without reading a record. A row catalogued before lacks them; `ka reindex` adds them.
+
 **Abstentions by kind, in the catalog.** A catalog row carries `abstained_fields`: the
 record's abstained paths by kind (`abstainedFieldKind`: `qa[3].answer` → `qa[].answer`)
 with their counts, so `corpusStats` (`abstained_by_field` per parliament) and
@@ -128,7 +134,7 @@ and catalog rows whose file is gone.
 - **`src/credentials.ts`** — Credentials kept apart from the corpus: the user's credentials file.
 - **`src/run-status.ts`** — What a running sync is doing, readable from another terminal: the status file and `ka status`'s reading of it.
 - **`src/doctor.ts`** — `ka doctor`: the volumes, the lock, the catalog against the record files, and the macOS files beside them.
-- **`src/stats.ts`** — `corpusStats`: what is in a corpus, counted from its catalog — the numbers `ka stats` prints; `corpusDiskUsage`: what it takes on disk (`ka stats --disk`).
+- **`src/stats.ts`** — `corpusStats`: what is in a corpus, counted from its catalog — the numbers `ka stats` prints, coverage and extractor versions included, over the rows `where` keeps; `corpusDiskUsage`: what it takes on disk.
 - **`src/store.ts`** — The corpus seam.
 
 ## Public surface

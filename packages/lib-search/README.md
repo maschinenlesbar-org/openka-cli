@@ -36,6 +36,7 @@ assertions span both.
 ## What is in here
 
 - **`src/search.ts`** — Keyword search over the corpus: parse the query, gather postings from the index shards the query terms live in, apply the structured filters, rank, and return catalog rows.
+- **`src/stats.ts`** — `ka stats --by`: the catalog broken down by party, ministry, month, year, period or parliament, or two crossed (`statsBreakdown`), within the search filters (`statsSelection`).
 - **`src/semantic.ts`** — Semantic search over embeddings that were computed in the factory and frozen into the corpus.
 
 ## Public surface
@@ -43,7 +44,7 @@ assertions span both.
 Everything is re-exported from the package root:
 
 ```
-SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, undatedMatch, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, searchableQueryProblem, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, partyKey, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, REVIEW_GROUP_EXAMPLES, ReviewGroup, ReviewGroups, reviewGroups, makeSnippet, cosine, SemanticOptions, searchLike
+SearchFilters, SearchOptions, SearchHit, SearchResult, matchesFilters, undatedMatch, search, DEFAULT_SEARCH_LIMIT, LIMIT_MIN, OFFSET_MIN, limitProblem, offsetProblem, assertPaging, searchableQueryProblem, YEAR_RANGE, PERIOD_RANGE, intRangeProblem, searchParliamentProblem, reviewStatusProblem, normalizeSearchFilters, partyKey, SelectOptions, Selection, selectRecords, DEFAULT_REVIEW_LIMIT, ReviewQueueOptions, ReviewQueue, reviewQueue, REVIEW_GROUP_EXAMPLES, ReviewGroup, ReviewGroups, reviewGroups, makeSnippet, cosine, SemanticOptions, searchLike, STATS_DIMENSIONS, StatsDimension, MAX_STATS_DIMENSIONS, NONE, UNDATED, NOT_INDEXED, statsDimensionsProblem, BreakdownRow, StatsBreakdown, statsBreakdown, statsSelection
 ```
 
 ## Depends on

@@ -2,7 +2,7 @@
 
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { CatalogStore, RecordStore } from "./store.js";
+import type { CatalogEntry, CatalogStore, RecordStore } from "./store.js";
 import { catalogGaps } from "./indexer.js";
 import { isPlatformFile, type FileStore } from "./file-store.js";
 
@@ -33,6 +33,28 @@ export interface CorpusStats {
   by_parliament: Record<string, ParliamentStats>;
   /** Records per extraction tier, keys sorted. */
   by_tier: Record<string, number>;
+  /** When the questions were asked, how many there are, and how many are answered. */
+  coverage: {
+    /** The earliest and the latest question date (`dates.submitted`). */
+    first_asked?: string;
+    last_asked?: string;
+    /** Records without a question date. */
+    undated: number;
+    /** Q/A pairs over the records that say (`questions_unknown` do not, until `ka reindex`). */
+    questions: number;
+    questions_unknown: number;
+    /** Records without an answer date: not answered yet, or the answer not found. */
+    unanswered: number;
+  };
+  /**
+   * Records per extractor version, keys sorted. More than one key means some records
+   * were made by another build — `ka reextract` brings them to this one.
+   */
+  extractor_versions: Record<string, number>;
+  /** Records catalogued before their version was indexed; `ka reindex` adds it. */
+  extractor_versions_unknown: number;
+  /** How often each kind of field was abstained on, over every parliament, keys sorted. */
+  abstained_by_field: Record<string, number>;
   /**
    * Record files the catalog has no row for, sorted — on disk but not counted
    * above, and invisible to search and export. `catalogGaps` explains; `ka
@@ -47,10 +69,19 @@ const byKey = <T>([a]: [string, T], [b]: [string, T]): number => (a < b ? -1 : a
 
 /**
  * Count the corpus from its catalog; no record is read. The record files are
- * listed (not read) to name those the catalog lacks.
+ * listed (not read) to name those the catalog lacks. `where` narrows the rows
+ * counted — `ka stats` passes the search filters (lib-search's `matchesFilters`).
  */
-export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">): CorpusStats {
-  const catalog = store.catalog();
+export function corpusStats(
+  store: CatalogStore & Pick<RecordStore, "recordIds">,
+  options: { where?: (entry: CatalogEntry) => boolean } = {},
+): CorpusStats {
+  const where = options.where;
+  const catalog = where === undefined ? store.catalog() : store.catalog().filter(where);
+  const coverage: CorpusStats["coverage"] = { undated: 0, questions: 0, questions_unknown: 0, unanswered: 0 };
+  const versions = new Map<string, number>();
+  let versionsUnknown = 0;
+  const abstainedByField: Record<string, number> = {};
   const byParliament = new Map<string, ParliamentStats>();
   const byTier = new Map<string, number>();
   for (const entry of catalog) {
@@ -65,6 +96,17 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
     }
     byParliament.set(entry.parliament, bucket);
     byTier.set(entry.tier, (byTier.get(entry.tier) ?? 0) + 1);
+    for (const [kind, count] of Object.entries(entry.abstained_fields ?? {})) abstainedByField[kind] = (abstainedByField[kind] ?? 0) + count;
+    if (entry.submitted === undefined) coverage.undated++;
+    else {
+      if (coverage.first_asked === undefined || entry.submitted < coverage.first_asked) coverage.first_asked = entry.submitted;
+      if (coverage.last_asked === undefined || entry.submitted > coverage.last_asked) coverage.last_asked = entry.submitted;
+    }
+    if (entry.questions === undefined) coverage.questions_unknown++;
+    else coverage.questions += entry.questions;
+    if (entry.answered === undefined) coverage.unanswered++;
+    if (entry.extractor_version === undefined) versionsUnknown++;
+    else versions.set(entry.extractor_version, (versions.get(entry.extractor_version) ?? 0) + 1);
   }
   const complete = catalog.filter((entry) => entry.abstained === 0).length;
   const gaps = catalogGaps(store);
@@ -79,6 +121,10 @@ export function corpusStats(store: CatalogStore & Pick<RecordStore, "recordIds">
       ]),
     ),
     by_tier: Object.fromEntries([...byTier].sort(byKey)),
+    coverage,
+    extractor_versions: Object.fromEntries([...versions].sort(byKey)),
+    extractor_versions_unknown: versionsUnknown,
+    abstained_by_field: Object.fromEntries(Object.entries(abstainedByField).sort(byKey)),
     uncatalogued: gaps.uncatalogued,
     missing_files: gaps.missingFiles,
   };

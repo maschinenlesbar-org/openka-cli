@@ -480,15 +480,18 @@ describe("ka", () => {
     }
   });
 
-  it("adds what the corpus takes on disk to stats with --disk", async () => {
+  it("says what the corpus takes on disk, and leaves it out with --no-disk", async () => {
     const harness = await seeded();
     try {
-      strictEqual(await run(["--corpus", harness.corpus, "stats", "--disk"], harness.deps), EXIT_OK);
-      match(harness.stdout(), /^On disk: blobs \d+ KB in 1 file\(s\), records [\d.]+ KB in \d+ file\(s\), index [\d.]+ KB in \d+ file\(s\)$/m);
-      match(harness.stdout(), /^ {2}berlin: 1 document\(s\), \d+ KB \(avg \d+ KB\)$/m);
+      for (const argv of [["stats"], ["stats", "--disk"]]) {
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^On disk: blobs \d+ KB in 1 file\(s\), records [\d.]+ KB in \d+ file\(s\), index [\d.]+ KB in \d+ file\(s\); [\d.]+ KB in all, [\d.]+ KB per Anfrage$/m);
+        match(harness.stdout(), /^ {2}berlin: 1 document\(s\), \d+ KB \(avg \d+ KB\)$/m);
+      }
       harness.out.length = 0;
-      strictEqual(await run(["--corpus", harness.corpus, "stats", "--json"], harness.deps), EXIT_OK);
-      ok(!("disk" in (JSON.parse(harness.stdout()) as object)), "only when asked: listing every file costs a stat each");
+      strictEqual(await run(["--corpus", harness.corpus, "stats", "--json", "--no-disk"], harness.deps), EXIT_OK);
+      ok(!("disk" in (JSON.parse(harness.stdout()) as object)), "listing every file costs a stat each, so it can be left out");
     } finally {
       harness.cleanup();
     }
@@ -1233,6 +1236,57 @@ describe("ka", () => {
         strictEqual(await run(["--corpus", harness.corpus, "reextract", "--all"], harness.deps), EXIT_STORE);
         match(harness.stderr(), /^skipped berlin-19-10006: archived bytes for .* are missing$/m);
         match(harness.stderr(), /^Error: 1 record\(s\) could not be read and were left as they are$/m);
+      } finally {
+        harness.cleanup();
+      }
+    });
+  });
+
+  describe("ka stats (issue #16)", () => {
+    it("says coverage, questions, extractor versions and disk use by default", async () => {
+      const harness = await seeded();
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^Coverage: asked 2021-11-04 to 2021-11-04; 18 questions; 0 without an answer date$/m);
+        match(harness.stdout(), /^Extractor: pkg:\S+ {2}3 record\(s\) \(this build\)$/m);
+        match(harness.stdout(), /^On disk: .*; [\d.]+ KB in all, [\d.]+ KB per Anfrage$/m);
+        doesNotMatch(harness.stdout(), /ka reextract/);
+
+        // One record from an older build: two lines, and what to do about it.
+        const store = new FileStore(harness.corpus);
+        const old = store.getRecord("berlin-19-10006") as KaRecord;
+        store.putRecord({ ...old, extraction: { ...old.extraction, extractor_version: "pkg:0.2.0+extract:6f021d93d3c3" } });
+        strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^Extractor: pkg:0\.6\S+ +2 record\(s\) \(this build\)\n {11}pkg:0\.2\.0\+extract:6f021d93d3c3 +1 record\(s\)\n {2}1 record\(s\) were made by another build — `ka reextract --all` brings them to this one\.$/m);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("breaks the records down --by one dimension or two, within the search filters", async () => {
+      const harness = await seeded();
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "stats", "--by", "party", "--no-disk"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^PARTY +RECORDS {2}NEEDS REVIEW\nAfD +1 {2}0 \(0%\)\nGrüne +1 {2}0 \(0%\)\nSPD +1 {2}0 \(0%\)$/m);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "stats", "--by", "ministry", "--by", "year", "--no-disk"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^MINISTRY +YEAR +RECORDS {2}NEEDS REVIEW\nSenatsverwaltung für Umwelt, Verkehr und Klimaschutz {2}2021 +2 {2}0 \(0%\)$/m);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "stats", "--party", "spd", "--by", "month", "--json", "--no-disk"], harness.deps), EXIT_OK);
+        const json = JSON.parse(harness.stdout()) as { records: number; breakdown: { by: string[]; rows: { keys: unknown[]; records: number }[] } };
+        deepStrictEqual([json.records, json.breakdown.by, json.breakdown.rows], [1, ["month"], [{ keys: ["2021-11"], records: 1, needs_review: 0 }]]);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "stats", "--year", "2020", "--no-disk"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^0 of 3 record\(s\) in .* match the filters\nNo record matches the filters\.$/m);
+
+        for (const argv of [["--by", "colour"], ["--by", "party", "--by", "year", "--by", "month"], ["--by", "party", "--by", "party"]]) {
+          strictEqual(await run(["--corpus", harness.corpus, "stats", ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+        }
       } finally {
         harness.cleanup();
       }

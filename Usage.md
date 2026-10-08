@@ -52,7 +52,7 @@ space: ≈ 270 MB to fetch, 85 GB free for /Users/me/.local/share/openka
 
 "Documents to fetch" are the document URLs whose bytes the corpus does not hold yet,
 each counted once. The size is the average of what the corpus already holds for that
-source once it holds at least 20 documents (`ka stats --disk` shows it), and otherwise
+source once it holds at least 20 documents (`ka stats` shows it), and otherwise
 the `Content-Length` of a HEAD request to up to 20 of the documents, spread over the
 list — asked under the same robots.txt rules and pacing as a sync. Discovery itself is
 not free: Berlin's is a 50+ MB feed. With `--json` the plan is an object (an array for
@@ -473,11 +473,48 @@ ka sources list            # every parliament, its adapter status, its last sync
 ka sources show berlin     # what is specific about one source
 ka sources count           # how many Anfragen each upstream holds, beside the corpus
 ka sources count --source bund --period 21
-ka stats                   # how much of the corpus is parse-complete
-ka stats --disk            # …and what blobs, records and index take on disk, per source
+ka stats                   # completeness, coverage, extractor versions, disk use
+ka stats --by party        # records (and needs-review share) per party
+ka stats --by ministry     # or month, year, period, parliament
+ka stats --by party --by year                        # a cross-tab
+ka stats --parliament berlin --year 2026 --by ministry   # the filters of search and export
+ka stats --no-disk --json  # without the per-file stats, for a script
 ka schema                  # the JSON Schema of a record
 ka reindex                 # rebuild the index from the stored records
 ```
+
+`ka stats` counts from the catalog, without reading a record:
+
+```
+2471 record(s) in /Volumes/kadisk2/openka
+1616 parse-complete (65.4%), 855 with abstained fields
+  berlin: 2471 record(s), 855 needing review
+Coverage: asked 2026-01-02 to 2026-09-30 (3 without a question date); 27,457 questions; 310 without an answer date
+Abstained most: qa[].answer 1,204, dates.answered 310, askers 12 (`ka review --group-by field`)
+Extractor: pkg:0.6.0+extract:0992e8afa678  2471 record(s) (this build)
+On disk: blobs 270 MB in 2,471 file(s), records 41 MB in 2,471 file(s), index 18 MB in 256 file(s); 329 MB in all, 133 KB per Anfrage
+  berlin: 2,471 document(s), 270 MB (avg 110 KB)
+```
+
+More than one `Extractor:` line means some records were made by another build; `ka
+reextract --all` brings them to this one. Disk use lists every file of the corpus (one
+`stat` each) and is on by default; `--no-disk` leaves it out. With filters it is still
+the whole corpus's.
+
+`--by` breaks the records down by `party`, `ministry`, `month`, `year`, `period` or
+`parliament`, or crosses two (`--by party --by year`), into a table of records and how
+many of them need review. A party is grouped across its spellings (Bayern's "GRU" and
+Hessen's "BÜNDNIS 90/DIE GRÜNEN" are one party) and shown in the spelling most records
+use; a question asked by two parties counts for both, and a note says so. Months, years
+and periods run forward, with `(undated)` last; the rest are ordered by size. The
+filters `ka search` and `ka export` take (`--parliament`, `--party`, `--year`,
+`--period`, `--from`, `--to`) narrow every number but the disk use. `--json` adds
+`coverage`, `extractor_versions`, `abstained_by_field`, `disk` and, with `--by`,
+`breakdown` (`by`, `rows` of `keys`, `records`, `needs_review`, and `overlapping`).
+
+The ministry, the number of questions, the extractor version and the parties as
+written are part of each catalog row since 2026-10-08. A corpus catalogued before
+counts those rows apart — `(not indexed)`, "not counted yet" — until `ka reindex`.
 
 `ka sources count` answers "how complete is my corpus?" with one request per source and no
 download: the Bundestag's from DIP (`numFound` of its Kleine-Anfrage Vorgänge, which start

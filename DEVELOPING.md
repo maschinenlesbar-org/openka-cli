@@ -377,8 +377,10 @@ What the library now computes that a `ka` action used to compute on its own:
   date at that date (and `sync()` warns), because a discovery that left such refs out
   would fetch nothing from a combined-paper Land. Bayern's question date is read from
   the paper's head (`readAnfrageHead`, `lib-extract`).
-- **The corpus summaries** — `corpusStats(store)` (`lib-store`) is what `ka stats`
-  prints, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
+- **The corpus summaries** — `corpusStats(store, { where })` (`lib-store`) is what `ka stats`
+  prints — counts, coverage, extractor versions, abstentions by field, over the rows
+  `where` keeps — and `statsBreakdown(entries, by)` / `statsSelection(entries, filters)`
+  (`lib-search`, since a party is grouped by `partyKey`) its `--by` tables, and `sourceStatus(store, SOURCE_REGISTRY)` (`lib-pipeline`) the table of
   `ka sources list`; the "degraded" label of its text view stays rendering.
 - **Where a golden is filed** — `addGolden(store, id, { root?, source?, note? })`
   (factory) defaults `source` to the record's parliament and `root` to

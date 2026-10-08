@@ -1,10 +1,21 @@
 // `export`, `feed` and `schema` — getting the corpus out in bulk.
 
-import type { Command } from "commander";
-import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
+import { InvalidArgumentError, Option, type Command } from "commander";
+import { OpenKaError, assertValid } from "@maschinenlesbar.org/openka-lib-errors";
 import { RECORD_JSON_SCHEMA } from "@maschinenlesbar.org/openka-lib-models";
-import { FileStore, corpusDiskUsage, corpusStats, type CatalogGaps, type DiskUsage } from "@maschinenlesbar.org/openka-lib-store";
-import { LIMIT_MIN, selectRecords, type Selection } from "@maschinenlesbar.org/openka-lib-search";
+import { FileStore, corpusDiskUsage, corpusStats, type CatalogGaps, type CorpusStats, type DiskUsage } from "@maschinenlesbar.org/openka-lib-store";
+import {
+  LIMIT_MIN,
+  STATS_DIMENSIONS,
+  selectRecords,
+  statsBreakdown,
+  statsDimensionsProblem,
+  statsSelection,
+  type Selection,
+  type StatsBreakdown,
+  type StatsDimension,
+} from "@maschinenlesbar.org/openka-lib-search";
+import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import {
   DEFAULT_FEED_ID,
   DEFAULT_FEED_TITLE,
@@ -16,7 +27,7 @@ import {
 } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
 import type { CliDeps } from "../io.js";
-import { formatBytes, formatCount } from "../text.js";
+import { formatBytes, formatCount, pad, sanitizeForTerminal } from "../text.js";
 import {
   action,
   addCorpusFilters,
@@ -154,42 +165,126 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       }),
     );
 
-  program
+  const stats = program
     .command("stats")
-    .description("what is in this corpus, and how much of it is complete")
-    .option("--disk", "also what it takes on disk: blobs, records and index, and the documents per source (one stat per file)")
-    .option("--json", "print as JSON")
-    .action(
-      action(deps, async (ctx) => {
-        const store = ctx.existingStore();
-        const disk = ctx.opts["disk"] === true && store instanceof FileStore ? corpusDiskUsage(store) : undefined;
-        const summary = { corpus: ctx.corpusRoot(), ...corpusStats(store), ...(disk === undefined ? {} : { disk }) };
-        if (ctx.opts["json"] === true) {
-          printJson(ctx, summary);
-          return;
+    .description("what is in this corpus: coverage, completeness, extractor versions, disk use, and breakdowns with --by")
+    .option(
+      "--by <dimension>",
+      `break the records down by ${STATS_DIMENSIONS.join(", ")}; twice for a cross-tab (--by party --by year)`,
+      collectDimension,
+    )
+    .option("--no-disk", "leave out what the corpus takes on disk (one stat per file)")
+    .addOption(new Option("--disk", "on by default").hideHelp())
+    .option("--json", "print as JSON");
+  addCorpusFilters(stats).action(
+    action(deps, async (ctx) => {
+      const store = ctx.existingStore();
+      const filters = corpusFiltersFrom(ctx.opts);
+      const filtered = Object.keys(filters).length > 0;
+      const by = (ctx.opts["by"] as StatsDimension[] | undefined) ?? [];
+      if (by.length > 0) assertValid("by", by, statsDimensionsProblem);
+      const selection = statsSelection(store.catalog(), filters);
+      const counted = corpusStats(store, filtered ? { where: selection.where } : {});
+      // On by default (issue #16); `--no-disk` leaves the per-file stats out.
+      const disk = ctx.opts["disk"] !== false && store instanceof FileStore ? corpusDiskUsage(store) : undefined;
+      const breakdown = by.length === 0 ? undefined : statsBreakdown(selection.entries, by);
+      const summary = {
+        corpus: ctx.corpusRoot(),
+        ...counted,
+        ...(disk === undefined ? {} : { disk }),
+        ...(breakdown === undefined ? {} : { breakdown }),
+      };
+      if (ctx.opts["json"] === true) {
+        printJson(ctx, summary);
+        return;
+      }
+      const io = ctx.deps.io;
+      const total = store.catalog().length;
+      io.out(filtered ? `${formatCount(summary.records)} of ${formatCount(total)} record(s) in ${summary.corpus} match the filters` : `${summary.records} record(s) in ${summary.corpus}`);
+      if (filtered) noteUndated(ctx, selection.undated);
+      noteCatalogGaps(ctx, { uncatalogued: summary.uncatalogued, missingFiles: summary.missing_files });
+      if (summary.records === 0 && summary.uncatalogued.length === 0) {
+        io.out(filtered ? "No record matches the filters." : "Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
+        return;
+      }
+      // No catalogued record (only uncatalogued files, noted above): there is no rate to
+      // give — dividing by zero printed "NaN%".
+      const rate = summary.records === 0 ? "" : ` (${((summary.parse_complete / summary.records) * 100).toFixed(1)}%)`;
+      io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields`);
+      for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
+        io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
+      }
+      printCoverage(ctx, summary);
+      printVersions(ctx, summary);
+      if (disk !== undefined) {
+        const size = (usage: DiskUsage): string => `${formatBytes(usage.bytes)} in ${formatCount(usage.files)} file(s)`;
+        const bytes = disk.blobs.bytes + disk.records.bytes + disk.index.bytes;
+        io.out(
+          `On disk${filtered ? " (the whole corpus)" : ""}: blobs ${size(disk.blobs)}, records ${size(disk.records)}, index ${size(disk.index)}; ` +
+            `${formatBytes(bytes)} in all${total === 0 ? "" : `, ${formatBytes(bytes / total)} per Anfrage`}`,
+        );
+        for (const [source, usage] of Object.entries(disk.by_source)) {
+          if (usage.files === 0) continue;
+          io.out(`  ${source}: ${formatCount(usage.files)} document(s), ${formatBytes(usage.bytes)} (avg ${formatBytes(usage.bytes / usage.files)})`);
         }
-        const io = ctx.deps.io;
-        io.out(`${summary.records} record(s) in ${summary.corpus}`);
-        noteCatalogGaps(ctx, { uncatalogued: summary.uncatalogued, missingFiles: summary.missing_files });
-        if (summary.records === 0 && summary.uncatalogued.length === 0) {
-          io.out("Nothing synced yet. Try: ka sync --source berlin --since 2024-01-01 --limit 20");
-          return;
-        }
-        // No catalogued record (only uncatalogued files, noted above): there is no rate to
-        // give — dividing by zero printed "NaN%".
-        const rate = summary.records === 0 ? "" : ` (${((summary.parse_complete / summary.records) * 100).toFixed(1)}%)`;
-        io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields`);
-        for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
-          io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review`);
-        }
-        if (disk !== undefined) {
-          const size = (usage: DiskUsage): string => `${formatBytes(usage.bytes)} in ${formatCount(usage.files)} file(s)`;
-          io.out(`On disk: blobs ${size(disk.blobs)}, records ${size(disk.records)}, index ${size(disk.index)}`);
-          for (const [source, usage] of Object.entries(disk.by_source)) {
-            if (usage.files === 0) continue;
-            io.out(`  ${source}: ${formatCount(usage.files)} document(s), ${formatBytes(usage.bytes)} (avg ${formatBytes(usage.bytes / usage.files)})`);
-          }
-        }
-      }),
-    );
+      }
+      if (breakdown !== undefined) printBreakdown(ctx, breakdown);
+    }),
+  );
+}
+
+/** commander accumulator for a repeatable `--by`: each one of `STATS_DIMENSIONS`. */
+function collectDimension(value: string, previous: StatsDimension[] = []): StatsDimension[] {
+  const dimension = STATS_DIMENSIONS.find((known) => known === value);
+  if (dimension === undefined) throw new InvalidArgumentError(`Allowed choices are ${STATS_DIMENSIONS.join(", ")}.`);
+  return previous.concat([dimension]);
+}
+
+/** When the questions were asked, how many there are, how many are answered — and what was abstained on most. */
+function printCoverage(ctx: ActionContext, stats: CorpusStats): void {
+  const io = ctx.deps.io;
+  const c = stats.coverage;
+  const span = c.first_asked === undefined ? "no question date known" : `asked ${c.first_asked} to ${c.last_asked ?? c.first_asked}`;
+  const undated = c.undated > 0 ? ` (${formatCount(c.undated)} without a question date)` : "";
+  const unknown = c.questions_unknown > 0 ? ` (+ ${formatCount(c.questions_unknown)} record(s) not counted yet)` : "";
+  io.out(`Coverage: ${span}${undated}; ${formatCount(c.questions)} questions${unknown}; ${formatCount(c.unanswered)} without an answer date`);
+  const fields = Object.entries(stats.abstained_by_field).sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
+  if (fields.length > 0) {
+    const shown = fields.slice(0, 5).map(([field, count]) => `${field} ${formatCount(count)}`).join(", ");
+    io.out(`Abstained most: ${shown}${fields.length > 5 ? `, … ${fields.length - 5} more` : ""} (\`ka review --group-by field\`)`);
+  }
+}
+
+/** Which extractor versions made the records; more than one means `ka reextract` is due. */
+function printVersions(ctx: ActionContext, stats: CorpusStats): void {
+  const io = ctx.deps.io;
+  const current = extractorVersion(ctx.deps.env);
+  const versions = Object.entries(stats.extractor_versions).sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
+  const width = Math.max(0, ...versions.map(([version]) => version.length));
+  versions.forEach(([version, count], index) => {
+    const mark = version === current ? " (this build)" : "";
+    io.out(`${index === 0 ? "Extractor:" : "          "} ${pad(version, width)}  ${formatCount(count)} record(s)${mark}`);
+  });
+  const others = versions.filter(([version]) => version !== current).reduce((sum, [, count]) => sum + count, 0);
+  if (others > 0) io.out(`  ${formatCount(others)} record(s) were made by another build — \`ka reextract --all\` brings them to this one.`);
+  const notIndexed = stats.extractor_versions_unknown + 0;
+  if (notIndexed > 0) {
+    io.err(`Note: ${formatCount(notIndexed)} catalog row(s) predate the version, ministry and question counts; \`ka reindex\` adds them.`);
+  }
+}
+
+function printBreakdown(ctx: ActionContext, breakdown: StatsBreakdown): void {
+  const io = ctx.deps.io;
+  const widths = breakdown.by.map((dimension, index) =>
+    Math.max(dimension.length, ...breakdown.rows.map((row) => String(row.keys[index]).length)),
+  );
+  const head = breakdown.by.map((dimension, index) => pad(dimension.toUpperCase(), widths[index] ?? 0)).join("  ");
+  io.out("");
+  io.out(`${head}  ${"RECORDS".padStart(9)}  NEEDS REVIEW`);
+  for (const row of breakdown.rows) {
+    const keys = row.keys.map((key, index) => pad(sanitizeForTerminal(String(key)), widths[index] ?? 0)).join("  ");
+    const share = row.records === 0 ? "" : ` (${Math.round((row.needs_review / row.records) * 100)}%)`;
+    io.out(`${keys}  ${formatCount(row.records).padStart(9)}  ${formatCount(row.needs_review)}${share}`);
+  }
+  if (breakdown.overlapping) io.err("Note: a record asked by several parties counts for each, so the rows add up to more than the records.");
 }

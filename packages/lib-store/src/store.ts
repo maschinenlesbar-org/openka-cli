@@ -33,6 +33,19 @@ export interface CatalogEntry {
    * group without reading the records.
    */
   abstained_fields?: Record<string, number>;
+  /**
+   * The askers' parties as the record writes them, one per party (`parties` is
+   * lowercased for matching), in order of appearance — what `ka stats --by party`
+   * prints. This and the three below are absent on a row catalogued before they
+   * were indexed (2026-10-08); `ka reindex` adds them.
+   */
+  party_labels?: string[];
+  /** The answering ministry or body, when the record names one. */
+  ministry?: string;
+  /** How many Q/A pairs the record holds. */
+  questions?: number;
+  /** The extractor version that produced the record. */
+  extractor_version?: string;
   /** Number of tokens indexed for this document — kept so removals stay exact. */
   terms: number;
 }
