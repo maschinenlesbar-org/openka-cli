@@ -388,7 +388,8 @@ segmentation rule refused a field, so there is no grouping by rule.
 **Holes no extractor could fill are counted apart.** Some fields a parliament never
 publishes: Sachsen-Anhalt prints question and answer as one Drucksache dated by the
 answer, and neither the Parlamentsspiegel row nor (but for about 1.5%) the paper names
-the question's date. Such a field is declared once per parliament (`ka sources show
+the question's date. A question synced while it was still unanswered keeps its date: its
+answer takes it over when it arrives. Such a field is declared once per parliament (`ka sources show
 sachsen-anhalt`, "never has:"). A record whose *only* holes are such fields stays in
 `abstained_fields` — it does not pretend to know — but is left out of the review queue,
 with a note saying how many and why; `--include-known-gaps` lists them too, and `--group-by
@@ -398,6 +399,15 @@ field)". A record that also misses a question or an answer stays in the queue �
 are what the queue is for. Two dates in a Sachsen-Anhalt Fundstelle ("03.12.2025,
 10.12.2025 … (Nachtrag 10.12.2025)") are the paper's and its Nachtrag's, not the
 question's, and are not read as one.
+
+**Sachsen-Anhalt's unanswered questions are `KA 8/NNNN`.** That Land numbers a Kleine
+Anfrage apart from its Drucksachen, and the two numbers overlap. A question still waiting
+for its answer is stored as `KA 8/4011` and opens with `ka get sachsen-anhalt-8-ka-4011`.
+When the answer arrives as a Drucksache citing it, the question-only record is removed
+and the answer carries the question's date. Before 2026-10-08 such a question was filed as Drucksache `8/4011`, and it could replace an older
+answer of that number. To repair a corpus synced before then, re-sync the windows of the
+unanswered questions first; that moves them to their KA ids. Then re-sync the windows of
+the answers they replaced, which brings the answers back.
 
 Marking a record verified does **not** fill its holes; it records that someone
 looked. The mark survives `ka sync --force` when re-extraction yields the same record

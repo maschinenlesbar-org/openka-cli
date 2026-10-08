@@ -37,7 +37,7 @@ import { assertGoldensPass, listAllGoldens, verifyGolden, verifyGoldens } from "
 import { BerlinSource, berlinFeedUrl } from "@maschinenlesbar.org/openka-connector-berlin";
 import { drucksacheUrl, toRef } from "@maschinenlesbar.org/openka-connector-bayern";
 import { search } from "@maschinenlesbar.org/openka-lib-search";
-import { robotsGate, type DiscoverOptions, type DiscoverResult, type Source } from "@maschinenlesbar.org/openka-lib-source";
+import { robotsGate, type DiscoverOptions, type DiscoverResult, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, PROJECT_ROOT, sampleRecord, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { FileStore, catalogGaps, indexRecord, markHumanVerified, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
@@ -809,6 +809,85 @@ describe("sync pipeline", () => {
     deepStrictEqual(timings, [2, 2]);
     // Counted from the run's start: an engine reused for a second run starts again at zero.
     deepStrictEqual((await sync({ source: new ManySource(1), store: new MemoryStore(), engine })).timing.requests, 2);
+  });
+
+  describe("Sachsen-Anhalt's KA numbers (issue #22)", () => {
+    /** A source that discovers exactly `refs`, as Sachsen-Anhalt's rows read. */
+    const refsSource = (refs: Partial<DocRef>[]): Source => ({
+      key: "sachsen-anhalt",
+      parliament: "sachsen-anhalt",
+      tier: "text_layer",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => ({
+        warnings: [],
+        refs: refs.map((ref, i) => ({
+          key: `V-${i}`,
+          reference: "08/1",
+          legislative_period: 8,
+          title: "Salzbelastung",
+          documentType: "kleine_anfrage" as const,
+          askers: [{ name: "Olaf Meister", party: "Grüne" }],
+          answered_by: {},
+          dates: {},
+          documents: [{ role: "combined_pdf" as const, url: PDF_URL, urlStable: true }],
+          ...ref,
+        })),
+      }),
+    });
+    const question = (url = "https://example.invalid/k3417.pdf"): Partial<DocRef> => ({
+      reference: "KA 8/3417",
+      dates: { submitted: "2025-11-20" },
+      documents: [{ role: "question_pdf", url, urlStable: true }],
+    });
+
+    it("gives the answer its question's date, removes the question-only record, and keeps the date after", async () => {
+      const store = new MemoryStore();
+      const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+      await sync({ source: refsSource([question()]), store, engine: testEngine(transport) });
+      ok(store.hasRecord("sachsen-anhalt-8-ka-3417"));
+
+      const answer: Partial<DocRef> = { reference: "08/6424", replaces: ["KA 8/3417"], dates: { answered: "2025-12-22" } };
+      const report = await sync({ source: refsSource([answer]), store, engine: testEngine(transport) });
+      deepStrictEqual(store.getRecord("sachsen-anhalt-8-6424")?.dates, { submitted: "2025-11-20", answered: "2025-12-22" });
+      strictEqual(store.hasRecord("sachsen-anhalt-8-ka-3417"), false);
+      strictEqual(store.catalogEntry("sachsen-anhalt-8-ka-3417"), undefined);
+      ok(report.warnings.includes("08/6424: continues KA 8/3417; took its question date and removed its question-only record"), report.warnings.join("\n"));
+
+      // The question is gone; the answer keeps the date it took.
+      const again = await sync({ source: refsSource([answer]), store, engine: testEngine(transport), force: true });
+      strictEqual(store.getRecord("sachsen-anhalt-8-6424")?.dates.submitted, "2025-11-20");
+      strictEqual(again.warnings.length, 0);
+    });
+
+    it("removes a question misfiled under its number read as a Drucksache, only when it is that very paper", async () => {
+      const store = new MemoryStore();
+      const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+      const url = "https://example.invalid/k4011.pdf";
+      // Filed the old way: KA 8/4011 as "08/4011", and an unrelated "08/4012" with other documents.
+      await sync({
+        source: refsSource([
+          { reference: "08/4011", documents: [{ role: "question_pdf", url, urlStable: true }] },
+          { reference: "08/4012", documents: [{ role: "combined_pdf", url: PDF_URL, urlStable: true }] },
+        ]),
+        store,
+        engine: testEngine(transport),
+      });
+      await sync({
+        source: refsSource([
+          { reference: "KA 8/4011", formerly: ["08/4011"], documents: [{ role: "question_pdf", url, urlStable: true }] },
+          { reference: "KA 8/4012", formerly: ["08/4012"], documents: [{ role: "question_pdf", url: "https://example.invalid/k4012.pdf", urlStable: true }] },
+        ]),
+        store,
+        engine: testEngine(transport),
+      });
+      deepStrictEqual(
+        ["sachsen-anhalt-8-4011", "sachsen-anhalt-8-ka-4011", "sachsen-anhalt-8-4012", "sachsen-anhalt-8-ka-4012"].map((id) => store.hasRecord(id)),
+        [false, true, true, true],
+        "8/4012 holds another paper and stays",
+      );
+    });
   });
 
   it("reports the discovered count before the first record, for a progress display", async () => {

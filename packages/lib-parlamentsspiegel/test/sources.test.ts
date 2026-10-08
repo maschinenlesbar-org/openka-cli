@@ -117,11 +117,12 @@ describe("Parlamentsspiegel source", () => {
       state: { source: "sachsen-anhalt", http_cache: {} },
     });
     deepStrictEqual(result.refs.map((ref) => [ref.reference, ref.parliament]), [
-      ["08/4004", "sachsen-anhalt"],
-      ["08/4010", "sachsen-anhalt"],
-      ["08/4011", "sachsen-anhalt"],
+      // Unanswered questions, under their own KA numbers (issue #22).
+      ["KA 8/4004", "sachsen-anhalt"],
+      ["KA 8/4010", "sachsen-anhalt"],
+      ["KA 8/4011", "sachsen-anhalt"],
     ]);
-    const greens = result.refs.find((ref) => ref.reference === "08/4011");
+    const greens = result.refs.find((ref) => ref.reference === "KA 8/4011");
     deepStrictEqual(greens?.askers.map((asker) => asker.name), ["Olaf Meister", "Wolfgang Aldag"]);
     match(greens?.documents[0]?.url ?? "", /^https:\/\/padoka\.landtag\.sachsen-anhalt\.de\/files\/drs\//);
   });
@@ -390,5 +391,33 @@ describe("a Sachsen-Anhalt combined paper", () => {
         ["08/6307", "combined_pdf", { answered: "2025-12-10" }],
       ],
     );
+  });
+});
+
+// Issue #22: Sachsen-Anhalt numbers its Kleine Anfragen apart from its Drucksachen.
+describe("a Sachsen-Anhalt question listed under its KA number", () => {
+  const rows = (payload: string) => blocksWithClass(readFixtureText("payloads", payload), "ps-vorgang", /<hr\s*\/?>/).map((block) => parseVorgangBlock(block, []));
+
+  it("keeps the KA in the reference of an unanswered question, and names its former filing", () => {
+    // Recorded 2026-10-07: "Kleine Anfrage ohne Antwort … 01.10.2026 Kleine Anfrage 8/4011".
+    deepStrictEqual(
+      rows("parlamentsspiegel-sachsen-anhalt.html").map((ref) => [ref?.reference, ref?.formerly, ref?.dates.submitted]),
+      [
+        ["KA 8/4011", ["08/4011"], "2026-10-01"],
+        ["KA 8/4004", ["08/4004"], "2026-09-30"],
+        ["KA 8/4010", ["08/4010"], "2026-09-30"],
+      ],
+    );
+  });
+
+  it("names the question an answer continues", () => {
+    // "Drucksache 08/6424 (KA 8/3417)" and "08/7036 (KA 8/3682)".
+    deepStrictEqual(rows("parlamentsspiegel-sachsen-anhalt-combined.html").map((ref) => [ref?.reference, ref?.replaces, ref?.formerly]), [
+      ["08/6424", ["KA 8/3417"], undefined],
+      ["08/6307", ["KA 8/3378"], undefined],
+    ]);
+    deepStrictEqual(rows("parlamentsspiegel-glued-href.html")[0]?.replaces, ["KA 8/3682"]);
+    // Other Länder name no KA, and their rows stay as they were.
+    ok(rows("parlamentsspiegel-brandenburg.html").every((ref) => ref?.replaces === undefined && ref?.formerly === undefined && !ref?.reference.startsWith("KA")));
   });
 });

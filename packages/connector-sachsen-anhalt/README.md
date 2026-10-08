@@ -33,9 +33,25 @@ with `--json`. The records themselves do not carry it (their schema has no place
 it), so a corpus passed on does not show which documents were fetched under the
 override: keep the sync's output if that matters.
 
+**Two numbers, kept apart.** Sachsen-Anhalt numbers a Kleine Anfrage on its own
+(`KA 8/4011`) and its Drucksachen on their own (`8/4011`), and the two sequences
+overlap. An unanswered question is listed as "Kleine Anfrage ohne Antwort … Kleine
+Anfrage 8/4011" and is stored under the reference `KA 8/4011`, id
+`sachsen-anhalt-8-ka-4011`. Until 2026-10-08 it was read as Drucksache 8/4011, and in a
+corpus synced before then it may have taken that number's id and replaced an older
+answer under it (issue #22). A question stored the old way is removed when it is seen
+again under its KA number, but only when the old record holds the same documents.
+
+**The answer takes over its question.** The answer is a Drucksache and cites its
+question ("(KA 8/3417)"). When it arrives, it takes the stored question's date, and the
+question-only record `KA 8/3417` is removed. The sync warns for each.
+
 **No question date, as a rule.** Question and answer are one Drucksache, dated by the
-answer; the Parlamentsspiegel row does not name the question's date (two dates in a
-Fundstelle are the paper's and its Nachtrag's), and the paper names it in about 1.5%. So
+answer. The Parlamentsspiegel row does not name the question's date: two dates in a
+Fundstelle are the paper's and its Nachtrag's. About 1.5% of the papers print it, on the
+page after the cover ("Kleine Anfrage - KA 8/3417 vom 20.11.2025"), and `readKaDate`
+(lib-extract) reads it there. It is taken only when it belongs to the paper's own KA
+number and is not later than the answer. Otherwise
 `dates.submitted` is a known gap of the parliament (`knownGaps`, lib-models): records
 missing only it stay out of `ka review`, and `--since/--until` apply to the answer's
 date here.

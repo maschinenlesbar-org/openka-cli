@@ -40,7 +40,7 @@ export const RECORD_JSON_SCHEMA: Record<string, unknown> = {
     id: { type: "string", description: "<parliament>-<period>-<reference tail>" },
     parliament: { type: "string", enum: [...ParliamentKeys] },
     document_type: { type: "string", enum: [...DocumentTypes] },
-    reference: { type: "string", description: "Drucksachennummer exactly as printed" },
+    reference: { type: "string", description: "Drucksachennummer exactly as printed; for a question not yet answered in a Land that numbers its Kleine Anfragen apart, its own number (\"KA 8/4011\")" },
     legislative_period: { type: "integer", minimum: 1 },
     title: { type: "string" },
     askers: {

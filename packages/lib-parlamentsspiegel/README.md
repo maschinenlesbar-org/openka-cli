@@ -46,6 +46,14 @@ parts it left out. Until 2026-10-08 the glued string was fetched as one URL, ans
 and the record was stored without its document. A re-sync of the window archives it.
 The pipeline also refuses to ask for such a URL from any source (`gap: "glued"`).
 
+**A Sachsen-Anhalt question without an answer is `KA 8/NNNN`.** Its row reads "Kleine
+Anfrage ohne Antwort … Kleine Anfrage 8/4011", while its document link says
+"Drucksache 08/4011". That Land numbers Kleine Anfragen apart from Drucksachen, so the
+number is the question's own. The adapter gives the record the reference `KA 8/4011`, and
+`formerly: ["08/4011"]` for a corpus that stored it the old way. An answer row citing
+"(KA 8/3417)" gets `replaces: ["KA 8/3417"]`. Until 2026-10-08 both numbers were read as
+Drucksachen and could share a record id (issue #22).
+
 The recorded result rows live here rather than with the Länder because a
 Parlamentsspiegel search result is the aggregator's document. A connector that needs
 one borrows it with `fixturesOf(...)`.

@@ -285,6 +285,16 @@ const ID_PATTERN = /ps-detail-([A-Z]+)_V([A-Za-z0-9]+)_D([A-Za-z0-9]+)/;
 const DRUCKSACHE = /(?:Drucksache|Dokument)\s+(\d{1,2}\s*\/\s*[\d\s]+\d|\d{1,2}\/\d+)/;
 
 /**
+ * A Kleine Anfrage's own number. Sachsen-Anhalt lists an unanswered question as
+ * "Kleine Anfrage 8/4011" in its Fundstelle, with no Drucksache — the result row
+ * still says "Drucksache 08/4011", but the number is the KA's, from a sequence of its
+ * own that overlaps the Drucksachen. Its answer later cites it: "Drucksache 08/6424
+ * (KA 8/3417)" (issue #22).
+ */
+const KA_NUMBER = /\bKleine Anfrage\s+(\d{1,2}\s*\/\s*\d+)\b/;
+const KA_CITED = /\(KA\s+(\d{1,2}\s*\/\s*\d+)\)/;
+
+/**
  * What kind of document a result row's primary entry is.
  *
  * The row reads "<Land> - <Typ>; …", and the type is not always the question.
@@ -338,6 +348,12 @@ export function documentUrl(href: string | undefined, warnings: string[], refere
   return chosen;
 }
 
+/** The visible text of a row's Fundstelle, or "". */
+function fundstelleText(head: string): string {
+  const region = regionWithClass(head, "ps-fundstelle");
+  return region === undefined ? "" : visibleTextOf(region);
+}
+
 /** The "N weitere Dokumente" header that every row with follow-ups carries. */
 const FOLGE_MARKER = /<p[^>]*\sclass="(?:[^"]*\s)?ps-folge-dok(?:\s[^"]*)?"[^>]*>/;
 
@@ -380,13 +396,16 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     warnings.push(`result ${id[0]}: no Drucksachennummer in the result row; skipped`);
     return undefined;
   }
-  const reference = normaliseReference(referenceMatch[1] as string);
+  // A row whose Fundstelle names only a Kleine Anfrage's number is that question, not
+  // a Drucksache: its reference keeps the `KA` so it cannot share an id with one.
+  const kaOwn = KA_NUMBER.exec(fundstelleText(head));
+  const ownNumber = kaOwn !== null && !/\bDrucksache\b/.test(fundstelleText(head));
+  const reference = ownNumber ? `KA ${normaliseReference(kaOwn[1] as string)}` : normaliseReference(referenceMatch[1] as string);
   const parsed = parseReference(reference);
   const period = parsed === undefined ? Number.NaN : periodNumber(parsed);
   if (!Number.isInteger(period) || period < 1) return undefined;
 
-  const fundstelleRegion = regionWithClass(head, "ps-fundstelle");
-  const fundstelle = fundstelleRegion === undefined ? "" : visibleTextOf(fundstelleRegion);
+  const fundstelle = fundstelleText(head);
   const role = combinedByLand(parliament.key, documentRole(summary, fundstelle));
 
   const documents: DocRefDocument[] = [];
@@ -408,7 +427,11 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
     documents.push({ role: "answer_pdf", url: answer.url, urlStable: urlIsStable(answer.url) });
   }
 
+  const cited = ownNumber ? null : KA_CITED.exec(summary);
   const ref: DocRef = {
+    ...(cited === null ? {} : { replaces: [`KA ${normaliseReference(cited[1] as string)}`] }),
+    // Until 2026-10-08 such a question was filed under its number read as a Drucksache.
+    ...(ownNumber ? { formerly: [normaliseReference(referenceMatch[1] as string)] } : {}),
     key: `${herkunft}_V${id[2]}`,
     parliament: parliament.key,
     reference,

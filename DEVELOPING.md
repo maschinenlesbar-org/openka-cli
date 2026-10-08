@@ -350,6 +350,13 @@ What the library now computes that a `ka` action used to compute on its own:
   through `CliIO.readSecret` — a prompt without echo, or stdin — and never from argv; the
   CLI harness gives every test a config directory of its own, so no test touches the
   user's file.
+- **A record that takes over another** — a `DocRef`'s `replaces` (`lib-source`) names
+  records it continues, and `formerly` names references it was stored under before.
+  `syncRef` (`lib-pipeline`) retires them through `unindexRecord` + `deleteRecord` once
+  the new record is stored or found unchanged. A replaced record gives up its
+  `dates.submitted` if the new one has none. A former one is removed only when it holds
+  the very same documents. Sachsen-Anhalt uses both: a question is `KA 8/NNNN` until
+  its answer cites it (issue #22).
 - **Holes a parliament never fills** — `Parliament.knownGaps` (`lib-models`) declares a
   field a parliament's publications never carry, with the reason (Sachsen-Anhalt:
   `dates.submitted`). `onlyKnownGaps(parliament, abstained_fields)` is true for a record

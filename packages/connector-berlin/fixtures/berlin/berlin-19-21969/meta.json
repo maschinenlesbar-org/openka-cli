@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.6.0+extract:b69d9d17e5ac",
+  "extractor_version": "pkg:0.6.0+extract:3ea58ffd256e",
   "human_verified": false,
   "id": "berlin-19-21969",
   "note": "a date with a year at a line start (DD.MM.YYYY.) is not a question heading (issue #9)",

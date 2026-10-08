@@ -9,7 +9,7 @@
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import { indexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
+import { indexRecord, unindexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
@@ -512,6 +512,37 @@ async function syncRef(
     );
   }
 
+  // An answer that continues a question the corpus holds under its own number
+  // (`DocRef.replaces`): the question's date is the answer's question date, which the
+  // answer's row does not print (issue #22), and the question-only record goes once
+  // the answer is stored. Once it is gone the answer's own stored date carries it on.
+  const replaced = (ref.replaces ?? []).flatMap((reference) => {
+    const parsed = parseReference(reference);
+    const record = store.getRecord(makeRecordId(parliament, parsed === undefined ? ref.legislative_period : periodNumber(parsed), reference));
+    return record === undefined || record.id === id ? [] : [record];
+  });
+  if (ref.dates.submitted === undefined) {
+    const carried = replaced.find((record) => record.dates.submitted !== undefined)?.dates.submitted ?? (ref.replaces === undefined ? undefined : existing?.dates.submitted);
+    if (carried !== undefined) metadata.dates = { ...ref.dates, submitted: carried };
+  }
+  // A copy of this very ref filed under a former reference (`DocRef.formerly`), proven
+  // by holding the same documents; nothing else of that id is touched.
+  const urls = new Set(ref.documents.map((document) => document.url));
+  const misfiled = (ref.formerly ?? []).flatMap((reference) => {
+    const record = store.getRecord(makeRecordId(parliament, ref.legislative_period, reference));
+    const same =
+      record !== undefined && record.id !== id && record.source_documents.length > 0 && record.source_documents.every((document) => urls.has(document.url));
+    return same ? [record as KaRecord] : [];
+  });
+  const retire = (): void => {
+    for (const record of [...replaced, ...misfiled]) {
+      unindexRecord(store, record.id, record);
+      store.deleteRecord(record.id);
+    }
+    for (const record of replaced) run.warnings.push(`${ref.reference}: continues ${record.reference}; took its question date and removed its question-only record`);
+    for (const record of misfiled) run.warnings.push(`${ref.reference}: removed the copy misfiled as ${record.reference} (${record.id})`);
+  };
+
   const documents: FetchedDocument[] = [];
   let bytesFetched = 0;
 
@@ -601,8 +632,10 @@ async function syncRef(
     // returned here — "unchanged", invisible to search, stats and export for good.
     if (store.catalogEntry(existing.id) === undefined) {
       indexRecord(store, existing);
+      retire();
       return { id: existing.id, action: "unchanged", bytesFetched, recatalogued: true };
     }
+    retire();
     return { id: existing.id, action: "unchanged", bytesFetched };
   }
 
@@ -632,6 +665,7 @@ async function syncRef(
   // The postings in the index are the stored record's, which putRecord just replaced.
   indexRecord(store, record, existing);
   run.watch.storeMs += Math.max(0, now().getTime() - storeStart);
+  retire();
   return { id: record.id, action: "stored", bytesFetched, record };
 }
 
@@ -673,7 +707,7 @@ function sameReference(a: string, b: string): boolean {
   const left = parseReference(a);
   const right = parseReference(b);
   if (left === undefined || right === undefined) return false;
-  return periodNumber(left) === periodNumber(right) && left.number === right.number;
+  return periodNumber(left) === periodNumber(right) && left.number === right.number && left.prefix === right.prefix;
 }
 
 /**

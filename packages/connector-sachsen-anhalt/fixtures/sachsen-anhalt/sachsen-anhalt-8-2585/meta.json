@@ -1,0 +1,8 @@
+{
+  "extractor_version": "pkg:0.6.0+extract:3ea58ffd256e",
+  "human_verified": false,
+  "id": "sachsen-anhalt-8-2585",
+  "note": "The question's date is printed on the page after the cover, 'Kleine Anfrage – KA 8/1400 vom 29.03.2023' (readKaDate, issue #22)",
+  "source": "sachsen-anhalt",
+  "tier": "text_layer"
+}

@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { canonicalJson, canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { isSha256, sha256, sha256Canonical } from "@maschinenlesbar.org/openka-lib-repro";
 import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/schema.js";
+import { formatReference, parseReference, type Reference } from "../src/reference.js";
 import { isCalendarDate, isoDateProblem, normalizeIsoDate, validateRecord } from "../src/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/json-schema.js";
 import { isKnownGap, isParliamentKey, knownGaps, normalizeParliamentKey, onlyKnownGaps, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
@@ -303,5 +304,16 @@ describe("known gaps", () => {
     strictEqual(onlyKnownGaps("sachsen-anhalt", {}), false);
     strictEqual(onlyKnownGaps("sachsen-anhalt", undefined), false);
     strictEqual(onlyKnownGaps("berlin", { "dates.submitted": 1 }), false);
+  });
+});
+
+// Issue #22: a Kleine Anfrage's own number is not a Drucksache's.
+describe("a KA number", () => {
+  it("parses, prints and files apart from the Drucksache of the same number", () => {
+    deepStrictEqual(parseReference("KA 8/3985"), { period: "8", number: "3985", prefix: "KA" });
+    deepStrictEqual(parseReference("8/3985"), { period: "8", number: "3985" });
+    strictEqual(formatReference(parseReference("KA 8/3985") as Reference), "KA 8/3985");
+    deepStrictEqual([makeRecordId("sachsen-anhalt", 8, "KA 8/3985"), makeRecordId("sachsen-anhalt", 8, "8/3985")], ["sachsen-anhalt-8-ka-3985", "sachsen-anhalt-8-3985"]);
+    strictEqual(parseReference("XY 8/3985"), undefined, "only the prefix the evidence names");
   });
 });

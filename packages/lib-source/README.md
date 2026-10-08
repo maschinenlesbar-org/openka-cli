@@ -17,6 +17,13 @@ class names are the contract — a fragile contract, and the design says so out 
 `xml.ts` is a dependency-free reader for the subset the parliamentary exports
 actually use; it is not validating and does not pretend to be.
 
+**A `DocRef` can retire other records.** `replaces` names the references of records it
+continues: Sachsen-Anhalt's answer replaces its question-only `KA 8/NNNN` record and takes
+that record's question date. `formerly` names the references the same paper was stored
+under before a reading changed. The pipeline removes such a record only when it holds the
+same documents (issue #22). Both fields are optional, and only the Parlamentsspiegel
+adapter sets them today.
+
 ## What is in here
 
 - **`src/base.ts`** — The Source protocol — the "set of clients" layer.

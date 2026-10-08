@@ -507,6 +507,29 @@ export function findMinistry(text: string): string | undefined {
   return name;
 }
 
+/**
+ * The date of the question on Sachsen-Anhalt's answer, where it is named: the answer
+ * opens "Kleine Anfrage - KA 8/1163 vom 02.12.2022" on the page after the cover letter.
+ * Question and answer are one Drucksache dated by the answer, and this line is the only
+ * place the paper states when it was asked — in about 2% of them (issue #22). It must
+ * name the KA the cover names first ("Kleine Anfrage ‐ KA 8/1163"), so a date of
+ * another Anfrage cited in passing is never taken; the dash comes as -, ‐ or –. Read
+ * from the first `KA_DATE_PAGES` pages.
+ */
+export function readKaDate(text: string): string | undefined {
+  const pages = text.split("\f").slice(0, KA_DATE_PAGES).join("\n");
+  const own = /\bKA\s*(\d{1,2})\s*\/\s*(\d+)\b/.exec(pages);
+  if (own === null) return undefined;
+  const line = new RegExp(
+    `^[ \\t]*Kleine Anfrage\\s*[-‐–]\\s*KA\\s*${own[1]}\\s*\\/\\s*${own[2]}\\s+vom\\s+(\\d{1,2}\\.\\s*\\d{1,2}\\.\\s*\\d{4})[ \\t]*$`,
+    "m",
+  ).exec(pages);
+  return line === null ? undefined : parseGermanDate((line[1] as string).replace(/\s+/g, ""));
+}
+
+/** How many pages `readKaDate` reads: the cover letter and the answer's first pages. */
+export const KA_DATE_PAGES = 3;
+
 /** What a Schriftliche Anfrage's head states about itself — see `readAnfrageHead`. */
 export interface AnfrageHead {
   /** The askers, when every name in the head reads as a person. */

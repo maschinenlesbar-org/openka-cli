@@ -111,7 +111,11 @@ export interface KaRecord {
   id: string;
   parliament: ParliamentKey;
   document_type: DocumentType;
-  /** Drucksachennummer exactly as printed, e.g. `19/10006`. */
+  /**
+   * Drucksachennummer exactly as printed, e.g. `19/10006` — or, for a question not yet
+   * answered in a Land that numbers its Kleine Anfragen apart, the question's own number
+   * (Sachsen-Anhalt's `KA 8/4011`).
+   */
   reference: string;
   legislative_period: number;
   title: string;

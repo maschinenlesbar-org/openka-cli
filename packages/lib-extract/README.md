@@ -43,7 +43,7 @@ document turns into, so `npm run stamp` and a golden re-freeze are required.
 Everything is re-exported from the package root:
 
 ```
-parseGermanDate, findDate, findReference, periodFromReference, ParsedAsker, ParsedUrheber, parseUrheber, nameCarriesParty, DocumentMarkers, isClassified, findMarkers, findMinistry, AnfrageHead, readAnfrageHead, SegmentationRules, FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT, FRAGE_ANTWORT_FOLGT, RULE_SETS, groupedAnswerNumbers, splitAtQuestionMark, MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, LARGE_QUESTION_LIST, MIN_ANSWER_RATE_LARGE, QaSegment, SegmentationResult, normaliseNumber, expandNumbers, MAX_NUMBER_SKIP, splitAtAnswerDivider, SegmentOptions, restatesSameQuestion, applyRules, checkSegments, segmentQa, FetchedDocument, SourceMetadata, ExtractRequest, ExtractResult, Abstentions, extract, ValidatorProblem, EARLIEST_PLAUSIBLE_YEAR, latestPlausibleYear, validateExtractedRecord
+parseGermanDate, findDate, findReference, periodFromReference, ParsedAsker, ParsedUrheber, parseUrheber, nameCarriesParty, DocumentMarkers, isClassified, findMarkers, findMinistry, AnfrageHead, readAnfrageHead, readKaDate, KA_DATE_PAGES, SegmentationRules, FRAGE_ANTWORT, NUMMERIERT, ANTWORT_FOLGT, FRAGE_ANTWORT_FOLGT, RULE_SETS, groupedAnswerNumbers, splitAtQuestionMark, MIN_NUMBER_DENSITY, MIN_INFERRED_ANSWER_RATE, LARGE_QUESTION_LIST, MIN_ANSWER_RATE_LARGE, QaSegment, SegmentationResult, normaliseNumber, expandNumbers, MAX_NUMBER_SKIP, splitAtAnswerDivider, SegmentOptions, restatesSameQuestion, applyRules, checkSegments, segmentQa, FetchedDocument, SourceMetadata, ExtractRequest, ExtractResult, Abstentions, extract, ValidatorProblem, EARLIEST_PLAUSIBLE_YEAR, latestPlausibleYear, validateExtractedRecord
 ```
 
 ## Depends on

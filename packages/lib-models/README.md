@@ -19,6 +19,12 @@ ids, the German label, the Herkunft code the Parlamentsspiegel export format use
 the instrument each parliament calls its questions, and the `document_type` that
 maps to.
 
+A reference may carry a `KA` prefix (`KA 8/4011`): Sachsen-Anhalt numbers its Kleine
+Anfragen apart from its Drucksachen, and the two sequences overlap. `parseReference`
+keeps the prefix, and `referenceSlug` turns it into `ka-`, so the question and a
+Drucksache of the same number get different ids (`sachsen-anhalt-8-ka-4011` and
+`sachsen-anhalt-8-4011`; issue #22).
+
 ## What is in here
 
 - **`src/json-schema.ts`** — JSON Schema for the canonical record, for consumers outside TypeScript.

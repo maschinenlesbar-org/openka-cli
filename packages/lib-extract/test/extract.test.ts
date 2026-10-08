@@ -22,6 +22,7 @@ import {
 import {
   isClassified,
   readAnfrageHead,
+  readKaDate,
   findDate,
   findMarkers,
   findMinistry,
@@ -1608,5 +1609,46 @@ describe("the head of a Bayern Schriftliche Anfrage", () => {
     deepStrictEqual(readAnfrageHead(head(["Schriftliche Anfrage", "des Abgeordneten Ulrich Singer AfD", "Umsetzung der Hightech Agenda"])), {});
     // The head belongs to the first page; a later page that happens to match is not it.
     deepStrictEqual(readAnfrageHead(head(["Antwort", "\fSchriftliche Anfrage", "des Abgeordneten Ulrich Singer AfD", "vom 01.04.2026"])), {});
+  });
+});
+
+describe("the date of a Sachsen-Anhalt Kleine Anfrage (issue #22)", () => {
+  const cover = "Landtag von Sachsen-Anhalt Drucksache 8/6424\n22.12.2025\nAntwort der Landesregierung auf eine Kleine Anfrage (KA 8/3417)";
+  const answer = (dash: string): string => `Antwort der Landesregierung\nKleine Anfrage ${dash} KA 8/3417 vom 20.11.2025\nSalzbelastung der Bode`;
+
+  it("reads the date printed beside the paper's own KA number, on the page after the cover", () => {
+    for (const dash of ["-", "\u2010", "\u2013"]) strictEqual(readKaDate(`${cover}\f${answer(dash)}`), "2025-11-20", JSON.stringify(dash));
+    strictEqual(readKaDate(`${cover}\fKleine Anfrage - KA 8/3417 vom 3. 2. 2025`), "2025-02-03");
+  });
+
+  it("reads nothing when the dated line names another KA, or lies past the first pages", () => {
+    strictEqual(readKaDate(`${cover}\fKleine Anfrage - KA 8/3418 vom 20.11.2025`), undefined);
+    strictEqual(readKaDate(`${cover}${"\f".repeat(3)}${answer("-")}`), undefined);
+    // A date in running text is not the line that dates the question.
+    strictEqual(readKaDate(`${cover}\fwie in der Kleine Anfrage - KA 8/3417 vom 20.11.2025 erfragt`), undefined);
+  });
+
+  it("is taken only when the source gave no question date, and never after the answer", async () => {
+    const read = async (dates: { submitted?: string; answered?: string }) =>
+      (
+        await extract({
+          parliament: "sachsen-anhalt",
+          documentType: "kleine_anfrage",
+          tier: "text_layer",
+          metadata: { reference: "8/6424", legislative_period: 8, title: "T", askers: [], answered_by: {}, dates },
+          documents: [
+            {
+              role: "combined_pdf",
+              url: "https://x.invalid/a.pdf",
+              bytes: questionPaper(["Antwort der Landesregierung (KA 8/3417)", "Kleine Anfrage - KA 8/3417 vom 20.11.2025", "1. Wie hoch ist die Salzlast?"]),
+              urlStable: true,
+            },
+          ],
+          env: {},
+        })
+      ).record.dates;
+    deepStrictEqual(await read({ answered: "2025-12-22" }), { answered: "2025-12-22", submitted: "2025-11-20" });
+    deepStrictEqual(await read({ submitted: "2025-11-19", answered: "2025-12-22" }), { submitted: "2025-11-19", answered: "2025-12-22" });
+    deepStrictEqual(await read({ answered: "2025-11-01" }), { answered: "2025-11-01" });
   });
 });

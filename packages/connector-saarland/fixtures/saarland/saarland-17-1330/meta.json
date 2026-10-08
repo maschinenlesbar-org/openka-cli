@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.6.0+extract:b69d9d17e5ac",
+  "extractor_version": "pkg:0.6.0+extract:3ea58ffd256e",
   "human_verified": false,
   "id": "saarland-17-1330",
   "note": "Saarland: the merged reading of both papers still fails its consistency checks, so qa abstains",

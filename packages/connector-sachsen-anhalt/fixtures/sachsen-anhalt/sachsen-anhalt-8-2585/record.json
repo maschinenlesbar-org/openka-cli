@@ -1,0 +1,74 @@
+{
+  "answered_by": {
+    "ministry": "Ministerium für Infrastruktur und Digitales"
+  },
+  "askers": [
+    {
+      "name": "Hannes Loth",
+      "party": "AfD"
+    }
+  ],
+  "dates": {
+    "answered": "2023-04-27",
+    "submitted": "2023-03-29"
+  },
+  "document_type": "kleine_anfrage",
+  "extraction": {
+    "abstained_fields": [],
+    "extractor_version": "pkg:0.6.0+extract:3ea58ffd256e",
+    "input_sha256": "f0e7d88121986763ed1ae962d5ca7c20aa2f3583d205c52788d57547bf113a1d",
+    "model_artifacts": [],
+    "parse_complete": true,
+    "reproducible": true,
+    "review_status": "ok",
+    "tier": "text_layer"
+  },
+  "full_text": "27.04.2023\nDrucksache\n8/2585\nöffentlich\nAntwort der Landesregierung auf eine Kleine Anfrage zur schriftlichen\nBeantwortung\n–\n\nMitglied des Landtages Hannes Loth (AfD)\n\nSenkung der Abstandsfläche für Windkraftanlagen\n\nKleine Anfrage ‐ KA 8/1400\n\nSehr geehrter Herr Präsident,\n\nbeigefügt übersende ich Ihnen die Antwort der Landesregierung ‐ erstellt vom Ministerium\nfür Infrastruktur und Digitales ‐ auf die o. g. Kleine Anfrage.\n\nMit freundlichen Grüßen\n\nDr. Lydia Hüskens\nMinisterin für Infrastruktur und Digitales\n\nHinweis: Die Anlage ist in Word als Objekt beigefügt und öffnet durch Doppelklick den Acrobat Reader.\n\n(Ausgegeben am 28.04.2023)\fAntwort der Landesregierung\nauf eine Kleine Anfrage zur schriftlichen Beantwortung\n\nAbgeordneter Hannes Loth (AfD)\n\nSenkung der Abstandsfläche für Windkraftanlagen\n\nKleine Anfrage – KA 8/1400 vom 29.03.2023\n\nVorbemerkungen des Fragestellers:\n\n„Die Landesregierung hat am 28.03.2023 eine Änderung der Landesbauordnung\nangekündigt. Zentrale Aussage war, dass die Abstandsregel von Windkraftanlagen (WKA)\nauf 0,4 H gesenkt werden soll.“\n\nAntwort der Landesregierung\nerstellt vom Ministerium für Infrastruktur und Digitales des Landes Sachsen-Anhalt\n\n1. Wie wirkt sich die Änderung in der Praxis aus?\n\nWie sich die Änderung in der Praxis in der Zukunft auswirkt, kann zum jetzigen\nZeitpunkt noch nicht abschließend beurteilt werden. Durch die Änderung sollen\nVerfahrenserleichterungen eingeführt und Hemmnisse abg ebaut werden und somit der\nAusbau der erneuerbaren Energien unterstützt werden . So soll mit dem\ngegenständlichen Gesetzentwurf die Abstandsfläche für Windenergieanlagen auf das\nallgemeine Maß von 0,4 H herabgesenkt und somit eventuell bestehende Hürden\naufgrund einzuholender Baulasten und Verhandlungen mit Grundstückseigentümern\nreduziert werden.\n\n2. Welche Flächen stehen mit der Änderung auf 0,4 H zusätzlich für WKA zur\nVerfügung?\n\nEine verbindliche Abschätzung ist derzeitig nicht möglich. Es wird erwartet, dass die\nAbsenkung der Abstandsflächen zu einer optimierten Nutzung der bestehenden\nWindvorranggebiete beiträgt.\n\n3. Welche Prüfungen müssen bei der Errichtung von WKA zukünftig gemacht werden?\n\nDie Absenkung der Abstandsfläche für Windkraftanlagen führt zu keiner Veränderung\ndes Prüfumfangs. Es müssen für Windkraftanlagen zukünftig weiterhin die\nbestehenden Prüfungen vorgenommen werden.\f4. Welche Genehmigungen müssen von welchen Stellen, bei dem Wunsch WKA zu\nerrichten, eingeholt werden?\n\nEntsprechend der laufenden Nummer 1.6 des Anhangs 1 der Vierten Verordnung zur\nDurchführung des Bundes-Immissionsschutzgesetzes unterliegen Anlagen zur\nNutzung von Windenergie mit einer Gesamthöhe von mehr als 50 Metern einem\nimmissionsschutzrechtlichen Genehmigungsverfahren. Für Windkraftanlagen bis 50\nMetern ist ein bauordnungsrechtliches Genehmigungsverfahren durchzuführen.\nBauordnungsrechtlich verfahrensfrei ist gemäß § 60 Abs. 1 Nr. 3 b) Bauordnung des\nLandes Sachsen-Anhalt die Errichtung von Windkraft anlagen bis zu einer Gesamthöhe\nvon 10 Metern und einem Rotordurchmesser bis zu 3 Metern in Gewerbe- und\nIndustriegebieten.\n\n5. Wie weit ist die Überarbeitung des Landesentwicklungsplans?\n\nDas Kabinett hat am 20. Dezember 2022 das Grobkonzept zum\nLandesentwicklungsplan beschlossen. Auf dieser Grundlage wird derzeitig der 1.\nEntwurf erarbeitet. Es ist vorgesehen, dass dieser im 3. Quartal 2023 beschlossen und\nzur öffentlichen Anhörung freigegeben wird.",
+  "id": "sachsen-anhalt-8-2585",
+  "legislative_period": 8,
+  "markers": {
+    "attachments_referenced": [],
+    "classified": false,
+    "contains_tables": false
+  },
+  "parliament": "sachsen-anhalt",
+  "qa": [
+    {
+      "answer": "Wie sich die Änderung in der Praxis in der Zukunft auswirkt, kann zum jetzigen\nZeitpunkt noch nicht abschließend beurteilt werden. Durch die Änderung sollen\nVerfahrenserleichterungen eingeführt und Hemmnisse abg ebaut werden und somit der\nAusbau der erneuerbaren Energien unterstützt werden . So soll mit dem\ngegenständlichen Gesetzentwurf die Abstandsfläche für Windenergieanlagen auf das\nallgemeine Maß von 0,4 H herabgesenkt und somit eventuell bestehende Hürden\naufgrund einzuholender Baulasten und Verhandlungen mit Grundstückseigentümern\nreduziert werden.",
+      "number": "1",
+      "question": "Wie wirkt sich die Änderung in der Praxis aus?"
+    },
+    {
+      "answer": "Eine verbindliche Abschätzung ist derzeitig nicht möglich. Es wird erwartet, dass die\nAbsenkung der Abstandsflächen zu einer optimierten Nutzung der bestehenden\nWindvorranggebiete beiträgt.",
+      "number": "2",
+      "question": "Welche Flächen stehen mit der Änderung auf 0,4 H zusätzlich für WKA zur\nVerfügung?"
+    },
+    {
+      "answer": "Die Absenkung der Abstandsfläche für Windkraftanlagen führt zu keiner Veränderung\ndes Prüfumfangs. Es müssen für Windkraftanlagen zukünftig weiterhin die\nbestehenden Prüfungen vorgenommen werden.",
+      "number": "3",
+      "question": "Welche Prüfungen müssen bei der Errichtung von WKA zukünftig gemacht werden?"
+    },
+    {
+      "answer": "Entsprechend der laufenden Nummer 1.6 des Anhangs 1 der Vierten Verordnung zur\nDurchführung des Bundes-Immissionsschutzgesetzes unterliegen Anlagen zur\nNutzung von Windenergie mit einer Gesamthöhe von mehr als 50 Metern einem\nimmissionsschutzrechtlichen Genehmigungsverfahren. Für Windkraftanlagen bis 50\nMetern ist ein bauordnungsrechtliches Genehmigungsverfahren durchzuführen.\nBauordnungsrechtlich verfahrensfrei ist gemäß § 60 Abs. 1 Nr. 3 b) Bauordnung des\nLandes Sachsen-Anhalt die Errichtung von Windkraft anlagen bis zu einer Gesamthöhe\nvon 10 Metern und einem Rotordurchmesser bis zu 3 Metern in Gewerbe- und\nIndustriegebieten.",
+      "number": "4",
+      "question": "Welche Genehmigungen müssen von welchen Stellen, bei dem Wunsch WKA zu\nerrichten, eingeholt werden?"
+    },
+    {
+      "answer": "Das Kabinett hat am 20. Dezember 2022 das Grobkonzept zum\nLandesentwicklungsplan beschlossen. Auf dieser Grundlage wird derzeitig der 1.\nEntwurf erarbeitet. Es ist vorgesehen, dass dieser im 3. Quartal 2023 beschlossen und\nzur öffentlichen Anhörung freigegeben wird.",
+      "number": "5",
+      "question": "Wie weit ist die Überarbeitung des Landesentwicklungsplans?"
+    }
+  ],
+  "reference": "08/2585",
+  "schema_version": "1.0",
+  "source_documents": [
+    {
+      "retrieved_at": "2026-10-08T14:40:38Z",
+      "role": "combined_pdf",
+      "sha256": "f0e7d88121986763ed1ae962d5ca7c20aa2f3583d205c52788d57547bf113a1d",
+      "url": "https://padoka.landtag.sachsen-anhalt.de/files/drs/wp8/drs/d2585aak.pdf",
+      "url_stable": true
+    }
+  ],
+  "title": "Senkung der Abstandsfläche für Windkraftanlagen"
+}

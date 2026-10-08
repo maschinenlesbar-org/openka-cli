@@ -51,6 +51,20 @@ export interface DocRef {
   answered_by: AnsweredBy;
   dates: Dates;
   documents: DocRefDocument[];
+  /**
+   * References of earlier refs this one is the continuation of: Sachsen-Anhalt lists
+   * an unanswered question under its own number (`KA 8/3417`) and its answer later
+   * as a Drucksache that cites it — "Drucksache 8/6424 (KA 8/3417)". The pipeline
+   * carries the question's date over from such a record and removes it (issue #22).
+   */
+  replaces?: string[];
+  /**
+   * References this ref was filed under before, wrongly: Sachsen-Anhalt's unanswered
+   * questions were filed under their KA number read as a Drucksache (`8/3985`), where
+   * they took the id of an older answer. A stored record there that holds this ref's
+   * own documents is that misfiled copy, and is removed once the ref is stored.
+   */
+  formerly?: string[];
 }
 
 export interface DiscoverOptions {

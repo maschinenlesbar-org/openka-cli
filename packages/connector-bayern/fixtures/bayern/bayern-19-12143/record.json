@@ -27,7 +27,7 @@
       "qa[4].answer",
       "qa[8].answer"
     ],
-    "extractor_version": "pkg:0.6.0+extract:b69d9d17e5ac",
+    "extractor_version": "pkg:0.6.0+extract:3ea58ffd256e",
     "input_sha256": "4d8bf122d0b51c00a8fb9a2ef570e1ee58a2ad9859a456052e99891dd4a9ba25",
     "model_artifacts": [],
     "parse_complete": false,

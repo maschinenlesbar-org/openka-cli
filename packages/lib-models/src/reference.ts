@@ -10,8 +10,14 @@
 // That is what made the label fix in `findReference` awkward: the grammar had
 // seven homes and only one of them could be taught about labels. It lives here now.
 
-/** The numeric shape, spaces and tabs permitted where a cover page prints them. */
-const BODY = /^[ \t]*(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))[ \t]*$/;
+/**
+ * The numeric shape, spaces and tabs permitted where a cover page prints them, with
+ * an optional `KA` in front. Sachsen-Anhalt numbers a Kleine Anfrage on its own
+ * (`KA 8/3985`) apart from its Drucksachen (`8/3985`), and the two sequences overlap:
+ * read alike, an unanswered question and an older answer of the same number shared one
+ * record id, and one replaced the other (issue #22).
+ */
+const BODY = /^[ \t]*(?:(KA)[ \t]+)?(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))[ \t]*$/;
 
 /**
  * A Drucksachennummer, as printed.
@@ -26,6 +32,8 @@ const BODY = /^[ \t]*(\d{1,2})[ \t]*\/[ \t]*((?:\d[\d \t]{0,10}\d|\d))[ \t]*$/;
 export interface Reference {
   readonly period: string;
   readonly number: string;
+  /** `KA` for a Kleine Anfrage's own number, in a Land that numbers them apart; absent for a Drucksache. */
+  readonly prefix?: "KA";
 }
 
 /** The period as an integer, for comparing and filtering. */
@@ -44,14 +52,14 @@ export function periodNumber(reference: Reference): number {
 export function parseReference(value: string): Reference | undefined {
   const match = BODY.exec(value);
   if (match === null) return undefined;
-  const number = (match[2] as string).replace(/[ \t]+/g, "");
+  const number = (match[3] as string).replace(/[ \t]+/g, "");
   if (number === "") return undefined;
-  return { period: match[1] as string, number };
+  return { period: match[2] as string, number, ...(match[1] === "KA" ? { prefix: "KA" as const } : {}) };
 }
 
 /** The printed form, which is what a citation looks like. */
 export function formatReference(reference: Reference): string {
-  return `${reference.period}/${reference.number}`;
+  return `${reference.prefix === undefined ? "" : `${reference.prefix} `}${reference.period}/${reference.number}`;
 }
 
 /**
@@ -62,8 +70,11 @@ export function formatReference(reference: Reference): string {
  * pad it (`08/980` under period 8). Changing this changes every record's identity.
  */
 export function referenceSlug(reference: string): string {
+  // A Kleine Anfrage's own number keeps its prefix, so `KA 8/3985` and Drucksache
+  // `8/3985` — two different papers — do not share a record id.
+  const prefix = /^[ \t]*KA[ \t]+\d/.test(reference) ? "ka-" : "";
   const tail = reference.includes("/") ? reference.slice(reference.indexOf("/") + 1) : reference;
-  return tail
+  return prefix + tail
     .replace(/\s+/g, "")
     .replace(/[^0-9A-Za-z-]/g, "-")
     .replace(/-+/g, "-")

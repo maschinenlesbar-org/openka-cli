@@ -27,7 +27,7 @@ import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { extractPdfImages, extractPdfText, PAGE_SEPARATOR } from "@maschinenlesbar.org/openka-lib-pdf";
 import { textForSegmentation } from "./pages.js";
-import { findMarkers, findMinistry, readAnfrageHead } from "./metadata.js";
+import { findMarkers, findMinistry, readAnfrageHead, readKaDate } from "./metadata.js";
 import {
   RULE_SETS,
   checkSegments,
@@ -199,6 +199,12 @@ export async function extract(request: ExtractRequest): Promise<ExtractResult> {
     if (dates.submitted === undefined && head.asked !== undefined) dates.submitted = head.asked;
     if (dates.answered === undefined && head.printed !== undefined && headSource.role === "combined_pdf") {
       dates.answered = head.printed;
+    }
+    // Sachsen-Anhalt's answer names its question's date on the cover, if anywhere
+    // (`readKaDate`); a date after the answer's is no question date, and is not taken.
+    if (dates.submitted === undefined) {
+      const asked = readKaDate(headSource.text);
+      if (asked !== undefined && (dates.answered === undefined || asked <= dates.answered)) dates.submitted = asked;
     }
   }
 
