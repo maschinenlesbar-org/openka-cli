@@ -15,6 +15,7 @@ export function registerDoctor(program: Command, deps: CliDeps): void {
     .command("doctor")
     .description("check the corpus: filesystem, free space, lock, catalog against records, macOS ._* files (exit 3 on a problem)")
     .option("--fix", "remove the macOS ._* and .DS_Store files from the corpus (takes the corpus lock)")
+    .option("--orphaned-documents", "also count the archived documents no record refers to (reads every record)")
     .option("--json", "print the diagnosis as JSON");
   addVolumeOptions(command).action(
     action(
@@ -25,7 +26,7 @@ export function registerDoctor(program: Command, deps: CliDeps): void {
         // `--fix` takes the lock, so it refuses (exit 3) while a sync writes; before
         // the first sync there is nothing to fix.
         const removed = ctx.opts["fix"] === true && existsSync(store.root) ? removePlatformFiles(store) : undefined;
-        const diagnosis = diagnoseCorpus(store, volumeOptionsFrom(ctx));
+        const diagnosis = diagnoseCorpus(store, { ...volumeOptionsFrom(ctx), ...(ctx.opts["orphanedDocuments"] === true ? { orphanedBlobs: true } : {}) });
         if (ctx.opts["json"] === true) {
           printJson(ctx, removed === undefined ? diagnosis : { ...diagnosis, removed_platform_files: removed });
         } else {
@@ -73,6 +74,10 @@ function printDiagnosis(io: CliIO, diagnosis: CorpusDiagnosis, removed: number |
     );
   }
   if (removed !== undefined) row("removed", `${formatCount(removed)} macOS ._* / .DS_Store file(s)`);
+  const orphans = diagnosis.orphaned_blobs;
+  if (orphans !== undefined) {
+    row("documents", orphans.count === 0 ? "every archived document belongs to a record" : `${formatCount(orphans.count)} archived document(s) no record refers to (${formatBytes(orphans.bytes)})`);
+  }
   if (diagnosis.exists) row("platform", diagnosis.platform_files === 0 ? "no macOS ._* / .DS_Store files" : `${formatCount(diagnosis.platform_files)} macOS ._* / .DS_Store file(s)`);
 
   for (const warning of diagnosis.warnings) io.err(`warning: ${sanitizeForTerminal(warning)}`);

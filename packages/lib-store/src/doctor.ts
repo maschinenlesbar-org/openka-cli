@@ -8,6 +8,7 @@ import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { isPlatformFile, type FileStore } from "./file-store.js";
 import { catalogGaps } from "./indexer.js";
 import { blobsApart, checkCorpusVolumes, type VolumeCheckOptions, type VolumeReport } from "./volume.js";
+import { blobSize, orphanedBlobs } from "./remove.js";
 
 export interface CorpusDiagnosis {
   corpus: string;
@@ -27,13 +28,24 @@ export interface CorpusDiagnosis {
   };
   /** macOS `._*` and `.DS_Store` files anywhere in the corpus and the blob store. */
   platform_files: number;
+  /**
+   * Archived documents no record refers to, when asked for (`orphanedBlobs`): what
+   * records removed by hand leave behind. Absent when not asked, or when a record could
+   * not be read.
+   */
+  orphaned_blobs?: { count: number; bytes: number };
   /** What a sync would refuse, or what makes the corpus incomplete. */
   problems: string[];
   warnings: string[];
 }
 
 /** Look at the corpus without writing to it. */
-export function diagnoseCorpus(store: FileStore, options: VolumeCheckOptions = {}): CorpusDiagnosis {
+export interface DiagnoseOptions extends VolumeCheckOptions {
+  /** Also count the orphaned blobs — which reads every record. */
+  orphanedBlobs?: boolean;
+}
+
+export function diagnoseCorpus(store: FileStore, options: DiagnoseOptions = {}): CorpusDiagnosis {
   const volumes = checkCorpusVolumes(store, options);
   const problems = volumes.flatMap((volume) => volume.problems);
   const blobStore = store.blobStoreProblem();
@@ -78,6 +90,23 @@ export function diagnoseCorpus(store: FileStore, options: VolumeCheckOptions = {
   } catch (err) {
     if (!(err instanceof StoreError)) throw err;
     problems.push(err.message);
+  }
+
+  if (options.orphanedBlobs === true && blobStore === undefined) {
+    try {
+      const orphans = orphanedBlobs(store);
+      if (orphans === undefined) {
+        warnings.push("a record could not be read, so the documents no record refers to cannot be counted");
+      } else {
+        diagnosis.orphaned_blobs = { count: orphans.length, bytes: orphans.reduce((sum, digest) => sum + blobSize(store, digest), 0) };
+        if (orphans.length > 0) {
+          warnings.push(`${orphans.length} archived document(s) no record refers to; \`ka rm --orphaned-documents\` removes them (--move-to <dir> moves them)`);
+        }
+      }
+    } catch (err) {
+      if (!(err instanceof StoreError)) throw err;
+      problems.push(err.message);
+    }
   }
 
   diagnosis.platform_files = platformFiles(store).length;

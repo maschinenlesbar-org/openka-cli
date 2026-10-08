@@ -34,6 +34,10 @@ import {
   parseMountLine,
   platformFiles,
   removePlatformFiles,
+  REMOVE_REBUILD_AT,
+  orphanedBlobs,
+  removeOrphanedBlobs,
+  removeRecords,
   spaceGuard,
   systemVolumes,
 } from "@maschinenlesbar.org/openka-lib-store";
@@ -1785,5 +1789,159 @@ describe("known gaps in the review queue", () => {
   it("counts them apart in corpusStats, still as records with abstained fields", () => {
     const stats = corpusStats(corpus());
     deepStrictEqual([stats.needs_review, stats.known_gaps_only, stats.by_parliament["sachsen-anhalt"]?.known_gaps_only], [3, 2, 2]);
+  });
+});
+
+describe("removing records (issue #28)", () => {
+  /** A corpus of three indexed records: a and b share one document, c has its own. */
+  const corpus = (options: { blobs?: string } = {}): { store: FileStore; shared: string; own: string } => {
+    const root = mkdtempSync(join(tmpdir(), "openka-rm-"));
+    const store = new FileStore(join(root, "corpus"), options);
+    const shared = store.putBlob(Buffer.from("%PDF shared"));
+    const own = store.putBlob(Buffer.from("%PDF own"));
+    for (const [n, digest, title] of [["1", shared, "Brücken"], ["2", shared, "Schulen"], ["3", own, "Radwege"]] as const) {
+      const record = sampleRecord({
+        id: `berlin-19-${n}`,
+        reference: `19/${n}`,
+        title,
+        source_documents: [{ role: "combined_pdf", url: `https://example.invalid/${n}.pdf`, sha256: digest, url_stable: true }],
+      });
+      store.putRecord(record);
+      indexRecord(store, record);
+    }
+    return { store, shared, own };
+  };
+  const cleanup = (store: FileStore): void => rmSync(join(store.root, ".."), { recursive: true, force: true });
+  const titles = (store: FileStore, query: string): string[] => search(store, query).hits.map((hit) => hit.entry.id);
+
+  it("removes the record, its catalog row and its postings, under the lock, and keeps the documents", () => {
+    const { store, shared, own } = corpus();
+    try {
+      deepStrictEqual(titles(store, "Radwege"), ["berlin-19-3"]);
+      const report = removeRecords(store, { ids: ["berlin-19-3"] });
+      deepStrictEqual([report.removed, report.blobs_removed, report.dry_run], [["berlin-19-3"], [], false]);
+      deepStrictEqual([store.hasRecord("berlin-19-3"), store.catalogEntry("berlin-19-3"), titles(store, "Radwege")], [false, undefined, []]);
+      deepStrictEqual(catalogGaps(store), { uncatalogued: [], missingFiles: [] });
+      ok(store.hasBlob(own) && store.hasBlob(shared));
+      deepStrictEqual(orphanedBlobs(store), [own]);
+
+      const release = store.lock("sync");
+      try {
+        // Another process: the lock is re-entrant only for the store that holds it.
+        throws(() => removeRecords(new FileStore(store.root), { ids: ["berlin-19-1"] }), CorpusLockedError);
+      } finally {
+        release();
+      }
+    } finally {
+      cleanup(store);
+    }
+  });
+
+  it("removes a document only when no remaining record refers to it", () => {
+    const { store, shared, own } = corpus();
+    try {
+      const first = removeRecords(store, { ids: ["berlin-19-1", "berlin-19-3"], blobs: true });
+      deepStrictEqual([first.blobs_removed, first.blobs_shared, first.blob_bytes], [[own], 1, "%PDF own".length]);
+      ok(store.hasBlob(shared) && !store.hasBlob(own));
+      removeRecords(store, { ids: ["berlin-19-2"], blobs: true });
+      ok(!store.hasBlob(shared), "the last record that referred to it is gone");
+    } finally {
+      cleanup(store);
+    }
+  });
+
+  it("changes nothing on a dry run, and nothing at all when an id is unknown", () => {
+    const { store, own } = corpus();
+    try {
+      const plan = removeRecords(store, { ids: ["berlin-19-3"], blobs: true, dryRun: true });
+      deepStrictEqual([plan.dry_run, plan.removed, plan.blobs_removed], [true, ["berlin-19-3"], [own]]);
+      ok(store.hasRecord("berlin-19-3") && store.hasBlob(own));
+      throws(() => removeRecords(store, { ids: ["berlin-19-3", "berlin-19-9"] }), /No record berlin-19-9 in the corpus; nothing was removed/);
+      ok(store.hasRecord("berlin-19-3"));
+    } finally {
+      cleanup(store);
+    }
+  });
+
+  it("moves the files instead, and `ka reindex` after moving them back undoes it", () => {
+    const { store, own } = corpus();
+    const away = join(store.root, "..", "away");
+    try {
+      const bytes = store.getRecordBytes("berlin-19-3");
+      const report = removeRecords(store, { ids: ["berlin-19-3"], blobs: true, to: away });
+      strictEqual(report.moved_to, away);
+      deepStrictEqual(readFileSync(join(away, "records", "berlin-19-3.json")), bytes);
+      deepStrictEqual(readFileSync(join(away, "blobs", own.slice(0, 2), `${own}.bin`)), Buffer.from("%PDF own"));
+      mkdirSync(join(store.root, "blobs", own.slice(0, 2)), { recursive: true });
+      writeFileSync(join(store.root, "records", "berlin-19-3.json"), readFileSync(join(away, "records", "berlin-19-3.json")));
+      writeFileSync(store.blobPath(own), readFileSync(join(away, "blobs", own.slice(0, 2), `${own}.bin`)));
+      reindexAll(store);
+      deepStrictEqual(titles(store, "Radwege"), ["berlin-19-3"]);
+      throws(() => removeRecords(store, { ids: ["berlin-19-1"], to: join(store.root, "trash") }), /inside the corpus/);
+    } finally {
+      cleanup(store);
+    }
+  });
+
+  it("rebuilds the index for many records, or for one it cannot read", () => {
+    const { store } = corpus();
+    try {
+      writeFileSync(join(store.root, "records", "berlin-19-2.json"), "{ not json");
+      const report = removeRecords(store, { ids: ["berlin-19-2"] });
+      deepStrictEqual(report.unreadable, ["berlin-19-2"]);
+      deepStrictEqual(catalogGaps(store), { uncatalogued: [], missingFiles: [] });
+      deepStrictEqual(titles(store, "Schulen"), []);
+
+      const many = Array.from({ length: REMOVE_REBUILD_AT }, (_, i) => sampleRecord({ id: `berlin-18-${i + 1}`, reference: `18/${i + 1}`, legislative_period: 18, title: "Spielplätze" }));
+      for (const record of many) store.putRecord(record);
+      reindexAll(store);
+      strictEqual(search(store, "Spielplätze", { limit: 100 }).total, REMOVE_REBUILD_AT);
+      removeRecords(store, { ids: many.map((record) => record.id) });
+      deepStrictEqual([search(store, "Spielplätze").total, titles(store, "Radwege"), catalogGaps(store)], [0, ["berlin-19-3"], { uncatalogued: [], missingFiles: [] }]);
+    } finally {
+      cleanup(store);
+    }
+  });
+
+  it("removes orphaned documents, and refuses to delete from a blob store kept apart", () => {
+    const { store, own } = corpus();
+    try {
+      store.deleteRecord("berlin-19-3"); // removed by hand, as before ka rm
+      reindexAll(store);
+      const report = removeOrphanedBlobs(store);
+      deepStrictEqual([report.removed, report.blobs_removed], [[], [own]]);
+      deepStrictEqual(orphanedBlobs(store), []);
+    } finally {
+      cleanup(store);
+    }
+    const dir = mkdtempSync(join(tmpdir(), "openka-rm-apart-"));
+    try {
+      mkdirSync(join(dir, "stick"));
+      const apart = new FileStore(join(dir, "corpus"), { blobs: join(dir, "stick") });
+      const digest = apart.putBlob(Buffer.from("%PDF"));
+      apart.putRecord(sampleRecord({ source_documents: [{ role: "combined_pdf", url: "https://example.invalid/x.pdf", sha256: digest, url_stable: true }] }));
+      throws(() => removeRecords(apart, { ids: ["berlin-19-12345"], blobs: true }), (err: unknown) => err instanceof UsageError && /another corpus may share/.test(err.message));
+      ok(apart.hasRecord("berlin-19-12345"));
+      removeRecords(apart, { ids: ["berlin-19-12345"], blobs: true, to: join(dir, "away") });
+      ok(!apart.hasBlob(digest) && existsSync(join(dir, "away", "blobs", digest.slice(0, 2), `${digest}.bin`)));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is reported by the doctor when asked for", () => {
+    const { store, own } = corpus();
+    try {
+      store.deleteRecord("berlin-19-3");
+      reindexAll(store);
+      const roomy: VolumeProbe = { space: () => ({ free: 100e9, total: 500e9 }), filesystem: () => ({ name: "apfs", kind: "local" }) };
+      strictEqual(diagnoseCorpus(store, { probe: roomy }).orphaned_blobs, undefined);
+      const diagnosis = diagnoseCorpus(store, { probe: roomy, orphanedBlobs: true });
+      deepStrictEqual(diagnosis.orphaned_blobs, { count: 1, bytes: "%PDF own".length });
+      ok(diagnosis.warnings.some((warning) => /1 archived document\(s\) no record refers to; `ka rm --orphaned-documents`/.test(warning)));
+      ok(store.hasBlob(own), "the doctor only looks");
+    } finally {
+      cleanup(store);
+    }
   });
 });

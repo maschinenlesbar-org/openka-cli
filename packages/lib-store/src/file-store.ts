@@ -397,6 +397,31 @@ export class FileStore implements Store {
     return bytes;
   }
 
+  deleteBlob(digest: string): void {
+    this.assertBlobStore();
+    this.remove(this.blobPath(digest));
+  }
+
+  /**
+   * Every blob held, by digest, sorted: the `<sha[0:2]>/<sha>.bin` files of the blob
+   * store. Anything else there — a platform file, a stray name — is not a blob.
+   */
+  blobDigests(): string[] {
+    this.assertBlobStore();
+    if (!existsSync(this.blobsRoot)) return [];
+    const digests: string[] = [];
+    for (const prefix of readdirSync(this.blobsRoot)) {
+      if (!/^[0-9a-f]{2}$/.test(prefix)) continue;
+      const dir = join(this.blobsRoot, prefix);
+      if (!statSync(dir).isDirectory()) continue;
+      for (const name of readdirSync(dir)) {
+        const digest = name.endsWith(".bin") ? name.slice(0, -".bin".length) : "";
+        if (isSha256(digest) && digest.startsWith(prefix)) digests.push(digest);
+      }
+    }
+    return digests.sort();
+  }
+
   // -------------------------------------------------------------- records
 
   hasRecord(id: string): boolean {

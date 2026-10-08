@@ -93,6 +93,48 @@ describe("ka sync --ref, --retry-failed and --only-new (issue #27)", () => {
   });
 });
 
+describe("ka rm (issue #28)", () => {
+  it("removes records under the lock, says which, and keeps a document other records share", async () => {
+    const harness = await seeded();
+    try {
+      const corpus = ["--corpus", harness.corpus];
+      strictEqual(await run([...corpus, "rm", "berlin-19-10006", "--documents", "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^would remove berlin-19-10006$/m);
+      match(harness.stdout(), /Nothing was changed \(--dry-run\)\./);
+      harness.out.length = 0;
+      strictEqual(await run([...corpus, "rm", "berlin-19-10006", "--documents"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^removed berlin-19-10006$/m);
+      match(harness.stdout(), /^Removed 1 record\(s\); 1 document\(s\) kept, since records that stay refer to them\.$/m);
+      strictEqual(await run([...corpus, "get", "berlin-19-10006"], harness.deps), EXIT_ERROR);
+      harness.out.length = 0;
+      strictEqual(await run([...corpus, "rm", "--orphaned-documents", "--json", "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+      deepStrictEqual((JSON.parse(harness.stdout()) as { blobs_removed: string[] }).blobs_removed, []);
+      harness.out.length = 0;
+      strictEqual(await run([...corpus, "doctor", "--orphaned-documents"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^documents +every archived document belongs to a record$/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("refuses to guess what to remove", async () => {
+    const harness = await seeded();
+    try {
+      const corpus = ["--corpus", harness.corpus];
+      strictEqual(await run([...corpus, "rm"], harness.deps), EXIT_USAGE);
+      strictEqual(await run([...corpus, "rm", "berlin-19-10006", "--parliament", "berlin"], harness.deps), EXIT_USAGE);
+      strictEqual(await run([...corpus, "rm", "--orphaned-documents", "berlin-19-10006"], harness.deps), EXIT_USAGE);
+      strictEqual(await run([...corpus, "rm", "berlin-19-99999", "berlin-19-10006"], harness.deps), EXIT_ERROR);
+      match(harness.stderr(), /No record berlin-19-99999 in the corpus; nothing was removed/);
+      harness.out.length = 0;
+      strictEqual(await run([...corpus, "rm", "--parliament", "bayern"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /No record matches the filters; nothing was removed\./);
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("a source blocked by robots.txt", () => {
   // A daily `ka sync --source sachsen-anhalt` could not tell "blocked" from "nothing
   // new": both printed "0 discovered", exited 0, and stamped the source as synced.

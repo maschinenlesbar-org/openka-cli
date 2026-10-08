@@ -96,6 +96,12 @@ export class MemoryStore implements Store {
   blobPath(digest: string): string {
     return `/memory/blobs/${digest}.bin`;
   }
+  deleteBlob(digest: string): void {
+    this.blobs.delete(digest);
+  }
+  blobDigests(): string[] {
+    return [...this.blobs.keys()].sort();
+  }
 
   hasRecord(id: string): boolean {
     return this.records.has(id);

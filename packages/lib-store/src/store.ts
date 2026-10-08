@@ -110,6 +110,10 @@ export interface BlobStore {
   getBlob(sha256: string): Buffer;
   /** Filesystem path of a stored blob — what `ka open` hands to the OS. */
   blobPath(sha256: string): string;
+  /** Remove a stored blob; nothing happens when there is none. `ka rm --blobs` only (issue #28). */
+  deleteBlob(sha256: string): void;
+  /** The digest of every blob held, sorted. */
+  blobDigests(): string[];
   /**
    * Throw `StoreError` when the blobs cannot be reached at all — a blob directory
    * on a drive that is not mounted. Optional: a store whose blobs are always there

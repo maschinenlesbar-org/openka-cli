@@ -12,6 +12,7 @@ import { registerDoctor } from "./commands/doctor.js";
 import { registerStatus } from "./commands/status.js";
 import { registerConfig } from "./commands/config.js";
 import { registerReextract } from "./commands/reextract.js";
+import { registerRm } from "./commands/rm.js";
 
 export { defaultDeps } from "./io.js";
 
@@ -32,6 +33,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   registerQuery(program, deps);
   registerMaintain(program, deps);
   registerReextract(program, deps);
+  registerRm(program, deps);
   registerOutput(program, deps);
   registerDoctor(program, deps);
   registerStatus(program, deps);

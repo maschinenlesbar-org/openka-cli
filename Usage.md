@@ -385,6 +385,39 @@ reindex` does. `--dry-run` reports the same and writes nothing; `--json` prints 
 report (`counts` per outcome, `results` per record). Exit 3 when a record could not be
 read (the rest are still done), 1 when an OCR record was left out.
 
+## `ka rm`
+
+```bash
+ka rm sachsen-anhalt-8-4011 sachsen-anhalt-8-4012 --dry-run   # what would go
+ka rm sachsen-anhalt-8-4011 sachsen-anhalt-8-4012             # the records, their catalog rows and postings
+ka rm --parliament sachsen-anhalt --year 2026 --documents     # …and the documents only they referred to
+ka rm sachsen-anhalt-8-4011 --move-to ~/openka-removed        # move the files out instead of deleting them
+ka rm --orphaned-documents --dry-run                          # documents no record refers to
+```
+
+Removes records the way `ka` stored them: under the corpus lock, with their catalog rows
+and index postings, so a search never lists a record that is gone. It prints each removed
+id on stdout. Records are named by id, or selected with the filters `ka reextract` takes.
+Ids and filters together are refused, and so is neither; there is no `--all`. An id
+that is not in the corpus refuses the whole removal, and nothing is removed. A record a
+person marked `human_verified` is removed with a warning that names it. From 50 records
+on, and for a record that cannot be read, the index is rebuilt once instead of record by
+record.
+
+The archived documents stay by default: one can belong to several records (Berlin files
+question and answer in one PDF), and a document is the one thing a corpus cannot always
+fetch again. `--documents` also removes those of the removed records that no remaining
+record refers to, and reports how many it kept. `--orphaned-documents` removes every
+document no record refers to, such as those left by records removed by hand, and no
+record. With `--blobs <dir>` the documents may be shared with another corpus whose
+records `ka` cannot see, so `ka rm` refuses to delete them there and only moves them.
+
+`--move-to <dir>` moves the files instead (`<dir>/records/`, `<dir>/blobs/`). The
+directory may not lie inside the corpus, and a different file already there is never
+overwritten. To undo, move the files back and run `ka reindex`. `--dry-run` reports
+and changes nothing; `--json` prints the report (`removed`, `human_verified`,
+`blobs_removed`, `blob_bytes`, `blobs_shared`, `moved_to`, `unreadable`).
+
 ## `ka review`
 
 ```bash
@@ -541,6 +574,7 @@ locked or missing, and this file is what such a setup would use anyway.
 ```bash
 ka doctor                     # filesystem, free space, lock, catalog against records, ._* files
 ka doctor --fix               # …and remove the macOS ._* and .DS_Store files
+ka doctor --orphaned-documents  # …and count the documents no record refers to (reads every record)
 ka doctor --json
 ka --corpus /Volumes/STICK/openka doctor --allow-fs exfat --min-free 5G
 ```
@@ -562,7 +596,9 @@ gone, is taken over by the next writer); whether the catalog and the record file
 (`ka reindex` repairs that); whether a `--blobs` drive is reachable; and how many macOS
 `._*` and `.DS_Store` files lie anywhere in the corpus. Problems go to stderr as
 `problem:` lines and exit 3; warnings (a network filesystem, platform files, a stale
-lock) do not change the exit code. A corpus that does not exist yet is checked for its
+lock, orphaned documents) do not change the exit code. `--orphaned-documents` also counts
+the archived documents no record refers to; it reads every record, so it is not done by
+default, and `ka rm --orphaned-documents` removes them. A corpus that does not exist yet is checked for its
 volume only, and nothing is created. `--fix` takes the corpus lock, so it exits 3 while
 a sync is writing, and removes only `._*` and `.DS_Store` files — names the corpus never
 writes.

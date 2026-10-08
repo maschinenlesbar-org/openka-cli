@@ -28,6 +28,7 @@ use them.
 - **`src/commands/doctor.ts`** — `ka doctor` — whether the corpus is safe to write to and complete to read from.
 - **`src/commands/config.ts`** — `ka config` — credentials kept apart from the corpus, read without echo.
 - **`src/commands/reextract.ts`** — `ka reextract` — bring stored records up to this build's extractor, offline.
+- **`src/commands/rm.ts`** — `ka rm` — remove records under the lock, with their catalog rows, postings and, on request, documents.
 - **`src/commands/status.ts`** — `ka status` — what a running sync is doing, from another terminal.
 - **`src/commands/sync-events.ts`** — `ka sync`'s event log in JSON Lines (`--log-format jsonl`, `--log-file`).
 - **`src/commands/sync-jobs.ts`** — The jobs one `ka sync` runs: `--source key@window` and `--plan`, the job logs, a plan's progress and its summary.
