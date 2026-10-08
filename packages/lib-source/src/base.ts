@@ -17,7 +17,7 @@ import type {
   SourceDocumentRole,
   Tier,
 } from "@maschinenlesbar.org/openka-lib-models";
-import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
+import { DEFAULT_MIN_HOST_INTERVAL_MS, type FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { SegmentationRules } from "@maschinenlesbar.org/openka-lib-extract";
 
@@ -149,6 +149,8 @@ export interface Source {
    * the tool can do is go slowly.
    */
   readonly minHostIntervalMs?: number;
+  /** Why the source sets `minHostIntervalMs`, for `ka sources show` and the sync's note. */
+  readonly minHostIntervalReason?: string;
   /** Rule sets to use for segmentation; the shared default when omitted. */
   readonly ruleSets?: readonly SegmentationRules[];
   discover(options: DiscoverOptions): Promise<DiscoverResult>;
@@ -364,6 +366,38 @@ export interface RobotsVerdict {
   overridden: boolean;
   /** Why, when the answer was not a plain yes — for the operator, once per host. */
   note?: string;
+}
+
+/** A request interval for people: "4 s", "0.5 s", "1.25 s". */
+function seconds(ms: number): string {
+  return `${Number((ms / 1000).toFixed(2))} s`;
+}
+
+/**
+ * How fast `source` may go, in words — what `ka sources show` prints (issue #24). A
+ * source's own floor (`minHostIntervalMs`) is the slowest of the engine's settings,
+ * and `--min-host-interval` only ever raises it (`FetchEngine.raiseMinHostInterval`),
+ * which nothing used to say: a sync was slow, and the option that looked like the
+ * remedy was silently overridden.
+ */
+export function describeRequestFloor(source: Pick<Source, "minHostIntervalMs" | "minHostIntervalReason">): string {
+  const own = source.minHostIntervalMs;
+  if (own === undefined || own <= DEFAULT_MIN_HOST_INTERVAL_MS) {
+    return `at most one request per ${seconds(DEFAULT_MIN_HOST_INTERVAL_MS)} per host (the default; --min-host-interval changes it)`;
+  }
+  const why = source.minHostIntervalReason === undefined ? "" : ` — ${source.minHostIntervalReason}`;
+  return `at most one request per ${seconds(own)} per host${why}; --min-host-interval can raise this, not lower it`;
+}
+
+/**
+ * What to tell an operator whose `--min-host-interval` is below `source`'s own floor:
+ * the floor wins (`raiseMinHostInterval`), and they should hear so rather than wonder
+ * why the option did nothing. Undefined when the option is not below it.
+ */
+export function floorKeptNote(source: Pick<Source, "key" | "minHostIntervalMs">, requestedMs: number): string | undefined {
+  const own = source.minHostIntervalMs;
+  if (own === undefined || requestedMs >= own) return undefined;
+  return `${source.key}: keeping the source's floor of ${own} ms between requests to a host; --min-host-interval ${requestedMs} can raise it, not lower it`;
 }
 
 /**

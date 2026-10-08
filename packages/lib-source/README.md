@@ -28,7 +28,7 @@ actually use; it is not validating and does not pretend to be.
 Everything is re-exported from the package root:
 
 ```
-DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements
+DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements, describeRequestFloor, floorKeptNote
 ```
 
 **Counting the upstream.** A `Source` may implement `count({ engine, period?, apiKey? })`:

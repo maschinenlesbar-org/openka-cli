@@ -35,7 +35,9 @@ override: keep the sync's output if that matters.
 
 **And when it does fetch, it goes slowly.** `minHostIntervalMs` is 4000 — eight times
 the default. A server that asked not to be crawled at all should not then be hit at
-the usual rate.
+the usual rate. `minHostIntervalReason` says why, in `ka sources show` and in a note
+before a sync's first request; a lower `--min-host-interval` does not lower the floor,
+and the sync says so.
 
 **The check is live.** robots.txt is read at run time, so if the Landtag lifts the
 rule this connector starts working with no release and no code change. There is a

@@ -13,7 +13,7 @@ are authoritative; this is the narrative version.
 | `--user-agent <ua>` | override the identifying User-Agent; not blank, no control characters, nothing above U+00FF |
 | `--max-retries <n>` | retries (0–10) for a transient 429/503 or a dropped connection; a response over `--max-response-bytes` is never retried |
 | `--max-response-bytes <n>` | hard cap on one response body (at least 1024) |
-| `--min-host-interval <ms>` | minimum delay between two requests to one host (0–60000) |
+| `--min-host-interval <ms>` | minimum delay between two requests to one host (0–60000; default 500). A source with a floor of its own — Brandenburg and Sachsen-Anhalt, 4000 ms, see `ka sources show <key>` — is never made faster by it: a lower value is kept out, and `ka sync` says so |
 | `--max-redirects <n>` | redirects to follow (0–10); `0` surfaces a 3xx as an error |
 | `--compact` | compact JSON output |
 | `--quiet` | suppress progress on stderr (`ka sync`'s progress line) |

@@ -13,7 +13,8 @@ import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@m
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import { PERIOD_RANGE } from "@maschinenlesbar.org/openka-lib-models";
 import type { CliDeps } from "../io.js";
-import { action, apiKeyLookup, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
+import { describeRequestFloor } from "@maschinenlesbar.org/openka-lib-source";
+import { action, apiKeyLookup, noteRequestFloors, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions } from "../shared.js";
 import { formatCount, pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
@@ -240,6 +241,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           (ctx.opts["source"] as string[] | undefined) ??
           SOURCE_REGISTRY.filter((entry) => entry.parliament !== undefined && entry.factory !== undefined).map((entry) => entry.key);
         const sourcesToCount = keys.map((key) => createSource(key));
+        noteRequestFloors(ctx, sourcesToCount);
         const pacer = new HostPacer();
         if (ctx.global.quiet !== true && ctx.opts["json"] !== true) {
           ctx.deps.io.err(`Asking ${sourcesToCount.length} upstream(s) for their count…`);
@@ -298,6 +300,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           io.out(`tier:       ${source.tier}`);
           io.out(`homepage:   ${source.homepage}`);
           if (source.apiKeyEnv !== undefined) io.out(`credential: --api-key, ${source.apiKeyEnv} or \`ka config set ${source.key}.api-key\``);
+          io.out(`requests:   ${describeRequestFloor(source)}`);
           io.out("");
           io.out(source.notes);
         }

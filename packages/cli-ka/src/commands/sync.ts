@@ -33,6 +33,7 @@ import {
   action,
   addVolumeOptions,
   apiKeyLookup,
+  noteRequestFloors,
   choiceOption,
   type ActionContext,
   parseBoundedInt,
@@ -125,6 +126,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           jobs = jobs.filter((job) => missing(job) === undefined);
         }
         const several = ctx.opts["all"] === true || queue !== undefined || jobs.length > 1;
+        noteRequestFloors(ctx, jobs.map((job) => createSource(job.spec.source)));
         const store = ctx.store();
         if (ctx.opts["dryRun"] === true) {
           const skip = queue === undefined || !(store instanceof FileStore) || ctx.opts["restart"] === true ? undefined : doneEarlier(store, queue.path);

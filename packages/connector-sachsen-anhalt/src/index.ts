@@ -70,6 +70,7 @@ export class SachsenAnhaltSource implements Source {
   readonly label = LABEL;
   readonly homepage = "https://padoka.landtag.sachsen-anhalt.de/";
   readonly minHostIntervalMs = POLITE_INTERVAL_MS;
+  readonly minHostIntervalReason = "its document server's robots.txt disallows every client, so a sync that fetches anyway goes slowly";
   readonly notes =
     "Discovery through the Parlamentsspiegel, which is unrestricted. The documents live on a " +
     "server whose robots.txt disallows every client, so this source yields nothing unless the " +

@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { applyWindow, blocksWithClass, childText, decodeEntities, decodeHtml, firstHref, parseXml, parseXmlFragment, regionWithClass, spanTexts, streamElements, textOf, visibleTextOf } from "../src/index.js";
 import { scriptedTransport, testEngine } from "@maschinenlesbar.org/openka-lib-testing";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
-import { ROBOTS_OVERRIDE_INTERVAL_MS, RobotsPolicy, robotsGate } from "../src/index.js";
+import { ROBOTS_OVERRIDE_INTERVAL_MS, RobotsPolicy, describeRequestFloor, floorKeptNote, robotsGate } from "../src/index.js";
 
 describe("XML reader", () => {
   it("parses elements, attributes and text", () => {
@@ -195,5 +195,29 @@ describe("robots policy", () => {
     const gate = await robotsGate(testEngine(transport), { origin: "https://land.invalid", path: "/cgi-bin/x.pl" });
     strictEqual(gate.allowed, false);
     ok(gate.note?.includes("https://land.invalid disallows /cgi-bin/x.pl"));
+  });
+});
+
+// Issue #24: a source's request floor, and that --min-host-interval cannot lower it.
+describe("a source's request floor", () => {
+  const slow = { key: "sachsen-anhalt", minHostIntervalMs: 4000, minHostIntervalReason: "its robots.txt disallows every client" };
+
+  it("says how fast a source goes, and why when it is slower than the default", () => {
+    strictEqual(
+      describeRequestFloor(slow),
+      "at most one request per 4 s per host — its robots.txt disallows every client; --min-host-interval can raise this, not lower it",
+    );
+    strictEqual(describeRequestFloor({}), "at most one request per 0.5 s per host (the default; --min-host-interval changes it)");
+    strictEqual(describeRequestFloor({ minHostIntervalMs: 1250 }), "at most one request per 1.25 s per host; --min-host-interval can raise this, not lower it");
+  });
+
+  it("says when a lower --min-host-interval is kept out, and only then", () => {
+    strictEqual(
+      floorKeptNote(slow, 1000),
+      "sachsen-anhalt: keeping the source's floor of 4000 ms between requests to a host; --min-host-interval 1000 can raise it, not lower it",
+    );
+    strictEqual(floorKeptNote(slow, 4000), undefined);
+    strictEqual(floorKeptNote(slow, 6000), undefined);
+    strictEqual(floorKeptNote({ key: "berlin" }, 0), undefined);
   });
 });

@@ -23,6 +23,7 @@
     "@maschinenlesbar.org/openka-lib-render": "0.0.1",
     "@maschinenlesbar.org/openka-lib-repro": "0.0.1",
     "@maschinenlesbar.org/openka-lib-search": "0.0.1",
+    "@maschinenlesbar.org/openka-lib-source": "0.0.1",
     "@maschinenlesbar.org/openka-lib-store": "0.0.1",
     "@maschinenlesbar.org/openka-lib-text": "0.0.1",
     "@maschinenlesbar.org/openka-lib-verify": "0.0.1",

@@ -18,6 +18,7 @@ import {
 import { statSync } from "node:fs";
 import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import {
+  DEFAULT_MIN_HOST_INTERVAL_MS,
   MAX_HOST_INTERVAL_MS,
   MAX_REDIRECTS,
   MAX_RETRIES,
@@ -27,6 +28,7 @@ import {
 } from "@maschinenlesbar.org/openka-lib-http";
 import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
+import { describeRequestFloor, floorKeptNote } from "@maschinenlesbar.org/openka-lib-source";
 import { CredentialStore } from "@maschinenlesbar.org/openka-lib-store";
 import type { CliDeps } from "./io.js";
 import {
@@ -259,6 +261,30 @@ export function apiKeyLookup(ctx: ActionContext): (source: { key: string; apiKey
   };
 }
 
+/**
+ * Say, once per source and before any request, how fast a source with a floor of its
+ * own will go: why it is slow (`describeRequestFloor`), or that a lower
+ * `--min-host-interval` was kept out (`floorKeptNote`). A sync of Sachsen-Anhalt ran
+ * at five Anfragen a minute, and nothing said why (issue #24). `--quiet` keeps the
+ * first quiet, never the second: an option that did not take effect is always said.
+ */
+export function noteRequestFloors(
+  ctx: ActionContext,
+  sources: readonly { key: string; minHostIntervalMs?: number; minHostIntervalReason?: string }[],
+): void {
+  const requested = ctx.global.minHostInterval;
+  const seen = new Set<string>();
+  for (const source of sources) {
+    if (seen.has(source.key) || source.minHostIntervalMs === undefined || source.minHostIntervalMs <= DEFAULT_MIN_HOST_INTERVAL_MS) continue;
+    seen.add(source.key);
+    const kept = requested === undefined ? undefined : floorKeptNote(source, requested);
+    if (kept !== undefined) ctx.deps.io.err(`Note: ${kept}.`);
+    else if (ctx.global.quiet !== true && (requested === undefined || requested < source.minHostIntervalMs)) {
+      ctx.deps.io.err(`Note: ${source.key}: ${describeRequestFloor(source)}.`);
+    }
+  }
+}
+
 /** Print a JSON value, pretty by default and compact with --compact. */
 export function printJson(ctx: ActionContext, value: unknown): void {
   const text = ctx.global.compact ? JSON.stringify(value) : JSON.stringify(value, null, 2);
@@ -426,7 +452,12 @@ export function addGlobalOptions(program: Command): Command {
     .option("--user-agent <ua>", "User-Agent sent to upstreams", problemParser(userAgentProblem))
     .option("--max-retries <n>", "retries for a transient 429/503 or a dropped connection (never an over-size response)", parseBoundedInt(0, MAX_RETRIES))
     .option("--max-response-bytes <n>", "hard cap on a single response body", parseBoundedInt(MIN_RESPONSE_BYTES))
-    .option("--min-host-interval <ms>", "minimum delay between requests to one host", parseBoundedInt(0, MAX_HOST_INTERVAL_MS))
+    .option(
+      "--min-host-interval <ms>",
+      `minimum delay between requests to one host (default: ${DEFAULT_MIN_HOST_INTERVAL_MS}); a source's own floor ` +
+        "(ka sources show <key>) is never lowered by it",
+      parseBoundedInt(0, MAX_HOST_INTERVAL_MS),
+    )
     .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, MAX_REDIRECTS))
     .option("--compact", "compact JSON output")
     .option("--quiet", "suppress progress output on stderr");

@@ -1293,6 +1293,52 @@ describe("ka", () => {
     });
   });
 
+  describe("a source's request floor (issue #24)", () => {
+    const blocked = (): ReturnType<typeof scriptedTransport> => scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]);
+
+    it("shows it in sources show and in the help", async () => {
+      const harness = cliHarness();
+      try {
+        strictEqual(await run(["sources", "show", "sachsen-anhalt"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^requests: {3}at most one request per 4 s per host — its document server's robots\.txt disallows every client.*; --min-host-interval can raise this, not lower it$/m);
+        harness.out.length = 0;
+        strictEqual(await run(["sources", "show", "berlin"], harness.deps), EXIT_OK);
+        match(harness.stdout(), /^requests: {3}at most one request per 0\.5 s per host \(the default; --min-host-interval changes it\)$/m);
+        harness.out.length = 0;
+        strictEqual(await run(["--help"], harness.deps), EXIT_OK);
+        match(harness.stdout().replace(/\s+/g, " "), /--min-host-interval <ms> minimum delay between requests to one host \(default: 500\); a source's own floor \(ka sources show <key>\) is never lowered by it/);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("says before a sync why a source goes slowly, and when a lower --min-host-interval was kept out", async () => {
+      for (const [flags, expected] of [
+        [[], /^Note: sachsen-anhalt: at most one request per 4 s per host — /m],
+        [["--min-host-interval", "1000"], /^Note: sachsen-anhalt: keeping the source's floor of 4000 ms between requests to a host; --min-host-interval 1000 can raise it, not lower it\.$/m],
+        [["--min-host-interval", "1000", "--quiet"], /^Note: sachsen-anhalt: keeping the source's floor/m],
+        [["--quiet"], undefined],
+        [["--min-host-interval", "5000"], undefined],
+      ] as const) {
+        const harness = cliHarness({ transport: blocked().transport });
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, ...flags, "sync", "--source", "sachsen-anhalt"], harness.deps), EXIT_OK, flags.join(" "));
+          if (expected === undefined) doesNotMatch(harness.stderr(), /^Note: sachsen-anhalt:/m, flags.join(" "));
+          else match(harness.stderr(), expected, flags.join(" "));
+        } finally {
+          harness.cleanup();
+        }
+      }
+      const plain = cliHarness({ transport: berlinTransport().transport });
+      try {
+        strictEqual(await run(["--corpus", plain.corpus, "sync", "--source", "berlin"], plain.deps), EXIT_OK);
+        doesNotMatch(plain.stderr(), /request per/, "a source at the default says nothing");
+      } finally {
+        plain.cleanup();
+      }
+    });
+  });
+
   it("calls a missing archived document a corpus problem in verify, as open does", async () => {
     const harness = await seeded();
     try {
