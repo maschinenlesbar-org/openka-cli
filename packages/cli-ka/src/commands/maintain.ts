@@ -50,14 +50,31 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         if (ctx.opts["json"] === true) {
           printJson(ctx, report);
         } else {
-          for (const result of report.results.filter((result) => !result.ok)) {
-            ctx.deps.io.out(`FAIL ${result.id}: ${result.reason ?? "mismatch"}`);
-            for (const path of result.differences.slice(0, 10)) ctx.deps.io.out(`       differs at ${path}`);
-            if (result.differences.length > 10) {
-              ctx.deps.io.out(`       … and ${result.differences.length - 10} more fields`);
+          const io = ctx.deps.io;
+          const versionOnly = report.results.filter((result) => result.verdict === "version-only");
+          for (const result of report.results.filter((result) => !result.ok && result.verdict !== "version-only")) {
+            if (result.verdict === "differs" && result.storedVersion !== result.currentVersion) {
+              // Stamped by another build, and the content moved too: what moved is the
+              // finding, the version only the context.
+              const shown = result.contentDifferences.slice(0, 10).join(", ");
+              const more = result.contentDifferences.length > 10 ? `, and ${result.contentDifferences.length - 10} more` : "";
+              io.out(`DIFF ${result.id}: content differs at ${shown}${more} (produced by ${result.storedVersion}, this build is ${result.currentVersion})`);
+              continue;
             }
+            io.out(`FAIL ${result.id}: ${result.reason ?? "mismatch"}`);
+            for (const path of result.differences.slice(0, 10)) io.out(`       differs at ${path}`);
+            if (result.differences.length > 10) io.out(`       … and ${result.differences.length - 10} more fields`);
           }
-          ctx.deps.io.out(`${report.reproduced}/${report.checked} record(s) reproduced byte-identically.`);
+          // After an upgrade that is every record: a few named, the rest counted.
+          for (const result of versionOnly.slice(0, 10)) io.out(`VERSION ${result.id}: ${result.reason ?? ""}`);
+          if (versionOnly.length > 10) io.out(`VERSION … and ${versionOnly.length - 10} more`);
+          io.out(
+            `${report.reproduced}/${report.checked} record(s) reproduced byte-identically.` +
+              (report.versionOnly > 0
+                ? ` ${report.versionOnly} more reproduce in content but carry another extractor version — \`ka reextract\` restamps them.`
+                : "") +
+              (report.differs > 0 ? ` ${report.differs} differ in content.` : ""),
+          );
           // Without this the tally vouched for an edited asker or title, which
           // re-extraction takes from the record itself (UNCHECKED_FIELDS).
           ctx.deps.io.err(

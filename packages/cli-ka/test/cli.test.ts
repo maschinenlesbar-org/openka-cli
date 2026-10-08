@@ -5,7 +5,8 @@ import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws 
 import { describe, it } from "node:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, run } from "../src/run.js";
+import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } from "../src/run.js";
+import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
 import { CredentialStore, FileStore, RunStatusRecorder, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
@@ -1159,6 +1160,82 @@ describe("ka", () => {
       const pipe = new PassThrough();
       pipe.end(`${KEY}\n`);
       strictEqual(await readSecretFrom(pipe, stderr, "unused: "), KEY);
+    });
+  });
+
+  describe("after an upgrade (issue #13)", () => {
+    const OLD = "pkg:0.2.0+extract:6f021d93d3c3";
+    /** The seeded record as an older build stamped it, its content changed by `change`. */
+    const restamp = (corpus: string, change: (record: KaRecord) => KaRecord = (record) => record): void => {
+      const store = new FileStore(corpus);
+      const stored = store.getRecord("berlin-19-10006") as KaRecord;
+      store.putRecord(change({ ...stored, extraction: { ...stored.extraction, extractor_version: OLD } }));
+    };
+
+    it("verifies the content under a new version, and exits 5 when only the stamp moved", async () => {
+      const harness = await seeded();
+      try {
+        restamp(harness.corpus);
+        strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_VERSION_ONLY);
+        match(harness.stdout(), new RegExp(`^VERSION berlin-19-10006: produced by ${OLD.replace(/[.+]/g, "\\$&")}, content identical under pkg:`, "m"));
+        match(harness.stdout(), /^2\/3 record\(s\) reproduced byte-identically\. 1 more reproduce in content but carry another extractor version — `ka reextract` restamps them\.$/m);
+        doesNotMatch(harness.stdout(), /^FAIL/m);
+
+        restamp(harness.corpus, (record) => ({ ...record, full_text: "etwas anderes" }));
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_ERROR);
+        match(harness.stdout(), /^DIFF berlin-19-10006: content differs at full_text \(produced by pkg:0\.2\.0\+extract:6f021d93d3c3, this build is pkg:/m);
+        match(harness.stdout(), / 1 differ in content\.$/m);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("re-extracts offline with ka reextract, and verify passes afterwards", async () => {
+      const harness = await seeded();
+      try {
+        restamp(harness.corpus);
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "--all", "--dry-run"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^Would re-extract 1 of 3 record\(s\) with pkg:\S+: 1 only restamped \(content identical\), 0 changed \(0 newly complete, 0 newly abstained\); 2 already current\.$/m);
+        match(harness.stdout(), /^Nothing was written \(--dry-run\)\.$/m);
+        strictEqual(new FileStore(harness.corpus).getRecord("berlin-19-10006")?.extraction.extractor_version, OLD);
+
+        // The record moved in content too, and the run says how; no request is made.
+        restamp(harness.corpus, (record) => ({ ...record, full_text: "alt" }));
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "--parliament", "berlin"], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stdout(), /^CHANGED berlin-19-10006: full_text$/m);
+        match(harness.stdout(), /^Wrote 1 record\(s\) and rebuilt the index and catalog\.$/m);
+        strictEqual(await run(["--corpus", harness.corpus, "verify", "--all"], harness.deps), EXIT_OK);
+
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "berlin-19-10006", "--json"], harness.deps), EXIT_OK);
+        const report = JSON.parse(harness.stdout()) as { counts: { current: number }; written: number };
+        deepStrictEqual([report.counts.current, report.written], [1, 0]);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("asks which records, refuses ids beside a selection, and says what it could not read", async () => {
+      const harness = await seeded();
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "reextract"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /Name the records: ids, --all, or filters such as --parliament berlin --year 2025\./);
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "berlin-19-10006", "--all"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /not both/);
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "BERLIN"], harness.deps), EXIT_USAGE);
+
+        restamp(harness.corpus);
+        const record = new FileStore(harness.corpus).getRecord("berlin-19-10006") as KaRecord;
+        rmSync(new FileStore(harness.corpus).blobPath(record.source_documents[0]?.sha256 as string));
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "reextract", "--all"], harness.deps), EXIT_STORE);
+        match(harness.stderr(), /^skipped berlin-19-10006: archived bytes for .* are missing$/m);
+        match(harness.stderr(), /^Error: 1 record\(s\) could not be read and were left as they are$/m);
+      } finally {
+        harness.cleanup();
+      }
     });
   });
 

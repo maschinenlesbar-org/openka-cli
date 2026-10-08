@@ -9,9 +9,20 @@ import { describe, it } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_VERIFY_SAMPLE, UNCHECKED_FIELDS, assertVerified, diffPaths, evenSample, verifyCorpus, verifyRecord } from "../src/index.js";
+import {
+  DEFAULT_VERIFY_SAMPLE,
+  UNCHECKED_FIELDS,
+  VersionOnlyError,
+  assertVerified,
+  diffPaths,
+  evenSample,
+  reextractRecords,
+  verifyCorpus,
+  verifyRecord,
+} from "../src/index.js";
 import { FileStore } from "@maschinenlesbar.org/openka-lib-store";
-import { OpenKaError, OpenKaValidationError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import { CorpusLockedError, OpenKaError, OpenKaValidationError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
+import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { MemoryStore, questionPaper, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { extract } from "@maschinenlesbar.org/openka-lib-extract";
 import { extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -206,9 +217,11 @@ describe("a record that cannot be read", () => {
       deepStrictEqual(result, {
         id: "berlin-19-12345",
         ok: false,
+        verdict: "unreadable",
         unreadable: true,
         reason: "Corrupt record berlin-19-12345",
         differences: [],
+        contentDifferences: [],
         storedVersion: "unknown",
         currentVersion: extractorVersion({}),
       });
@@ -263,11 +276,18 @@ describe("verifying a corpus", () => {
     }
   });
 
-  it("gives a verdict: a mismatch fails, a clean report passes", () => {
-    const row = { id: "x", differences: [], storedVersion: "v", currentVersion: "v" };
-    throws(() => assertVerified({ checked: 1, reproduced: 0, unreadable: 0, unchecked: [], results: [{ ...row, ok: false }] }), (error: unknown) =>
-      error instanceof OpenKaError && !(error instanceof StoreError) && error.message === "1 record(s) did not reproduce");
-    assertVerified({ checked: 1, reproduced: 1, unreadable: 0, unchecked: [], results: [{ ...row, ok: true }] });
+  it("gives a verdict: a mismatch fails, a version stamp alone is its own verdict, a clean report passes", () => {
+    const row = { id: "x", differences: [], contentDifferences: [], storedVersion: "v", currentVersion: "v" };
+    const tally = { unreadable: 0, unchecked: [] };
+    throws(
+      () => assertVerified({ ...tally, checked: 2, reproduced: 0, versionOnly: 1, differs: 1, results: [{ ...row, ok: false, verdict: "differs" }, { ...row, ok: false, verdict: "version-only" }] }),
+      (error: unknown) => error instanceof OpenKaError && !(error instanceof VersionOnlyError) && !(error instanceof StoreError) && error.message === "1 record(s) did not reproduce",
+    );
+    throws(
+      () => assertVerified({ ...tally, checked: 1, reproduced: 0, versionOnly: 1, differs: 0, results: [{ ...row, ok: false, verdict: "version-only" }] }),
+      (error: unknown) => error instanceof VersionOnlyError && /1 record\(s\) reproduce in content but were stamped by another extractor version; `ka reextract` restamps them/.test((error as Error).message),
+    );
+    assertVerified({ ...tally, checked: 1, reproduced: 1, versionOnly: 0, differs: 0, results: [{ ...row, ok: true, verdict: "reproduced" }] });
   });
 
   it("refuses an empty corpus and a sample size below one", async () => {
@@ -276,5 +296,100 @@ describe("verifying a corpus", () => {
       error instanceof OpenKaError && error.message === `No records in ${store.root}`);
     await rejects(verifyCorpus({ store, env: {}, limit: 0 }), (error: unknown) =>
       error instanceof OpenKaValidationError && error.message === "Invalid limit: Must be >= 1.");
+  });
+});
+
+// Issue #13: after an upgrade every record carried the old extractor's stamp and
+// `ka verify` failed on all of them, without saying whether the content had moved.
+describe("a record stamped by another build", () => {
+  const OLD = "pkg:0.2.0+extract:6f021d93d3c3";
+  const restamp = (store: MemoryStore, id: string, change: (record: KaRecord) => KaRecord = (record) => record): void => {
+    const stored = store.getRecord(id) as KaRecord;
+    store.putRecord(change({ ...stored, extraction: { ...stored.extraction, extractor_version: OLD } }));
+  };
+
+  it("verifies the content anyway: version-only when it reproduces, differs with the paths when it does not", async () => {
+    const { store, id } = await corpus();
+    restamp(store, id);
+    const same = await verifyRecord(id, { store, env: {} });
+    deepStrictEqual([same.ok, same.verdict, same.differences, same.contentDifferences], [false, "version-only", ["extraction.extractor_version"], []]);
+    strictEqual(same.reason, `produced by ${OLD}, content identical under ${extractorVersion({})}`);
+
+    restamp(store, id, (record) => ({ ...record, full_text: "etwas ganz anderes" }));
+    const moved = await verifyRecord(id, { store, env: {} });
+    deepStrictEqual([moved.verdict, moved.contentDifferences], ["differs", ["full_text"]]);
+    const report = await verifyCorpus({ store, env: {}, all: true });
+    deepStrictEqual([report.versionOnly, report.differs], [0, 1]);
+  });
+
+  it("is brought up to this build by reextractRecords, from the archived bytes, and then verifies", async () => {
+    const { store, id } = await corpus();
+    restamp(store, id);
+    const dry = await reextractRecords({ store, env: {}, ids: [id], dryRun: true });
+    deepStrictEqual([dry.counts["unchanged-content"], dry.written, dry.reindexed], [1, 0, false]);
+    strictEqual(store.getRecord(id)?.extraction.extractor_version, OLD, "a dry run writes nothing");
+
+    const report = await reextractRecords({ store, env: {}, ids: [id] });
+    deepStrictEqual([report.results[0]?.outcome, report.written, report.reindexed], ["unchanged-content", 1, true]);
+    strictEqual(store.getRecord(id)?.extraction.extractor_version, extractorVersion({}));
+    strictEqual(store.catalogEntry(id)?.id, id, "the catalog is rebuilt");
+    strictEqual((await verifyRecord(id, { store, env: {} })).verdict, "reproduced");
+
+    // Stamped by this build now: left alone, unless forced — and then nothing moves.
+    deepStrictEqual((await reextractRecords({ store, env: {}, ids: [id] })).counts.current, 1);
+    const forced = await reextractRecords({ store, env: {}, ids: [id], force: true });
+    deepStrictEqual([forced.results[0]?.outcome, forced.written], ["identical", 0]);
+  });
+
+  it("names what moved, what it resolved and what it newly abstains on", async () => {
+    const { store, id } = await corpus();
+    const fresh = store.getRecord(id) as KaRecord;
+    const holes = fresh.extraction.abstained_fields;
+    ok(holes.length > 0, "the fixture leaves askers and dates open");
+    // Stored by a build that could not read the answer: the new one can.
+    restamp(store, id, (record) => ({ ...record, full_text: "alt", extraction: { ...record.extraction, abstained_fields: [...holes, "qa[0].answer"] } }));
+    const report = await reextractRecords({ store, env: {}, ids: [id] });
+    const result = report.results[0];
+    strictEqual(result?.outcome, "changed");
+    ok(result?.differences.includes("full_text"), JSON.stringify(result?.differences));
+    deepStrictEqual([result?.resolved, result?.abstained], [["qa[0].answer"], []]);
+    deepStrictEqual(store.getRecord(id), fresh, "stored as this build extracts it");
+
+    // Stored by a build that filled what this one leaves open: newly abstained.
+    restamp(store, id, (record) => ({ ...record, extraction: { ...record.extraction, abstained_fields: [] } }));
+    deepStrictEqual((await reextractRecords({ store, env: {}, ids: [id] })).results[0]?.abstained, holes);
+  });
+
+  it("keeps a person's mark where the content did not move, and drops it where it did", async () => {
+    const { store, id } = await corpus();
+    restamp(store, id, (record) => ({ ...record, extraction: { ...record.extraction, review_status: "human_verified" } }));
+    const kept = await reextractRecords({ store, env: {}, ids: [id] });
+    deepStrictEqual([kept.results[0]?.outcome, kept.results[0]?.droppedMark, store.getRecord(id)?.extraction.review_status], ["unchanged-content", undefined, "human_verified"]);
+
+    restamp(store, id, (record) => ({ ...record, full_text: "alt", extraction: { ...record.extraction, review_status: "human_verified" } }));
+    const dropped = await reextractRecords({ store, env: {}, ids: [id] });
+    deepStrictEqual([dropped.results[0]?.outcome, dropped.results[0]?.droppedMark], ["changed", true]);
+    ok(store.getRecord(id)?.extraction.review_status !== "human_verified");
+  });
+
+  it("goes past a record it cannot read, and takes the corpus lock while it writes", async () => {
+    const { store, id } = await corpus();
+    restamp(store, id);
+    store.putRecord(sampleRecord({ id: "berlin-19-99999", reference: "19/99999" }));
+    const report = await reextractRecords({ store, env: {}, ids: ["berlin-19-99999", id] });
+    deepStrictEqual([report.results.map((result) => result.outcome), report.counts.unreadable], [["unreadable", "unchanged-content"], 1]);
+    match(report.results[0]?.reason ?? "", /archived bytes .* are missing/);
+
+    const root = mkdtempSync(join(tmpdir(), "openka-reextract-"));
+    try {
+      const files = new FileStore(root);
+      files.putRecord(sampleRecord());
+      const release = new FileStore(root).lock("sync --source berlin");
+      await rejects(reextractRecords({ store: files, env: {}, ids: ["berlin-19-12345"] }), CorpusLockedError);
+      await reextractRecords({ store: files, env: {}, ids: ["berlin-19-12345"], dryRun: true });
+      release();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

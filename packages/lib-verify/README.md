@@ -26,12 +26,27 @@ and the run carries on past it. `assertVerified(report)` is the verdict: a
 `StoreError` when anything was unreadable, else an `OpenKaError` when anything did
 not reproduce.
 
+**Version and content are separate findings.** `verifyRecord` always compares the
+content, and gives a `verdict`: `reproduced`, `version-only` (identical apart from
+`VERSION_PATH`, `extraction.extractor_version`), `differs` (with `contentDifferences`),
+`unreadable` or `unchecked`. `verifyCorpus` counts `versionOnly` and `differs`, and
+`assertVerified` throws `VersionOnlyError` when content reproduces everywhere but some
+stamps are another build's — `ka verify` exits 5 for it.
+
+**Re-extraction without the network.** `reextractStored(stored, options)` re-runs a
+stored record's extraction from its archived bytes with its own metadata.
+`reextractRecords({ store, ids, force?, dryRun? })` is `ka reextract`: it skips records
+this build stamped (unless `force`), classifies each (`current`, `identical`,
+`unchanged-content`, `changed` with `resolved`/`abstained`, `unreadable`, `unchecked`),
+writes what moved under the corpus lock — keeping a `human_verified` mark only where the
+content did not move — and rebuilds the index and catalog with `reindexAll`.
+
 ## Public surface
 
 Everything is re-exported from the package root:
 
 ```
-UNCHECKED_FIELDS, VerifyResult, VerifyOptions, verifyRecord, DEFAULT_VERIFY_SAMPLE, evenSample, VerifyCorpusOptions, CorpusVerifyReport, verifyCorpus, assertVerified, diffPaths
+UNCHECKED_FIELDS, VERSION_PATH, VerifyResult, VerifyOptions, Reextraction, reextractStored, verifyRecord, VersionOnlyError, reextractRecords, ReextractOptions, ReextractOutcome, ReextractReport, ReextractResult, DEFAULT_VERIFY_SAMPLE, evenSample, VerifyCorpusOptions, CorpusVerifyReport, verifyCorpus, assertVerified, diffPaths
 ```
 
 ## Depends on

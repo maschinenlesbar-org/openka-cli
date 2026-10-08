@@ -250,6 +250,26 @@ ka verify --all --json           # everything, machine-readable
 Re-runs the extraction from the archived bytes and asserts the canonical output is
 byte-identical. Exits non-zero if any record does not reproduce.
 
+The content is always compared, also for a record an older build stamped. After an
+upgrade every record carries the old `extraction.extractor_version`, and `verify` tells
+the two cases apart:
+
+```
+VERSION berlin-19-25613: produced by pkg:0.2.0+extract:6f021d93d3c3, content identical under pkg:0.6.0+extract:0992e8afa678
+DIFF berlin-19-25614: content differs at qa[3].answer (produced by pkg:0.2.0+…, this build is pkg:0.6.0+…)
+23/25 record(s) reproduced byte-identically. 1 more reproduce in content but carry another extractor version — `ka reextract` restamps them. 1 differ in content.
+```
+
+A record whose content differs under the *same* version is a `FAIL`, as before: that is
+the verdict the version stamp exists to rule out. The exit code is the worst of what was
+found: 3 when something could not be read, 1 when content differs or could not be
+checked, 5 when every content reproduces but some records carry another build's version
+— the corpus is fine, `ka reextract` restamps it. In `--json` each result has a
+`verdict` (`reproduced`, `version-only`, `differs`, `unreadable`, `unchecked`) and
+`contentDifferences` (the differences without the version stamp); the report counts
+`versionOnly` and `differs`. Checking a record with the logic of the build that stored it
+(`--against-stored-version`) is not possible: older extractors are not bundled.
+
 What that covers: everything the extractor derives from the archived documents — the
 full text, the Q/A pairs, the markers, the documents' digests and the extraction
 stamp. The metadata a source supplied when the record was discovered (title, askers
@@ -261,6 +281,33 @@ be read — a corrupt record file, or archived bytes that are missing or no long
 to their name — is reported as a `FAIL` and the rest are still checked; the exit code
 is then 3, the corpus-problem code, as `ka open` gives for the same missing file. The JSON report counts those rows as `unreadable`, and
 marks each with `"unreadable": true`.
+
+## `ka reextract`
+
+```bash
+ka reextract --all --dry-run                # what an upgrade changes, writing nothing
+ka reextract --all                          # every record an older build stamped
+ka reextract --parliament berlin --year 2025
+ka reextract berlin-19-25613
+ka reextract --all --force                  # also the records this build stamped already
+```
+
+Brings stored records up to this build's extractor from their archived bytes — the
+same re-extraction `verify` runs, with the record's own metadata — without discovery
+and without a request. Records already stamped by this build are left alone unless
+`--force`. Records are named by id, or selected with `--all` or the filters `ka export`
+takes (`--parliament`, `--party`, `--year`, `--period`, `--from`, `--to`); ids and a
+selection together are refused, and so is neither.
+
+Each record ends up as one of: only restamped (content identical), `CHANGED` with the
+field paths that move — plus what it newly completes (abstentions the new extractor
+fills) and what it newly abstains on — identical (with `--force`), already current, or
+skipped (unreadable, or an OCR record without `--ocr`). A `human_verified` mark stays
+where the content did not move and is dropped, with a note, where it did. What moved is
+written under the corpus lock, and the index and catalog are then rebuilt as `ka
+reindex` does. `--dry-run` reports the same and writes nothing; `--json` prints the
+report (`counts` per outcome, `results` per record). Exit 3 when a record could not be
+read (the rest are still done), 1 when an OCR record was left out.
 
 ## `ka review`
 
@@ -478,4 +525,5 @@ Both `goldens list` and `goldens verify` exit 1 when the set they read is empty.
 | 2 | a usage error (a rejected option value, a malformed record id, an unknown command) |
 | 3 | a corpus problem: missing or unreadable (a `--corpus` that does not exist included), held by another run, on a refused filesystem or short of free space (`ka sync`), or anything `ka doctor` calls a problem |
 | 4 | the upstream returned 404 |
+| 5 | `ka verify`: every content reproduces, but some records carry another build's extractor version (`ka reextract` restamps them) |
 | 130 / 143 | `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog |

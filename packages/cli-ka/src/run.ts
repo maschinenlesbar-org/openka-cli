@@ -7,6 +7,7 @@ import { AbstainError, OpenKaApiError, OpenKaError, StoreError, UsageError } fro
 import { buildProgram, defaultDeps } from "./program.js";
 import { sanitizeForTerminal } from "./text.js";
 import { InterruptedRunError, type CliDeps } from "./io.js";
+import { VersionOnlyError } from "@maschinenlesbar.org/openka-lib-verify";
 
 /**
  * Exit codes, documented so they are scriptable:
@@ -16,6 +17,8 @@ import { InterruptedRunError, type CliDeps } from "./io.js";
  *   3  a corpus problem: missing or unreadable, held by another run, on a refused
  *      filesystem or short of space (`ka sync`), or a problem `ka doctor` found
  *   4  the requested record or resource does not exist upstream (HTTP 404)
+ *   5  `ka verify`: every content reproduces, but some records carry another
+ *      build's extractor version (`ka reextract` restamps them)
  *   130 / 143  `ka sync` stopped early on Ctrl-C / SIGTERM, after saving its catalog
  *
  * Every message printed here goes through `sanitizeForTerminal`: an error text
@@ -27,6 +30,7 @@ export const EXIT_ERROR = 1;
 export const EXIT_USAGE = 2;
 export const EXIT_STORE = 3;
 export const EXIT_NOT_FOUND = 4;
+export const EXIT_VERSION_ONLY = 5;
 
 /**
  * Apply exitOverride and output redirection to every command in the tree.
@@ -70,6 +74,10 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     if (err instanceof StoreError) {
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
       return EXIT_STORE;
+    }
+    if (err instanceof VersionOnlyError) {
+      deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);
+      return EXIT_VERSION_ONLY;
     }
     if (err instanceof InterruptedRunError) {
       deps.io.err(`Error: ${sanitizeForTerminal(err.message)}`);

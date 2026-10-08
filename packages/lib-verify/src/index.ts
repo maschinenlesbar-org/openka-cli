@@ -44,11 +44,24 @@ export const UNCHECKED_FIELDS = [
 
 export interface VerifyResult {
   id: string;
+  /** True only when the re-extraction is byte-identical to the stored record. */
   ok: boolean;
+  /**
+   * What the check found, so an upgrade does not read as a broken corpus:
+   * - `reproduced` — byte-identical;
+   * - `version-only` — identical apart from `extraction.extractor_version`: the content
+   *   reproduces, the record was stamped by another build (`ka reextract` restamps it);
+   * - `differs` — the content differs (`contentDifferences`), whatever the version;
+   * - `unreadable` — the record or its archived bytes could not be read;
+   * - `unchecked` — nothing to compare: no such record, or an OCR record without its model.
+   */
+  verdict: "reproduced" | "version-only" | "differs" | "unreadable" | "unchecked";
   /** Short reason when `ok` is false. */
   reason?: string;
   /** Field paths whose re-extracted value differs from the stored one. */
   differences: string[];
+  /** `differences` without the version stamp: what the content disagrees on. */
+  contentDifferences: string[];
   /** The extractor version the record was produced with. */
   storedVersion: string;
   /** The extractor version this run used. */
@@ -61,49 +74,34 @@ export interface VerifyResult {
   unreadable?: true;
 }
 
+/** The path of the version stamp: the one field an upgrade moves on every record. */
+export const VERSION_PATH = "extraction.extractor_version";
+
 export interface VerifyOptions {
   store: Store;
   perceiver?: Perceiver;
   env?: NodeJS.ProcessEnv;
 }
 
-/**
- * Re-extract one record and compare. Missing archived bytes are reported as a
- * failure to verify rather than a mismatch: a claim that cannot be checked is not
- * the same as a claim that is wrong, and conflating the two would be dishonest in
- * the direction that flatters us.
- */
-export async function verifyRecord(id: string, options: VerifyOptions): Promise<VerifyResult> {
-  // Not a failed row per record: with the blob directory unplugged, nothing can be
-  // verified, and that is said once (StoreError) rather than as N missing documents.
-  options.store.assertBlobStore?.();
-  const currentVersion = extractorVersion(options.env);
-  let stored: KaRecord | undefined;
-  try {
-    stored = options.store.getRecord(id);
-  } catch (err) {
-    // A record file that will not parse is one failed row, like every other
-    // record that cannot be checked — not a throw that ends a corpus-wide run at
-    // the first damaged file, leaving the rest unchecked.
-    if (!(err instanceof StoreError)) throw err;
-    return { id, ok: false, unreadable: true, reason: err.message, differences: [], storedVersion: "unknown", currentVersion };
-  }
-  if (stored === undefined) {
-    return { id, ok: false, reason: "no such record", differences: [], storedVersion: "", currentVersion };
-  }
-  const base: VerifyResult = {
-    id,
-    ok: false,
-    differences: [],
-    storedVersion: stored.extraction.extractor_version,
-    currentVersion,
-  };
+/** What re-running a stored record's extraction gave: the fresh record, or why there is none. */
+export type Reextraction =
+  | { record: KaRecord }
+  | { unreadable: true; reason: string }
+  | { unchecked: true; reason: string };
 
+/**
+ * Re-run a stored record's extraction from its archived bytes, with the metadata the
+ * record carries (`UNCHECKED_FIELDS`), the way `sync()` ran it. No request is made.
+ * Missing or altered bytes are `unreadable`; an OCR record without a perceiver is
+ * `unchecked`. A `human_verified` mark is carried across: it records that a person
+ * checked the holes, which re-extraction cannot reproduce.
+ */
+export async function reextractStored(stored: KaRecord, options: VerifyOptions, how: { keepMark?: boolean } = {}): Promise<Reextraction> {
   const documents: FetchedDocument[] = [];
   for (const document of stored.source_documents) {
     if (document.sha256 === undefined) continue;
     if (!options.store.hasBlob(document.sha256)) {
-      return { ...base, unreadable: true, reason: `archived bytes for ${document.url} (${document.sha256}) are missing` };
+      return { unreadable: true, reason: `archived bytes for ${document.url} (${document.sha256}) are missing` };
     }
     let bytes: Buffer;
     try {
@@ -113,7 +111,7 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
       // be re-extracted into anything meaningful; "the extractor is
       // non-deterministic" would name the wrong culprit.
       const reason = err instanceof Error ? err.message : String(err);
-      return { ...base, unreadable: true, reason: `archived bytes for ${document.url} are unreadable: ${reason}` };
+      return { unreadable: true, reason: `archived bytes for ${document.url} are unreadable: ${reason}` };
     }
     const fetched: FetchedDocument = {
       role: document.role,
@@ -128,14 +126,14 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
   const tier = requestedTier(stored);
   if (tier === "ocr" && options.perceiver === undefined) {
     return {
-      ...base,
+      unchecked: true,
       reason:
-        "this record was produced with an OCR model; verifying it needs the same pinned model " +
+        "this record was produced with an OCR model; re-extracting it needs the same pinned model " +
         `(${stored.extraction.model_artifacts.map((artifact) => artifact.version).join(", ") || "unnamed"})`,
     };
   }
 
-  const request = {
+  const { record } = await extract({
     parliament: stored.parliament,
     documentType: stored.document_type,
     tier,
@@ -150,30 +148,76 @@ export async function verifyRecord(id: string, options: VerifyOptions): Promise<
     documents,
     ...(options.perceiver !== undefined ? { perceiver: options.perceiver } : {}),
     ...(options.env !== undefined ? { env: options.env } : {}),
-  };
-
-  const { record } = await extract(request);
+  });
 
   // `human_verified` is the one field a human sets and re-extraction cannot
   // reproduce: it records that a person checked the holes, not that they were
   // filled. Carrying it across keeps `ka review --mark-verified` from turning every
   // reviewed record into a verification failure, and it is the only exception —
   // everything else must match byte for byte.
-  if (stored.extraction.review_status === "human_verified" && record.extraction.review_status === "needs_review") {
+  if (how.keepMark !== false && stored.extraction.review_status === "human_verified" && record.extraction.review_status === "needs_review") {
     record.extraction.review_status = "human_verified";
   }
+  return { record };
+}
 
-  const storedBytes = canonicalJsonLine(stored);
-  const freshBytes = canonicalJsonLine(record);
-  if (storedBytes === freshBytes) return { ...base, ok: true };
+/**
+ * Re-extract one record and compare. Missing archived bytes are reported as a
+ * failure to verify rather than a mismatch: a claim that cannot be checked is not
+ * the same as a claim that is wrong, and conflating the two would be dishonest in
+ * the direction that flatters us.
+ *
+ * The content is always compared, also when the record was stamped by another build:
+ * a record that differs only in `extraction.extractor_version` is `version-only`,
+ * one whose content differs is `differs` with the paths, whatever the version.
+ */
+export async function verifyRecord(id: string, options: VerifyOptions): Promise<VerifyResult> {
+  // Not a failed row per record: with the blob directory unplugged, nothing can be
+  // verified, and that is said once (StoreError) rather than as N missing documents.
+  options.store.assertBlobStore?.();
+  const currentVersion = extractorVersion(options.env);
+  const none = { differences: [], contentDifferences: [] };
+  let stored: KaRecord | undefined;
+  try {
+    stored = options.store.getRecord(id);
+  } catch (err) {
+    // A record file that will not parse is one failed row, like every other
+    // record that cannot be checked — not a throw that ends a corpus-wide run at
+    // the first damaged file, leaving the rest unchecked.
+    if (!(err instanceof StoreError)) throw err;
+    return { id, ok: false, verdict: "unreadable", unreadable: true, reason: err.message, ...none, storedVersion: "unknown", currentVersion };
+  }
+  if (stored === undefined) {
+    return { id, ok: false, verdict: "unchecked", reason: "no such record", ...none, storedVersion: "", currentVersion };
+  }
+  const base = { id, ok: false, ...none, storedVersion: stored.extraction.extractor_version, currentVersion };
 
+  const fresh = await reextractStored(stored, options);
+  if ("unreadable" in fresh) return { ...base, verdict: "unreadable", unreadable: true, reason: fresh.reason };
+  if ("unchecked" in fresh) return { ...base, verdict: "unchecked", reason: fresh.reason };
+  const record = fresh.record;
+
+  if (canonicalJsonLine(stored) === canonicalJsonLine(record)) return { ...base, ok: true, verdict: "reproduced" };
+
+  const differences = diffPaths(stored as unknown as Record<string, unknown>, record as unknown as Record<string, unknown>);
+  const contentDifferences = differences.filter((path) => path !== VERSION_PATH);
+  const sameVersion = stored.extraction.extractor_version === currentVersion;
+  if (contentDifferences.length === 0) {
+    return {
+      ...base,
+      verdict: "version-only",
+      reason: `produced by ${stored.extraction.extractor_version}, content identical under ${currentVersion}`,
+      differences,
+    };
+  }
   return {
     ...base,
-    reason:
-      stored.extraction.extractor_version === currentVersion
-        ? "re-extraction produced different bytes with the same extractor version"
-        : `record was produced by ${stored.extraction.extractor_version}, this build is ${currentVersion}`,
-    differences: diffPaths(stored as unknown as Record<string, unknown>, record as unknown as Record<string, unknown>),
+    verdict: "differs",
+    reason: sameVersion
+      ? "re-extraction produced different bytes with the same extractor version"
+      : `record was produced by ${stored.extraction.extractor_version}, this build is ${currentVersion}`,
+    differences,
+    contentDifferences,
   };
 }
 
@@ -210,6 +254,10 @@ export interface VerifyCorpusOptions extends VerifyOptions {
 export interface CorpusVerifyReport {
   checked: number;
   reproduced: number;
+  /** Rows identical apart from the version stamp: stamped by another build, content reproduces. */
+  versionOnly: number;
+  /** Rows whose content differs. */
+  differs: number;
   /** Rows whose stored record could not be read at all. */
   unreadable: number;
   /** What no row was checked against archived bytes: `UNCHECKED_FIELDS`. */
@@ -246,6 +294,8 @@ export async function verifyCorpus(options: VerifyCorpusOptions): Promise<Corpus
   return {
     checked: results.length,
     reproduced: results.filter((result) => result.ok).length,
+    versionOnly: results.filter((result) => result.verdict === "version-only").length,
+    differs: results.filter((result) => result.verdict === "differs").length,
     unreadable: results.filter((result) => result.unreadable === true).length,
     unchecked: [...UNCHECKED_FIELDS],
     results,
@@ -253,17 +303,36 @@ export async function verifyCorpus(options: VerifyCorpusOptions): Promise<Corpus
 }
 
 /**
- * The verdict on a corpus run: a `StoreError` when any record or its archived
- * bytes could not be read (the corpus is damaged; `ka verify` exits 3, as `ka
- * open` does for the same missing blob), else an `OpenKaError` when any did not
- * reproduce.
+ * Every record's content reproduces, but some were stamped by another extractor
+ * version than this build's: not a broken corpus, an un-restamped one (`ka reextract`).
+ * `ka verify` exits 5 for it, apart from 1 for content that differs.
+ */
+export class VersionOnlyError extends OpenKaError {
+  constructor(message: string) {
+    super(message);
+    this.name = "VersionOnlyError";
+  }
+}
+
+/**
+ * The verdict on a corpus run, worst first: a `StoreError` when any record or its
+ * archived bytes could not be read (the corpus is damaged; `ka verify` exits 3, as
+ * `ka open` does for the same missing blob); an `OpenKaError` when any content
+ * differs or could not be checked; a `VersionOnlyError` when every content
+ * reproduces but some carry another build's version stamp.
  */
 export function assertVerified(report: CorpusVerifyReport): void {
   const failed = report.checked - report.reproduced;
   if (report.unreadable > 0) {
     throw new StoreError(`${failed} record(s) did not reproduce, ${report.unreadable} of them unreadable`);
   }
-  if (failed > 0) throw new OpenKaError(`${failed} record(s) did not reproduce`);
+  if (failed > report.versionOnly) throw new OpenKaError(`${failed - report.versionOnly} record(s) did not reproduce`);
+  if (report.versionOnly > 0) {
+    throw new VersionOnlyError(
+      `${report.versionOnly} record(s) reproduce in content but were stamped by another extractor version; ` +
+        "`ka reextract` restamps them",
+    );
+  }
 }
 
 /**
@@ -301,3 +370,5 @@ export function diffPaths(a: unknown, b: unknown, path = ""): string[] {
   }
   return out;
 }
+
+export { reextractRecords, type ReextractOptions, type ReextractOutcome, type ReextractReport, type ReextractResult } from "./reextract.js";

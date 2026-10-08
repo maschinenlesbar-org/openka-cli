@@ -464,6 +464,11 @@ than aspirational:
    `verify` names those fields (stderr note, `unchecked` in the JSON) rather than
    letting the tally vouch for them. Archiving the feed or aggregator row beside the
    documents would close the gap; it changes the corpus layout and is not done.
+   The content is compared whatever the stamp says: a record that differs only in
+   `extraction.extractor_version` is `version-only` (exit 5), one whose content moved is
+   `differs` (exit 1). `reextractStored` is the re-extraction both `verify` and `ka
+   reextract` (`reextractRecords`) run; the latter writes what moved under the lock and
+   rebuilds the index, so an upgrade needs no re-sync.
 4. **`extractor_version` names the code that produced the record.** Without it the
    first three are worth little: "same version, different bytes" is the one verdict
    `ka verify` must never have to give, and for a while it did, because the stamp was

@@ -125,7 +125,10 @@ There is no confidence score, because there is no model guessing. There is
 `abstained_fields`, which names the holes. `ka verify` re-runs the extraction from
 the archived bytes and asserts the output is byte-identical — for what is read from
 the documents; the discovery metadata (title, askers, dates, ministry, document URLs)
-is taken from the record and not checked, and `verify` says so. `ka review` lists the
+is taken from the record and not checked, and `verify` says so. After an upgrade,
+`verify` tells records whose content still reproduces under the new extractor apart
+from those whose content moved, and `ka reextract` brings the corpus up to the new
+extractor from the archived bytes, offline. `ka review` lists the
 holes for a human; the archived PDF is the appeal court for any field you doubt.
 
 ## Sources

@@ -11,6 +11,7 @@ import { registerOutput } from "./commands/output.js";
 import { registerDoctor } from "./commands/doctor.js";
 import { registerStatus } from "./commands/status.js";
 import { registerConfig } from "./commands/config.js";
+import { registerReextract } from "./commands/reextract.js";
 
 export { defaultDeps } from "./io.js";
 
@@ -30,6 +31,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   registerSync(program, deps);
   registerQuery(program, deps);
   registerMaintain(program, deps);
+  registerReextract(program, deps);
   registerOutput(program, deps);
   registerDoctor(program, deps);
   registerStatus(program, deps);
@@ -44,6 +46,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
       "  ka search \"Brücken Zustand\" --parliament berlin --year 2024",
       "  ka get berlin-19-10006 --format md",
       "  ka verify berlin-19-10006",
+      "  ka reextract --all --dry-run",
       "  ka review",
       "  ka status --watch",
       "  ka doctor",
