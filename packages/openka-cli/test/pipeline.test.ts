@@ -890,6 +890,28 @@ describe("sync pipeline", () => {
     });
   });
 
+  it("does not overwrite a question an earlier build filed under the Drucksache's id (issue #25)", async () => {
+    const store = new MemoryStore();
+    store.putRecord(sampleRecord({ id: "sachsen-anhalt-8-1487", parliament: "sachsen-anhalt", reference: "08/1487", legislative_period: 8, document_type: "kleine_anfrage", dates: { submitted: "2023-05-19" } }));
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const source: Source = {
+      key: "sachsen-anhalt",
+      parliament: "sachsen-anhalt",
+      tier: "text_layer",
+      label: "stub",
+      homepage: "https://example.invalid",
+      notes: "test double",
+      discover: async () => ({
+        warnings: [],
+        refs: [{ key: "1487", reference: "08/1487", legislative_period: 8, title: "Drucksache 8/1487", documentType: "kleine_anfrage", askers: [], answered_by: {}, dates: { answered: "2022-06-01" }, documents: [{ role: "combined_pdf", url: PDF_URL, urlStable: true }] }],
+      }),
+    };
+    const report = await sync({ source, store, engine: testEngine(transport) });
+    strictEqual(report.failed, 1);
+    match(report.errors[0] ?? "", /holds KA 8\/1487, filed by an earlier build under "08\/1487"; `ka reextract --all` moves it/);
+    strictEqual(store.getRecord("sachsen-anhalt-8-1487")?.dates.submitted, "2023-05-19");
+  });
+
   describe("fetching chosen Anfragen again (issue #27)", () => {
     /** Four Anfragen, each with a document of its own, and the URLs the run asked for. */
     const fourSource = (refs = ["8/1", "8/2", "8/3", "8/4"], seen: DiscoverOptions[] = [], state?: DiscoverResult["state"]): Source => ({

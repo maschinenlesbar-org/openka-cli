@@ -7,7 +7,7 @@
 // re-extracted from its own bytes, with its own metadata, without a request.
 
 import { withCorpusLock, reindexAll } from "@maschinenlesbar.org/openka-lib-store";
-import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { currentReference, makeRecordId, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { canonicalJsonLine, extractorVersion } from "@maschinenlesbar.org/openka-lib-repro";
 import { VERSION_PATH, diffPaths, reextractStored, type VerifyOptions } from "./index.js";
@@ -20,9 +20,11 @@ import { VERSION_PATH, diffPaths, reextractStored, type VerifyOptions } from "./
  * - `changed` — the content moves too (`differences`), with what it resolved and what
  *   it newly abstains on;
  * - `unreadable` — the record or its archived bytes could not be read;
- * - `unchecked` — not re-extracted: an OCR record without its model.
+ * - `unchecked` — not re-extracted: an OCR record without its model;
+ * - `duplicate` — a copy an earlier build stored under another paper's id of a record
+ *   stored under its own already (`movedTo`); it is removed.
  */
-export type ReextractOutcome = "current" | "identical" | "unchanged-content" | "changed" | "unreadable" | "unchecked";
+export type ReextractOutcome = "current" | "identical" | "unchanged-content" | "changed" | "unreadable" | "unchecked" | "duplicate";
 
 export interface ReextractResult {
   id: string;
@@ -36,6 +38,13 @@ export interface ReextractResult {
   abstained: string[];
   /** A `human_verified` mark that went, since what the person checked changed. */
   droppedMark?: true;
+  /**
+   * The id the record has under this build's rules, when it differs from `id`
+   * (`currentReference`, issue #25): the record moves there, or — when a record of that
+   * id is stored already — the stale copy under `id` is removed (`duplicate`).
+   */
+  movedTo?: string;
+  duplicate?: true;
   reason?: string;
 }
 
@@ -57,6 +66,8 @@ export interface ReextractReport {
   checked: number;
   /** Records written (none on a dry run). */
   written: number;
+  /** Records that moved to the id this build gives them, or went as a stale copy of one stored there (`movedTo`). */
+  moved: number;
   /** Whether the index and catalog were rebuilt afterwards. */
   reindexed: boolean;
   counts: Record<ReextractOutcome, number>;
@@ -78,14 +89,20 @@ export async function reextractRecords(options: ReextractOptions): Promise<Reext
   store.assertBlobStore?.();
   const run = async (): Promise<ReextractReport> => {
     const currentVersion = extractorVersion(options.env);
-    const counts: Record<ReextractOutcome, number> = { current: 0, identical: 0, "unchanged-content": 0, changed: 0, unreadable: 0, unchecked: 0 };
+    const counts: Record<ReextractOutcome, number> = { current: 0, identical: 0, "unchanged-content": 0, changed: 0, unreadable: 0, unchecked: 0, duplicate: 0 };
     const results: ReextractResult[] = [];
     let written = 0;
+    let moved = 0;
     for (const [index, id] of options.ids.entries()) {
       const result = await reextractOne(id, currentVersion, options);
-      if (result.write !== undefined && options.dryRun !== true) {
-        store.putRecord(result.write);
-        written++;
+      if (result.result.movedTo !== undefined) moved++;
+      if (options.dryRun !== true) {
+        if (result.write !== undefined && result.result.duplicate !== true) {
+          store.putRecord(result.write);
+          written++;
+        }
+        // The record now lives under its new id (or there already); the old file goes.
+        if (result.result.movedTo !== undefined) store.deleteRecord(id);
       }
       counts[result.result.outcome]++;
       results.push(result.result);
@@ -93,9 +110,9 @@ export async function reextractRecords(options: ReextractOptions): Promise<Reext
     }
     // The catalog rows and postings are the old records'; a full rebuild is what
     // `ka reindex` does, and it is the one path known to leave them consistent.
-    const reindexed = written > 0;
+    const reindexed = options.dryRun !== true && (written > 0 || moved > 0);
     if (reindexed) reindexAll(store);
-    return { currentVersion, dryRun: options.dryRun === true, checked: results.length, written, reindexed, counts, results };
+    return { currentVersion, dryRun: options.dryRun === true, checked: results.length, written, moved, reindexed, counts, results };
   };
   return options.dryRun === true ? run() : withCorpusLock(store, "reextract", run);
 }
@@ -115,9 +132,16 @@ async function reextractOne(
   }
   if (stored === undefined) return { result: { id, outcome: "unreadable", storedVersion: "", reason: "no such record", ...empty } };
   const storedVersion = stored.extraction.extractor_version;
-  if (options.force !== true && storedVersion === currentVersion) return { result: { id, outcome: "current", storedVersion, ...empty } };
+  // A record an earlier build filed under a reference this one reads differently moves,
+  // whatever its stamp: under its old id it holds the place of another paper.
+  const reference = currentReference({ parliament: stored.parliament, reference: stored.reference, ...stored.dates });
+  const movedTo = reference === undefined ? undefined : makeRecordId(stored.parliament, stored.legislative_period, reference);
+  if (movedTo !== undefined && options.store.hasRecord(movedTo)) {
+    return { result: { id, outcome: "duplicate", storedVersion, movedTo, duplicate: true, ...empty } };
+  }
+  if (movedTo === undefined && options.force !== true && storedVersion === currentVersion) return { result: { id, outcome: "current", storedVersion, ...empty } };
 
-  const fresh = await reextractStored(stored, options, { keepMark: false });
+  const fresh = await reextractStored(reference === undefined ? stored : { ...stored, reference, id: movedTo as string }, options, { keepMark: false });
   if ("unreadable" in fresh) return { result: { id, outcome: "unreadable", storedVersion, reason: fresh.reason, ...empty } };
   if ("unchecked" in fresh) return { result: { id, outcome: "unchecked", storedVersion, reason: fresh.reason, ...empty } };
   const record = fresh.record;
@@ -127,7 +151,9 @@ async function reextractOne(
   // A person's mark stays where nothing they checked moved, and goes where it did.
   let droppedMark = false;
   if (stored.extraction.review_status === "human_verified") {
-    if (content().every((path) => path === "extraction.review_status")) record.extraction.review_status = "human_verified";
+    // A move changes the record's name, not what the person checked.
+    const moves = new Set(["extraction.review_status", ...(movedTo === undefined ? [] : ["id", "reference"])]);
+    if (content().every((path) => moves.has(path))) record.extraction.review_status = "human_verified";
     else droppedMark = true;
   }
   const differences = content();
@@ -142,6 +168,7 @@ async function reextractOne(
     resolved: [...before].filter((field) => !after.has(field)),
     abstained: [...after].filter((field) => !before.has(field)),
     ...(droppedMark ? { droppedMark: true as const } : {}),
+    ...(movedTo === undefined ? {} : { movedTo }),
   };
   return { result, write: record };
 }

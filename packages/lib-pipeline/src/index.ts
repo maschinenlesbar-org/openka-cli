@@ -8,7 +8,7 @@
 
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
-import { makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { currentReference, makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, unindexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -525,6 +525,17 @@ async function syncRef(
     throw new OpenKaError(
       `reference "${ref.reference}" maps to record id ${id}, which already holds "${existing.reference}"; ` +
         "the stored record was not overwritten",
+    );
+  }
+  // A record an earlier build filed here under a reference this build reads otherwise
+  // (`currentReference`): Sachsen-Anhalt's KA 8/1487 stored as "08/1487", where
+  // Drucksache 8/1487 belongs. Overwriting it lost the question; moving it is `ka
+  // reextract`'s, which also tells a stale copy from the only one (issue #25).
+  const filedAs = existing === undefined ? undefined : currentReference({ parliament: existing.parliament, reference: existing.reference, ...existing.dates });
+  if (filedAs !== undefined) {
+    throw new OpenKaError(
+      `record id ${id} holds ${filedAs}, filed by an earlier build under "${existing?.reference}"; ` +
+        "`ka reextract --all` moves it to its own id — the stored record was not overwritten",
     );
   }
 

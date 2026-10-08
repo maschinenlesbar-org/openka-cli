@@ -41,6 +41,9 @@ Anfrage 8/4011" and is stored under the reference `KA 8/4011`, id
 corpus synced before then it may have taken that number's id and replaced an older
 answer under it (issue #22). A question stored the old way is removed when it is seen
 again under its KA number, but only when the old record holds the same documents.
+`ka reextract` moves the rest (issue #25). Such a record has a question date and no answer
+date, which no Drucksache here has, and that is how `currentReference` (lib-models) tells
+it apart. `ka doctor` names one that is left, and a sync refuses to overwrite it.
 
 **The answer takes over its question.** The answer is a Drucksache and cites its
 question ("(KA 8/3417)"). When it arrives, it takes the stored question's date, and the

@@ -385,6 +385,14 @@ reindex` does. `--dry-run` reports the same and writes nothing; `--json` prints 
 report (`counts` per outcome, `results` per record). Exit 3 when a record could not be
 read (the rest are still done), 1 when an OCR record was left out.
 
+**A record an earlier build filed under another paper's id moves.** Up to 0.6.0, an
+unanswered Sachsen-Anhalt question was stored as Drucksache `08/1487`, where Drucksache
+8/1487 belongs (issue #25). `ka reextract` gives such a record the reference and id this
+build gives it (`KA 8/1487`, `sachsen-anhalt-8-ka-1487`), whatever its stamp, and prints
+`MOVED old → new`. Where the new id is taken already, the old record is a stale copy and
+is removed (`REMOVED`, outcome `duplicate`). A `human_verified` mark survives a move.
+`--dry-run` shows the moves first.
+
 ## `ka rm`
 
 ```bash
@@ -466,10 +474,12 @@ question's, and are not read as one.
 Anfrage apart from its Drucksachen, and the two numbers overlap. A question still waiting
 for its answer is stored as `KA 8/4011` and opens with `ka get sachsen-anhalt-8-ka-4011`.
 When the answer arrives as a Drucksache citing it, the question-only record is removed
-and the answer carries the question's date. Before 2026-10-08 such a question was filed as Drucksache `8/4011`, and it could replace an older
-answer of that number. To repair a corpus synced before then, re-sync the windows of the
-unanswered questions first; that moves them to their KA ids. Then re-sync the windows of
-the answers they replaced, which brings the answers back.
+and the answer carries the question's date. Up to 0.6.0 such a question was filed as
+Drucksache `8/4011`, under the id of a different paper, and it could replace an older
+answer of that number. To repair a corpus synced with 0.6.0 or earlier, run `ka reextract
+--all` first: it moves each such record to its KA id, and removes it where the KA id is
+taken already. `ka doctor` names the ones left, and a sync refuses to overwrite one.
+Then re-sync the windows of the answers they replaced, which brings the answers back.
 
 Marking a record verified does **not** fill its holes; it records that someone
 looked. The mark survives `ka sync --force` when re-extraction yields the same record
@@ -598,7 +608,8 @@ gone, is taken over by the next writer); whether the catalog and the record file
 `problem:` lines and exit 3; warnings (a network filesystem, platform files, a stale
 lock, orphaned documents) do not change the exit code. `--orphaned-documents` also counts
 the archived documents no record refers to; it reads every record, so it is not done by
-default, and `ka rm --orphaned-documents` removes them. A corpus that does not exist yet is checked for its
+default, and `ka rm --orphaned-documents` removes them. A record an earlier build filed
+under another paper's id (see `ka reextract`) is a problem, named by id. A corpus that does not exist yet is checked for its
 volume only, and nothing is created. `--fix` takes the corpus lock, so it exits 3 while
 a sync is writing, and removes only `._*` and `.DS_Store` files — names the corpus never
 writes.

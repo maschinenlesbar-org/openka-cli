@@ -74,6 +74,14 @@ function selectIds(ctx: ActionContext, ids: string[]): string[] {
 
 function printReport(io: CliIO, report: ReextractReport): void {
   for (const result of report.results) {
+    if (result.movedTo !== undefined) {
+      io.out(
+        result.duplicate === true
+          ? `${report.dryRun ? "WOULD REMOVE" : "REMOVED"} ${result.id}: a copy an earlier build stored of ${result.movedTo}, which is in the corpus`
+          : `${report.dryRun ? "WOULD MOVE" : "MOVED"} ${result.id} → ${result.movedTo}: an earlier build gave it the id of another paper`,
+      );
+      if (result.duplicate === true) continue;
+    }
     if (result.outcome === "changed") {
       const shown = result.differences.slice(0, 8).join(", ");
       const more = result.differences.length > 8 ? `, and ${result.differences.length - 8} more` : "";
@@ -89,14 +97,18 @@ function printReport(io: CliIO, report: ReextractReport): void {
   const changed = report.results.filter((result) => result.outcome === "changed");
   const complete = changed.filter((result) => result.resolved.length > 0).length;
   const abstained = changed.filter((result) => result.abstained.length > 0).length;
-  const left = c.unreadable + c.unchecked;
+  const left = c.unreadable + c.unchecked + c.duplicate;
   io.out(
     `${report.dryRun ? "Would re-extract" : "Re-extracted"} ${formatCount(report.checked - c.current - left)} of ${formatCount(report.checked)} record(s) ` +
       `with ${report.currentVersion}: ${formatCount(c["unchanged-content"])} only restamped (content identical), ` +
       `${formatCount(c.changed)} changed (${formatCount(complete)} newly complete, ${formatCount(abstained)} newly abstained)` +
       (c.identical > 0 ? `, ${formatCount(c.identical)} identical` : "") +
-      `; ${formatCount(c.current)} already current${left > 0 ? `, ${formatCount(left)} skipped` : ""}.`,
+      `; ${formatCount(c.current)} already current${c.unreadable + c.unchecked > 0 ? `, ${formatCount(c.unreadable + c.unchecked)} skipped` : ""}` +
+      `${c.duplicate > 0 ? `, ${formatCount(c.duplicate)} stale copies ${report.dryRun ? "to remove" : "removed"}` : ""}.`,
   );
+  if (report.moved > 0) {
+    io.out(`${formatCount(report.moved)} record(s) ${report.dryRun ? "would move" : "moved"} to the id this build gives them (a stale copy is removed where that id is taken).`);
+  }
   if (report.dryRun) io.out("Nothing was written (--dry-run).");
   else if (report.reindexed) io.out(`Wrote ${formatCount(report.written)} record(s) and rebuilt the index and catalog.`);
 }

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { isPlatformFile, type FileStore } from "./file-store.js";
 import { catalogGaps } from "./indexer.js";
+import { currentReference } from "@maschinenlesbar.org/openka-lib-models";
 import { blobsApart, checkCorpusVolumes, type VolumeCheckOptions, type VolumeReport } from "./volume.js";
 import { blobSize, orphanedBlobs } from "./remove.js";
 
@@ -25,6 +26,11 @@ export interface CorpusDiagnosis {
     uncatalogued: string[];
     /** Catalog rows with no record file. */
     missing_files: string[];
+    /**
+     * Records filed by an earlier build under a reference this one reads differently,
+     * and so under another paper's id (`currentReference`, issue #25).
+     */
+    misfiled: string[];
   };
   /** macOS `._*` and `.DS_Store` files anywhere in the corpus and the blob store. */
   platform_files: number;
@@ -74,13 +80,22 @@ export function diagnoseCorpus(store: FileStore, options: DiagnoseOptions = {}):
 
   try {
     const gaps = catalogGaps(store);
-    const catalogued = store.catalog().length;
+    const rows = store.catalog();
+    const misfiled = rows.filter((row) => currentReference(row) !== undefined).map((row) => row.id);
     diagnosis.catalog = {
       records: store.recordIds().length,
-      catalogued,
+      catalogued: rows.length,
       uncatalogued: gaps.uncatalogued,
       missing_files: gaps.missingFiles,
+      misfiled,
     };
+    if (misfiled.length > 0) {
+      problems.push(
+        `${misfiled.length} record(s) hold the id of another paper — an earlier build filed them under a reference this one ` +
+          `reads differently (${misfiled.slice(0, 5).join(", ")}${misfiled.length > 5 ? ", …" : ""}); a sync refuses to overwrite them, ` +
+          "and `ka reextract --all` moves them",
+      );
+    }
     if (gaps.uncatalogued.length > 0 || gaps.missingFiles.length > 0) {
       problems.push(
         `the catalog and the record files disagree: ${gaps.uncatalogued.length} record file(s) are not in the catalog and ` +

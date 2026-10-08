@@ -25,6 +25,12 @@ keeps the prefix, and `referenceSlug` turns it into `ka-`, so the question and a
 Drucksache of the same number get different ids (`sachsen-anhalt-8-ka-4011` and
 `sachsen-anhalt-8-4011`; issue #22).
 
+`currentReference` says which reference this build gives a record that an earlier build
+stored under another. Today that is one rule: in a parliament with `separateKaNumbers`, a
+record with a question date and no answer date, stored without the prefix, is the
+question's own KA number (issue #25). `ka reextract` moves such a record, `ka doctor`
+names it, and a sync refuses to overwrite it.
+
 ## What is in here
 
 - **`src/json-schema.ts`** — JSON Schema for the canonical record, for consumers outside TypeScript.
@@ -38,7 +44,7 @@ Drucksache of the same number get different ids (`sachsen-anhalt-8-ka-4011` and
 Everything is re-exported from the package root:
 
 ```
-RECORD_JSON_SCHEMA, ParliamentKeys, ParliamentKey, Parliament, KnownGap, PARLIAMENTS, knownGaps, isKnownGap, onlyKnownGaps, parliamentByKey, parliamentByHerkunft, isParliamentKey, normalizeParliamentKey, parliamentKeyProblem, Reference, periodNumber, parseReference, formatReference, referenceSlug, SCHEMA_VERSION, DocumentTypes, DocumentType, Tiers, Tier, ReviewStatuses, ReviewStatus, SourceDocumentRoles, SourceDocumentRole, Asker, AnsweredBy, Dates, QaPair, Markers, SourceDocument, ModelArtifact, Extraction, KaRecord, makeRecordId, ValidationIssue, PERIOD_RANGE, isCalendarDate, normalizeIsoDate, isoDateProblem, validateRecord, assertValidRecord
+RECORD_JSON_SCHEMA, ParliamentKeys, ParliamentKey, Parliament, KnownGap, PARLIAMENTS, ReferenceFacts, currentReference, knownGaps, isKnownGap, onlyKnownGaps, parliamentByKey, parliamentByHerkunft, isParliamentKey, normalizeParliamentKey, parliamentKeyProblem, Reference, periodNumber, parseReference, formatReference, referenceSlug, SCHEMA_VERSION, DocumentTypes, DocumentType, Tiers, Tier, ReviewStatuses, ReviewStatus, SourceDocumentRoles, SourceDocumentRole, Asker, AnsweredBy, Dates, QaPair, Markers, SourceDocument, ModelArtifact, Extraction, KaRecord, makeRecordId, ValidationIssue, PERIOD_RANGE, isCalendarDate, normalizeIsoDate, isoDateProblem, validateRecord, assertValidRecord
 ```
 
 ## Depends on

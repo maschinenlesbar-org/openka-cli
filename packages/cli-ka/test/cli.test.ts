@@ -93,6 +93,30 @@ describe("ka sync --ref, --retry-failed and --only-new (issue #27)", () => {
   });
 });
 
+describe("a record an earlier build filed under another paper's id (issue #25)", () => {
+  it("is a problem for ka doctor, and ka reextract moves it", async () => {
+    const harness = await seeded();
+    try {
+      const corpus = ["--corpus", harness.corpus];
+      const store = new FileStore(harness.corpus);
+      const record = sampleRecord({ id: "sachsen-anhalt-8-1487", parliament: "sachsen-anhalt", reference: "08/1487", legislative_period: 8, document_type: "kleine_anfrage", dates: { submitted: "2023-05-19" }, source_documents: [] });
+      store.putRecord(record);
+      indexRecord(store, record);
+
+      strictEqual(await run([...corpus, "doctor"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /problem: 1 record\(s\) hold the id of another paper/);
+      harness.out.length = 0;
+      strictEqual(await run([...corpus, "reextract", "--parliament", "sachsen-anhalt"], harness.deps), EXIT_OK, harness.stderr());
+      match(harness.stdout(), /^MOVED sachsen-anhalt-8-1487 → sachsen-anhalt-8-ka-1487: an earlier build gave it the id of another paper$/m);
+      match(harness.stdout(), /^1 record\(s\) moved to the id this build gives them/m);
+      harness.err.length = 0;
+      strictEqual(await run([...corpus, "doctor"], harness.deps), EXIT_OK, harness.stderr());
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("ka rm (issue #28)", () => {
   it("removes records under the lock, says which, and keeps a document other records share", async () => {
     const harness = await seeded();

@@ -9,7 +9,7 @@ import { DocumentTypes, makeRecordId, SCHEMA_VERSION } from "../src/schema.js";
 import { formatReference, parseReference, type Reference } from "../src/reference.js";
 import { isCalendarDate, isoDateProblem, normalizeIsoDate, validateRecord } from "../src/validate.js";
 import { RECORD_JSON_SCHEMA } from "../src/json-schema.js";
-import { isKnownGap, isParliamentKey, knownGaps, normalizeParliamentKey, onlyKnownGaps, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
+import { currentReference, isKnownGap, isParliamentKey, knownGaps, normalizeParliamentKey, onlyKnownGaps, parliamentByHerkunft, parliamentByKey, parliamentKeyProblem, PARLIAMENTS } from "../src/parliaments.js";
 import { extractorVersion, VERSION_ENV } from "@maschinenlesbar.org/openka-lib-repro";
 import { EXTRACTION_DIGEST } from "@maschinenlesbar.org/openka-lib-repro";
 import { computeExtractionDigest, extractionSourceFiles } from "@maschinenlesbar.org/openka-cli-ka-factory";
@@ -315,5 +315,24 @@ describe("a KA number", () => {
     strictEqual(formatReference(parseReference("KA 8/3985") as Reference), "KA 8/3985");
     deepStrictEqual([makeRecordId("sachsen-anhalt", 8, "KA 8/3985"), makeRecordId("sachsen-anhalt", 8, "8/3985")], ["sachsen-anhalt-8-ka-3985", "sachsen-anhalt-8-3985"]);
     strictEqual(parseReference("XY 8/3985"), undefined, "only the prefix the evidence names");
+  });
+});
+
+describe("a reference an earlier build read otherwise (issue #25)", () => {
+  it("is a Sachsen-Anhalt question's own KA number when it has a question date and no answer", () => {
+    strictEqual(currentReference({ parliament: "sachsen-anhalt", reference: "08/1487", submitted: "2023-05-19" }), "KA 8/1487");
+    strictEqual(makeRecordId("sachsen-anhalt", 8, currentReference({ parliament: "sachsen-anhalt", reference: "8/1487", submitted: "2023-05-19" }) as string), "sachsen-anhalt-8-ka-1487");
+  });
+
+  it("leaves everything else as it is", () => {
+    for (const facts of [
+      { parliament: "sachsen-anhalt", reference: "08/1487", answered: "2022-06-01" }, // a Drucksache: dated by its answer
+      { parliament: "sachsen-anhalt", reference: "08/6424", submitted: "2025-11-20", answered: "2025-12-22" }, // an answer that took its question's date
+      { parliament: "sachsen-anhalt", reference: "KA 8/1487", submitted: "2023-05-19" }, // current already
+      { parliament: "sachsen-anhalt", reference: "08/1487" }, // nothing to tell it by
+      { parliament: "berlin", reference: "19/1487", submitted: "2023-05-19" }, // one number series
+    ]) {
+      strictEqual(currentReference(facts), undefined, JSON.stringify(facts));
+    }
   });
 });

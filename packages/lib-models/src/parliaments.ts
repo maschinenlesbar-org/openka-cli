@@ -7,6 +7,7 @@
 // `<DHerk>` elements of the PARDOK export, not invented.
 
 import type { DocumentType } from "./schema.js";
+import { formatReference, parseReference, periodNumber } from "./reference.js";
 
 /** Stable parliament keys. Used verbatim in record ids and on the CLI. */
 export const ParliamentKeys = [
@@ -58,6 +59,12 @@ export interface Parliament {
    * are these apart from one the extractor could not read (issue #22).
    */
   knownGaps?: readonly KnownGap[];
+  /**
+   * Set when the parliament numbers its Kleine Anfragen apart from its Drucksachen,
+   * in sequences that overlap: a question is `KA 8/4011` until its answer is printed as
+   * a Drucksache of another number (issue #22). The text says how that shows in a record.
+   */
+  separateKaNumbers?: string;
 }
 
 /** A field a parliament never provides, and why. */
@@ -92,6 +99,9 @@ export const PARLIAMENTS: readonly Parliament[] = [
     // Measured on the live portal (2026-10-08): none of 50 answered rows of 2025 names
     // the question's date — the two dates a row sometimes prints are the paper's and
     // its Nachtrag's — and the issue's reporter found it in about 1.5% of the papers.
+    separateKaNumbers:
+      "a question still without its answer is listed under its own KA number and dated by the question; every " +
+      "Drucksache is dated by its answer",
     knownGaps: [
       {
         field: "dates.submitted",
@@ -109,6 +119,33 @@ const BY_KEY = new Map<string, Parliament>(PARLIAMENTS.map((p) => [p.key, p]));
 const BY_HERKUNFT = new Map<string, Parliament>(
   PARLIAMENTS.filter((p) => p.herkunft !== undefined).map((p) => [p.herkunft as string, p]),
 );
+
+/** What `currentReference` reads of a record or a catalog row. */
+export interface ReferenceFacts {
+  parliament: string;
+  reference: string;
+  submitted?: string;
+  answered?: string;
+}
+
+/**
+ * The reference this build gives a record that an earlier build stored under another,
+ * or undefined when the stored one is current.
+ *
+ * One rule so far (issue #25). Until 0.7.0, an unanswered question of a parliament that
+ * numbers its Kleine Anfragen apart (`separateKaNumbers`) was stored under its number
+ * read as a Drucksache: `08/1487` for KA 8/1487, with the id of Drucksache 8/1487, a
+ * different paper. Such a record is told apart by what its source row gave it: a
+ * question date and no answer date, which no Drucksache there has. `ka reextract` moves
+ * it, `ka doctor` names it, and a sync refuses to overwrite it.
+ */
+export function currentReference(facts: ReferenceFacts): string | undefined {
+  if (BY_KEY.get(facts.parliament)?.separateKaNumbers === undefined) return undefined;
+  const parsed = parseReference(facts.reference);
+  if (parsed === undefined || parsed.prefix !== undefined) return undefined;
+  if (facts.submitted === undefined || facts.answered !== undefined) return undefined;
+  return formatReference({ period: String(periodNumber(parsed)), number: parsed.number, prefix: "KA" });
+}
 
 /** The fields `parliament` never provides (`Parliament.knownGaps`); none for an unknown key. */
 export function knownGaps(parliament: string): readonly KnownGap[] {

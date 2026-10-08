@@ -1389,8 +1389,22 @@ describe("the corpus doctor", () => {
       const diagnosis = diagnoseCorpus(store, { probe: roomy });
       deepStrictEqual(
         { exists: diagnosis.exists, lock: diagnosis.lock, catalog: diagnosis.catalog, platform: diagnosis.platform_files, problems: diagnosis.problems },
-        { exists: true, lock: { state: "free" }, catalog: { records: 1, catalogued: 1, uncatalogued: [], missing_files: [] }, platform: 0, problems: [] },
+        { exists: true, lock: { state: "free" }, catalog: { records: 1, catalogued: 1, uncatalogued: [], missing_files: [], misfiled: [] }, platform: 0, problems: [] },
       );
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
+  it("names a record an earlier build filed under another paper's id (issue #25)", () => {
+    const store = corpus();
+    try {
+      const record = sampleRecord({ id: "sachsen-anhalt-8-1487", parliament: "sachsen-anhalt", reference: "08/1487", legislative_period: 8, document_type: "kleine_anfrage", dates: { submitted: "2023-05-19" } });
+      store.putRecord(record);
+      indexRecord(store, record);
+      const diagnosis = diagnoseCorpus(store, { probe: roomy });
+      deepStrictEqual(diagnosis.catalog?.misfiled, ["sachsen-anhalt-8-1487"]);
+      ok(diagnosis.problems.some((problem) => /1 record\(s\) hold the id of another paper .* \(sachsen-anhalt-8-1487\).*`ka reextract --all` moves them/.test(problem)), diagnosis.problems.join("\n"));
     } finally {
       rmSync(store.root, { recursive: true, force: true });
     }

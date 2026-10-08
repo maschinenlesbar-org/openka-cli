@@ -393,3 +393,61 @@ describe("a record stamped by another build", () => {
     }
   });
 });
+
+describe("a record an earlier build filed under another paper's id (issue #25)", () => {
+  /** KA 8/1487 as 0.6.0 stored it: read as Drucksache 08/1487, a question date, no answer, no document. */
+  const filedAsDrucksache = (overrides: Partial<KaRecord> = {}): KaRecord =>
+    sampleRecord({
+      id: "sachsen-anhalt-8-1487",
+      parliament: "sachsen-anhalt",
+      document_type: "kleine_anfrage",
+      reference: "08/1487",
+      legislative_period: 8,
+      dates: { submitted: "2023-05-19" },
+      source_documents: [],
+      ...overrides,
+    });
+
+  it("moves to its own id, and is named on a dry run first", async () => {
+    const store = new MemoryStore();
+    store.putRecord(filedAsDrucksache());
+    const dry = await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"], dryRun: true });
+    deepStrictEqual([dry.moved, dry.results[0]?.movedTo, store.hasRecord("sachsen-anhalt-8-1487")], [1, "sachsen-anhalt-8-ka-1487", true]);
+
+    const report = await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"] });
+    deepStrictEqual([report.moved, report.written, report.reindexed], [1, 1, true]);
+    strictEqual(store.hasRecord("sachsen-anhalt-8-1487"), false);
+    const moved = store.getRecord("sachsen-anhalt-8-ka-1487");
+    deepStrictEqual([moved?.reference, moved?.dates], ["KA 8/1487", { submitted: "2023-05-19" }]);
+    ok(store.catalogEntry("sachsen-anhalt-8-ka-1487") !== undefined && store.catalogEntry("sachsen-anhalt-8-1487") === undefined);
+    // Moved even when stamped by this build already: the id is wrong, whatever the stamp.
+    store.putRecord(filedAsDrucksache({ extraction: { ...filedAsDrucksache().extraction, extractor_version: extractorVersion({}) } }));
+    strictEqual((await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"] })).counts.duplicate, 1);
+  });
+
+  it("is removed as a stale copy when its own id is taken, and leaves an answered Drucksache alone", async () => {
+    const store = new MemoryStore();
+    store.putRecord(filedAsDrucksache());
+    store.putRecord(filedAsDrucksache({ id: "sachsen-anhalt-8-ka-1487", reference: "KA 8/1487" }));
+    store.putRecord(filedAsDrucksache({ id: "sachsen-anhalt-8-1488", reference: "08/1488", dates: { answered: "2022-06-01" } }));
+    const report = await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487", "sachsen-anhalt-8-1488"] });
+    deepStrictEqual(report.results.map((result) => [result.id, result.outcome, result.movedTo]), [
+      ["sachsen-anhalt-8-1487", "duplicate", "sachsen-anhalt-8-ka-1487"],
+      ["sachsen-anhalt-8-1488", "changed", undefined],
+    ]);
+    deepStrictEqual(store.recordIds(), ["sachsen-anhalt-8-1488", "sachsen-anhalt-8-ka-1487"]);
+  });
+
+  it("keeps a person's mark when only its name moves", async () => {
+    const store = new MemoryStore();
+    store.putRecord(filedAsDrucksache());
+    await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"] });
+    // The record as this build extracts it, back under its old name and checked by a person.
+    const current = store.getRecord("sachsen-anhalt-8-ka-1487") as KaRecord;
+    store.deleteRecord(current.id);
+    store.putRecord({ ...current, id: "sachsen-anhalt-8-1487", reference: "08/1487", extraction: { ...current.extraction, review_status: "human_verified" } });
+    const report = await reextractRecords({ store, env: {}, ids: ["sachsen-anhalt-8-1487"] });
+    deepStrictEqual([report.results[0]?.movedTo, report.results[0]?.droppedMark], ["sachsen-anhalt-8-ka-1487", undefined]);
+    strictEqual(store.getRecord("sachsen-anhalt-8-ka-1487")?.extraction.review_status, "human_verified");
+  });
+});
