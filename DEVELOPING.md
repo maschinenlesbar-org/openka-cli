@@ -895,6 +895,42 @@ as **degraded** in `ka sources list`, with its last error.
 
 An extractor may not be promoted while a golden is red. That is the gate.
 
+## How syncs feed the line
+
+Every sync is also a test run against the parliaments' real output. What it could not
+do is visible: a failed Anfrage, a document gap, an abstained field. Those are the work
+list for the next fix or feature. A fix goes back into the corpus offline
+(`ka reextract`), or by re-syncing only what was hit (`--ref`, `--retry-failed`,
+`--only-new`). So the more documents we sync, the more layouts and upstream quirks we
+have seen, and the more the rules rest on evidence.
+
+```mermaid
+flowchart TD
+  sync["ka sync<br/>one source, one window"] --> corpus[("corpus<br/>records + archived bytes")]
+  sync --> report["sync report and log<br/>failed · gaps · warnings"]
+  corpus --> review["ka review --group-by field<br/>ka stats · ka-factory drift"]
+  report --> issue["issue"]
+  review --> issue
+  issue --> kind{"what kind?"}
+  kind -->|"upstream or transport"| bug["fix a connector or the pipeline<br/>#20 glued links · #23 size cap · #22 id collision"]
+  kind -->|"extraction"| rule["widen a rule on evidence<br/>#9 Berlin headings · #22 KA date"]
+  kind -->|"workflow"| feature["new feature<br/>#17 plan file · #27 --ref / --retry-failed / --only-new"]
+  rule --> measure["measure on the corpus, read-only<br/>re-extract every record of the Land"]
+  measure --> golden["freeze a real paper as a golden<br/>ka-factory goldens add"]
+  golden --> stamp["npm run stamp<br/>new extraction digest"]
+  stamp --> reextract["ka reextract --all<br/>offline, from the archived bytes"]
+  bug --> resync["re-sync only what was hit<br/>--ref · --retry-failed · --only-new"]
+  feature --> sync
+  reextract --> corpus
+  resync --> corpus
+```
+
+The corpus is also the measuring instrument. A rule is widened only when re-extracting
+the corpus shows that the abstentions fall and nothing else changes. #9 took Berlin from
+1,259 abstaining records to 1,195, over 3,852. `readKaDate` was measured on 2,493
+Sachsen-Anhalt papers and gave 34 of them their question date. Each such change leaves a
+golden behind, so the next one cannot undo it.
+
 ## The website
 
 `site/` is the same bilingual Jekyll kit every repo in this workspace uses — banira
