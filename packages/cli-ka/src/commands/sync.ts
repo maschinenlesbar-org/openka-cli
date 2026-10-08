@@ -45,6 +45,7 @@ import {
 } from "../shared.js";
 import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
+import { SyncEvents } from "./sync-events.js";
 import { JobLogs, QueueRound, collectJobSpec, finished, jobEnd, printSummary, runResult, selectJobs, type CliJob } from "./sync-jobs.js";
 
 /**
@@ -98,10 +99,33 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--ocr-language <lang>", "traineddata language for OCR", parseNonEmpty)
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
     .option("--ocr-traineddata <path>", "traineddata file to hash into the provenance record", parseNonEmpty)
-    .option("--json", "print the sync report as JSON (an array of reports for several jobs, --all or --plan)");
+    .option("--json", "print the sync report as JSON (an array of reports for several jobs, --all or --plan)")
+    .addOption(choiceOption("--log-format <format>", "text: the progress line on stderr; jsonl: one JSON event per line on stderr instead", ["text", "jsonl"]))
+    .option("--log-file <path>", "append the run's events to this file as JSON Lines, keeping the progress line on stderr", parseNonEmpty);
   addVolumeOptions(command)
     .action(
       action(deps, async (ctx) => {
+        // The event log (issue #10). With `--log-format jsonl`, stderr carries events
+        // only: every other line the sync would print there becomes a `note` event.
+        // With `--log-file`, stderr stays as it was and the file gets the same events.
+        const plain = ctx.deps.io;
+        const events = new SyncEvents(plain, ctx.deps.now);
+        const jsonl = ctx.opts["logFormat"] === "jsonl";
+        if (jsonl) events.toStderr((line) => plain.err(line));
+        const logFile = ctx.opts["logFile"] as string | undefined;
+        if (logFile !== undefined) events.toFile(logFile);
+        if (events.active) {
+          ctx.deps = {
+            ...ctx.deps,
+            io: {
+              ...plain,
+              err: (text: string) => {
+                if (!jsonl) plain.err(text);
+                events.emit("note", { message: text });
+              },
+            },
+          };
+        }
         const io = ctx.deps.io;
         const selection = selectJobs(ctx);
         const queue = selection.queue;
@@ -161,9 +185,11 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
-        const progress = ctx.global.quiet === true ? undefined : new SyncProgress(io, ctx.deps.now);
+        // The progress line is the text log; JSON Lines on stderr replace it, a log file does not.
+        const progress = ctx.global.quiet === true || jsonl ? undefined : new SyncProgress(plain, ctx.deps.now);
         const say = (text: string): void => (progress === undefined ? io.err(text) : progress.line(text));
         const logs = new JobLogs(io, ctx.deps.now, jobs);
+        const sourceOf = (label: string): string => jobs.find((job) => job.label === label)?.spec.source ?? label;
 
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
         // ends the process. A kill -9 cannot be caught: the next sync over the
@@ -243,21 +269,25 @@ export function registerSync(program: Command, deps: CliDeps): void {
                   // Progress is stderr, so --json (which shapes stdout) keeps it.
                   onStart: (job: string) => {
                     progress?.start(job);
+                    events.start(job, sourceOf(job));
                     status?.start(job);
                     logs.line(job, "started");
                   },
                   onDiscovered: (job: string, count: number) => {
                     progress?.discovered(job, count);
+                    events.discovered(job, sourceOf(job), count);
                     status?.discovered(job, count);
                     logs.line(job, `${count} Anfragen discovered`);
                   },
                   onProgress: (job: string, event: ProgressEvent) => {
                     progress?.update(job, event);
+                    events.record(job, sourceOf(job), event);
                     status?.progress(job, event);
                     logs.line(job, `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
                   },
                   onDone: (outcome: SourceOutcome) => {
                     progress?.finish(outcome.job);
+                    events.done(outcome);
                     status?.done(outcome.job, jobEnd(outcome));
                     logs.outcome(outcome);
                     // Recorded as each job ends, so a run killed later keeps it.
@@ -277,6 +307,8 @@ export function registerSync(program: Command, deps: CliDeps): void {
           stopListening?.();
         }
 
+        // The last event is what --json prints, so one log covers the whole run.
+        events.emit("report", { reports: outcomes.map(outcomeJson) });
         const failed = outcomes.filter((outcome) => outcome.status === "failed");
         const done = outcomes.flatMap((outcome) => (outcome.status === "done" ? [outcome] : []));
         // A single source keeps the shape it always had: its report, and the error

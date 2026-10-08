@@ -29,6 +29,7 @@ use them.
 - **`src/commands/config.ts`** — `ka config` — credentials kept apart from the corpus, read without echo.
 - **`src/commands/reextract.ts`** — `ka reextract` — bring stored records up to this build's extractor, offline.
 - **`src/commands/status.ts`** — `ka status` — what a running sync is doing, from another terminal.
+- **`src/commands/sync-events.ts`** — `ka sync`'s event log in JSON Lines (`--log-format jsonl`, `--log-file`).
 - **`src/commands/sync-jobs.ts`** — The jobs one `ka sync` runs: `--source key@window` and `--plan`, the job logs, a plan's progress and its summary.
 - **`src/commands/maintain.ts`** — `verify`, `review`, `reindex` and `sources` — the commands that keep the corpus honest about itself.
 - **`src/commands/output.ts`** — `export`, `feed` and `schema` — getting the corpus out in bulk.

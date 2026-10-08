@@ -122,7 +122,10 @@ run will handle, and `onProgress(event)` after each ref with its `index` of `tot
 and what happened to it. `ka sync` builds its progress line from the two; it used to
 have no total until the first record and printed nothing but failures.
 
-Each event carries `timing` (`SyncTiming`), and the report the final one: the requests,
+Each event also says how long the Anfrage took (`ms`), what it downloaded (`bytes`),
+the fields a stored record abstains on (`abstained`) and the documents that were not
+fetched, with their URL and why (`gaps`, `DocumentGap`) — what `ka sync`'s JSON Lines log
+writes per record (issue #10). Each event carries `timing` (`SyncTiming`), and the report the final one: the requests,
 retries and 429/503 answers since the run began and the time inside them (average and
 95th percentile), from the engine's `metrics` (lib-http); the time spent waiting before
 requests; and the time the pipeline spent extracting and storing, on its clock

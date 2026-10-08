@@ -94,6 +94,21 @@ export interface ProgressEvent {
   detail?: string;
   /** Where the run's time has gone so far — for a progress line that says why it is slow. */
   timing?: SyncTiming;
+  /** How long this Anfrage took, fetching included. */
+  ms?: number;
+  /** Bytes downloaded for it (0 when its documents were archived and unchanged). */
+  bytes?: number;
+  /** For a stored record: the fields it abstains on. */
+  abstained?: string[];
+  /** Its documents that were not fetched, and why — the URL behind a hole (issue #10). */
+  gaps?: DocumentGap[];
+}
+
+/** A document of an Anfrage that was not fetched: its URL, the kind of gap and the reason in words. */
+export interface DocumentGap {
+  url: string;
+  gap: FetchGap["gap"];
+  reason: string;
 }
 
 /**
@@ -310,6 +325,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   // that were never stored.
   const httpCache = { ...(discovered.state ?? state).http_cache };
   const run: RunContext = {
+    gaps: [],
     watch,
     robots,
     warnings: report.warnings,
@@ -324,6 +340,13 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
   let index = 0;
   const handle = async (ref: DocRef): Promise<void> => {
     index++;
+    run.gaps = [];
+    const began = now().getTime();
+    const details = (): Pick<ProgressEvent, "ms" | "gaps" | "timing"> => ({
+      ms: Math.max(0, now().getTime() - began),
+      ...(run.gaps.length === 0 ? {} : { gaps: run.gaps }),
+      timing: timing(),
+    });
     try {
       const outcome = await syncRef(ref, options, now, httpCache, run);
       if (outcome.recatalogued === true) report.recatalogued++;
@@ -336,12 +359,20 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
         report.unchanged++;
       }
       report.bytesFetched += outcome.bytesFetched;
-      options.onProgress?.({ index, total: refs.length, id: outcome.id, action: outcome.action, timing: timing() });
+      options.onProgress?.({
+        index,
+        total: refs.length,
+        id: outcome.id,
+        action: outcome.action,
+        bytes: outcome.bytesFetched,
+        ...(outcome.record === undefined ? {} : { abstained: outcome.record.extraction.abstained_fields }),
+        ...details(),
+      });
     } catch (err) {
       report.failed++;
       const message = err instanceof Error ? err.message : String(err);
       report.errors.push(`${ref.reference}: ${message}`);
-      options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message, timing: timing() });
+      options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message, ...details() });
     }
   };
   for (let start = 0; start < refs.length && !report.interrupted && report.lowSpace === undefined; start += CATALOG_CHECKPOINT) {
@@ -381,6 +412,8 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
 
 /** What every document fetch of one run shares: the robots.txt verdicts and where to say so. */
 interface RunContext {
+  /** The gaps of the Anfrage in hand, emptied before each one (`ProgressEvent.gaps`). */
+  gaps: DocumentGap[];
   /** Where extraction and writing time is added up. */
   watch: Stopwatch;
   robots: RobotsPolicy;
@@ -498,6 +531,7 @@ async function syncRef(
     for (const wanted of ref.documents) {
       const fetched = await fetchDocument(engine, store, wanted.url, now, httpCache, run, wanted.role !== "metadata");
       if ("gap" in fetched) {
+        run.gaps.push({ url: wanted.url, gap: fetched.gap, reason: gapText(fetched) });
         // The upstream no longer hands this document out — a 404, or a robots.txt
         // that now disallows it. A record that already holds it must not be
         // re-extracted from nothing: that overwrote complete records with empty

@@ -170,6 +170,31 @@ redrawn in place; written to a file or a pipe it is a plain line every 25 Anfrag
 30 seconds, so a log shows how far the run got. `--json` shapes stdout only and keeps
 it; `--quiet` silences it.
 
+**An event log in JSON Lines.** `--log-format jsonl` writes one JSON object per event on
+stderr instead of the progress line; `--log-file <path>` appends the same events to a
+file and keeps the progress line. Every line carries `ts`, `event`, and for a job's
+events `job` and `source`, so the events of several sources share one stream:
+
+```jsonl
+{"ts":"2026-10-06T18:00:01Z","event":"start","job":"berlin","source":"berlin"}
+{"ts":"2026-10-06T18:00:01Z","event":"discovered","job":"berlin","source":"berlin","count":2471}
+{"ts":"2026-10-06T18:00:03Z","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24986","status":"stored","index":1,"total":2471,"ms":812,"bytes":141233,"abstained":["qa"]}
+{"ts":"2026-10-06T18:00:04Z","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24987","status":"stored","index":2,"total":2471,"ms":4100,"bytes":0,"gaps":[{"url":"https://…","gap":"404","reason":"now answers 404"}]}
+{"ts":"2026-10-06T18:00:05Z","event":"record","job":"berlin","source":"berlin","id":"19/24990","status":"failed","index":3,"total":2471,"ms":2050,"error":"HTTP 503 …"}
+{"ts":"2026-10-06T18:41:12Z","event":"warning","job":"berlin","source":"berlin","message":"…"}
+{"ts":"2026-10-06T18:41:12Z","event":"done","job":"berlin","source":"berlin","discovered":2471,"stored":2470,"failed":1,…,"timing":{…}}
+{"ts":"2026-10-06T18:41:12Z","event":"report","reports":[…]}
+```
+
+A `record`'s `status` is `stored`, `unchanged` or `failed`; `abstained` names the fields a
+stored record abstains on, `gaps` the documents that were not fetched with their URL and
+why (`404`, `robots`, `not-pdf`, `glued`, `too-large`), and `error` why one failed. A job
+ends with `done` (the report's counts and `timing`; its warnings come just before as
+`warning` events), `failed` or `skipped`; the run with `report`, which is what `--json`
+prints. With `--log-format jsonl` every other line the sync would print on stderr becomes
+a `note` event, so the stream is JSON throughout — only the `Error:` line of a failed run
+stays text. `--json` and the summary on stdout are unchanged.
+
 **The pace is the recent one, and the line says where the time goes.** The rate and
 the time left are taken over the last ten minutes, so a run whose upstream slows down
 says so within minutes rather than hours; once the recent pace parts from the average

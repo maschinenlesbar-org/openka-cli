@@ -1399,6 +1399,67 @@ describe("ka", () => {
     });
   });
 
+  describe("the event log in JSON Lines (issue #10)", () => {
+    type Event = { ts: string; event: string; job?: string; source?: string; id?: string; status?: string; [key: string]: unknown };
+    const parse = (text: string): Event[] => text.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as Event);
+
+    it("writes one event per line on stderr with --log-format jsonl, and nothing else there", async () => {
+      const harness = cliHarness({ transport: berlinTransport().transport });
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-format", "jsonl"], harness.deps), EXIT_OK, harness.stderr());
+        const events = parse(harness.stderr());
+        const kinds = events.map((event) => event.event);
+        deepStrictEqual([kinds[0], kinds[1], kinds.at(-2), kinds.at(-1)], ["start", "discovered", "done", "report"]);
+        const records = events.filter((event) => event.event === "record");
+        ok(records.length > 0 && records.every((event) => event.source === "berlin" && event.status === "stored" && typeof event.ms === "number"));
+        strictEqual(records[0]?.ts, "2026-01-02T03:04:05Z");
+        strictEqual(records[0]?.bytes, PDF.length, "the first record fetched the document");
+        deepStrictEqual(Object.keys(events.at(-1)?.["reports"] as object), ["0"]);
+        match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m, "stdout keeps its summary");
+
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-format", "xml"], harness.deps), EXIT_USAGE);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("appends the same events to --log-file and keeps the progress line, naming each document's gap", async () => {
+      // The PDF answers 404: the record is stored with a hole, and the event says which URL and why.
+      const { transport } = scriptedTransport([
+        { match: "pardok-wp19.xml", body: PARDOK },
+        { match: ".pdf", status: 404 },
+      ]);
+      const harness = cliHarness({ transport });
+      const log = join(harness.corpus, "..", "openka-events.jsonl");
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-file", log], harness.deps), EXIT_OK, harness.stderr());
+        match(harness.stderr(), /^berlin: \d+ Anfragen discovered$/m, "the text progress stays on stderr");
+        const events = parse(harness.files.get(log)?.toString("utf8") ?? "");
+        const record = events.find((event) => event.event === "record");
+        deepStrictEqual((record?.["gaps"] as { gap: string; url: string }[] | undefined)?.map((gap) => [gap.gap, gap.url.endsWith(".pdf")]), [["404", true]]);
+        ok(Array.isArray(record?.["abstained"]), "a record stored with holes names them");
+        ok(events.some((event) => event.event === "warning" && String(event["message"]).includes("now answers 404")));
+        // Run again: the file is appended to.
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-file", log], harness.deps), EXIT_OK);
+        strictEqual(parse(harness.files.get(log)?.toString("utf8") ?? "").filter((event) => event.event === "start").length, 2);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("turns the sync's other stderr lines into note events, so the stream stays JSON", async () => {
+      const harness = cliHarness({ transport: scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]).transport });
+      try {
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "sachsen-anhalt", "--log-format", "jsonl"], harness.deps), EXIT_OK);
+        const events = parse(harness.stderr());
+        ok(events.some((event) => event.event === "note" && /^Note: sachsen-anhalt: at most one request per 4 s/.test(String(event["message"]))));
+        ok(events.some((event) => event.event === "done" && typeof event["blocked"] === "string"));
+      } finally {
+        harness.cleanup();
+      }
+    });
+  });
+
   it("calls a missing archived document a corpus problem in verify, as open does", async () => {
     const harness = await seeded();
     try {
