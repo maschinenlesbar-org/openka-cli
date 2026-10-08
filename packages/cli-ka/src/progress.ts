@@ -191,6 +191,8 @@ function where(timing: SyncTiming, done: number): string[] {
   if (timing.upstreamMsAvg !== undefined) parts.push(`upstream ${seconds(timing.upstreamMsAvg)}/req`);
   if (timing.elapsedMs > 0 && timing.waitMs > 0) parts.push(`waiting ${Math.round((timing.waitMs / timing.elapsedMs) * 100)}%`);
   if (done > 0 && timing.extractMs > 0) parts.push(`extract ${seconds(timing.extractMs / done)}`);
+  // Writing the index at each checkpoint grows with the corpus (issue #30); its share says when it matters.
+  if (timing.elapsedMs > 0 && (timing.indexMs ?? 0) > 0) parts.push(`index ${Math.round(((timing.indexMs ?? 0) / timing.elapsedMs) * 100)}%`);
   if (timing.retries > 0) {
     // Why, so a run that retries without the server asking (issue #31) shows it.
     const reasons = (["throttled", "timeout", "connection", "other"] as const)

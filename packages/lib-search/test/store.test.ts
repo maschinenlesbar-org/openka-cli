@@ -1959,3 +1959,50 @@ describe("removing records (issue #28)", () => {
     }
   });
 });
+
+describe("index writes batched with the catalog (issue #30)", () => {
+  it("writes each touched shard once per batch, and leaves the index a rebuild makes", async () => {
+    const store = new FileStore(mkdtempSync(join(tmpdir(), "openka-batched-index-")));
+    try {
+      const record = (n: number, text: string): KaRecord => sampleRecord({ id: `berlin-19-${n}`, reference: `19/${n}`, title: `Anfrage ${n}`, qa: [{ number: "1", question: text, answer: "Ja." }] });
+      const first = record(1, "Brücken Schulen Radwege Spielplätze Bäder Bibliotheken");
+      const gone = record(2, "Kitas Parks Ampeln");
+      store.putRecord(gone);
+      indexRecord(store, gone);
+      const saves: string[] = [];
+      const save = store.saveShard.bind(store);
+      store.saveShard = (shard, data) => {
+        saves.push(shard);
+        save(shard, data);
+      };
+      await store.batchCatalog(async () => {
+        for (let n = 3; n <= 8; n++) {
+          const next = record(n, `Brücken Schulen Thema${n}`);
+          store.putRecord(next);
+          indexRecord(store, next);
+        }
+        store.putRecord(first);
+        indexRecord(store, first);
+        // Re-extracted with other words: the old postings go, in the same batch.
+        const changed = record(1, "Brücken Feuerwehr");
+        store.putRecord(changed);
+        indexRecord(store, changed, first);
+        // Removed with its record unreadable: searched for in every shard.
+        store.deleteRecord(gone.id);
+        unindexRecord(store, gone.id);
+        strictEqual(saves.length, 0, "nothing is written before the batch ends");
+      });
+      strictEqual(saves.length, new Set(saves).size, `each shard once: ${saves.join(" ")}`);
+      deepStrictEqual(search(store, "Feuerwehr").hits.map((hit) => hit.entry.id), ["berlin-19-1"]);
+      deepStrictEqual(search(store, "Radwege").hits, []);
+      deepStrictEqual(search(store, "Kitas").hits, []);
+      const snapshot = (): Record<string, unknown> => Object.fromEntries(store.shardNames().map((shard) => [shard, store.loadShard(shard)]));
+      const batched = snapshot();
+      store.saveShard = save;
+      reindexAll(store);
+      deepStrictEqual(batched, snapshot(), "the batched index is the rebuilt one");
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+});

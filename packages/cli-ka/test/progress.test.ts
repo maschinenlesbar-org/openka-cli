@@ -137,6 +137,7 @@ describe("sync progress", () => {
       waitMs: 40_000,
       extractMs: 5_000,
       storeMs: 1_000,
+      indexMs: 3_000,
     };
     for (let i = 1; i <= 25; i++) {
       time.advance(4_000);
@@ -144,7 +145,7 @@ describe("sync progress", () => {
     }
     strictEqual(
       lines.at(-1),
-      "sachsen-anhalt: 25/25 · 0 failed · 15/min · done in 2 min · upstream 4.1 s/req · waiting 40% · extract 0.2 s · retries 3 (2 throttled, 1 connection) · reconnected 4 · throttled 2×",
+      "sachsen-anhalt: 25/25 · 0 failed · 15/min · done in 2 min · upstream 4.1 s/req · waiting 40% · extract 0.2 s · index 3% · retries 3 (2 throttled, 1 connection) · reconnected 4 · throttled 2×",
     );
   });
 

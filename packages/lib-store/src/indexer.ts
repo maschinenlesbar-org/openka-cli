@@ -6,7 +6,7 @@
 
 import { StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import { withCorpusLock, type CatalogEntry, type CatalogStore, type IndexStore, type LockableStore, type RecordStore } from "./store.js";
+import { withCorpusLock, type CatalogEntry, type CatalogStore, type IndexStore, type LockableStore, type PostingChange, type RecordStore } from "./store.js";
 import type { IndexShard } from "./fts.js";
 import { shardOf, termFrequencies, type Posting } from "./fts.js";
 
@@ -112,22 +112,15 @@ export type IndexTarget = CatalogStore & IndexStore & RecordStore & LockableStor
 export function indexRecord(store: IndexTarget, record: KaRecord, previous?: KaRecord): void {
   unindexRecord(store, record.id, previous);
   const counts = termFrequencies(indexableFields(record));
-  const byShard = new Map<string, [string, number][]>();
+  const byShard = new Map<string, Posting[]>();
   for (const [token, tf] of counts) {
     const shard = shardOf(token);
     const bucket = byShard.get(shard) ?? [];
     bucket.push([token, tf]);
     byShard.set(shard, bucket);
   }
-  for (const [shard, tokens] of [...byShard].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const data = store.loadShard(shard);
-    for (const [token, tf] of tokens) {
-      const postings: Posting[] = (data[token] ?? []).filter(([docId]) => docId !== record.id);
-      postings.push([record.id, tf]);
-      postings.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-      data[token] = postings;
-    }
-    store.saveShard(shard, data);
+  for (const [shard, postings] of [...byShard].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    changePostings(store, shard, { kind: "add", id: record.id, postings });
   }
   store.putCatalogEntry(toCatalogEntry(record, counts.size));
 }
@@ -144,25 +137,60 @@ export function unindexRecord(store: IndexTarget, id: string, previous?: KaRecor
   const catalogued = store.catalogEntry(id) !== undefined;
   if (!catalogued && previous === undefined) return;
   const record = previous ?? store.getRecord(id);
-  const shards =
-    record !== undefined
-      ? [...new Set([...termFrequencies(indexableFields(record)).keys()].map(shardOf))].sort()
-      : store.shardNames();
-  for (const shard of shards) {
-    const data = store.loadShard(shard);
-    let changed = false;
-    for (const token of Object.keys(data)) {
-      const postings = data[token] as Posting[];
-      const kept = postings.filter(([docId]) => docId !== id);
-      if (kept.length !== postings.length) {
+  if (record !== undefined) {
+    const byShard = new Map<string, string[]>();
+    for (const token of termFrequencies(indexableFields(record)).keys()) {
+      const shard = shardOf(token);
+      byShard.set(shard, [...(byShard.get(shard) ?? []), token]);
+    }
+    for (const [shard, tokens] of [...byShard].sort(([a], [b]) => (a < b ? -1 : 1))) changePostings(store, shard, { kind: "remove", id, tokens });
+  } else {
+    // What the record held is unknown: every shard is searched for it.
+    for (const shard of store.shardNames()) changePostings(store, shard, { kind: "remove", id });
+  }
+  if (catalogued) store.removeCatalogEntry(id);
+}
+
+/**
+ * Apply `change` to `shard`: queued for the end of the batch where the store keeps a
+ * queue (`IndexStore.queuePostings`), else at once. Storing one record touched nearly
+ * every one of the 256 shards and rewrote each in full — 202 MB for one Sachsen-Anhalt
+ * paper, ten seconds a record on a USB stick, and more the bigger the corpus (issue #30).
+ */
+function changePostings(store: IndexStore, shard: string, change: PostingChange): void {
+  if (store.queuePostings?.(shard, change) === true) return;
+  const data = store.loadShard(shard);
+  if (applyPostingChanges(data, [change])) store.saveShard(shard, data);
+}
+
+/**
+ * Apply `changes`, in order, to a shard's postings. Returns whether anything changed.
+ * Postings stay sorted by record id, as the incremental path and a rebuild leave them.
+ */
+export function applyPostingChanges(data: IndexShard, changes: readonly PostingChange[]): boolean {
+  let changed = false;
+  for (const change of changes) {
+    if (change.kind === "remove") {
+      for (const token of change.tokens ?? Object.keys(data)) {
+        const postings = data[token];
+        if (postings === undefined) continue;
+        const kept = postings.filter(([docId]) => docId !== change.id);
+        if (kept.length === postings.length) continue;
         changed = true;
         if (kept.length === 0) delete data[token];
         else data[token] = kept;
       }
+    } else {
+      for (const [token, tf] of change.postings) {
+        const postings: Posting[] = (data[token] ?? []).filter(([docId]) => docId !== change.id);
+        postings.push([change.id, tf]);
+        postings.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+        data[token] = postings;
+        changed = true;
+      }
     }
-    if (changed) store.saveShard(shard, data);
   }
-  if (catalogued) store.removeCatalogEntry(id);
+  return changed;
 }
 
 /** Where the catalog and the record files disagree — see `catalogGaps`. */

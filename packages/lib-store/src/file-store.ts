@@ -25,7 +25,8 @@ import { isSha256, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { assertValidRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { IndexShard } from "./fts.js";
-import type { CatalogEntry, EmbeddingSet, QueueProgress, SourceState, Store } from "./store.js";
+import type { CatalogEntry, EmbeddingSet, PostingChange, QueueProgress, SourceState, Store } from "./store.js";
+import { applyPostingChanges } from "./indexer.js";
 import type { RunStatus } from "./run-status.js";
 
 /** Record ids and source keys reach the filesystem, so they are strictly checked. */
@@ -574,6 +575,10 @@ export class FileStore implements Store {
       return await this.batchScope.run(true, work);
     } finally {
       this.deferring--;
+      // The postings first: a catalog row whose postings are missing is a record no
+      // search finds, while a record with postings and no row is one the next sync
+      // catalogues again ("recatalogued").
+      if (this.queuedPostings.size > 0) this.flushPostings();
       if (this.touched.size > 0 || this.removed.size > 0) this.flushCatalog();
     }
   }
@@ -613,6 +618,33 @@ export class FileStore implements Store {
   }
 
   // ---------------------------------------------------------------- index
+
+  /** Posting changes queued in a batch, per shard, in order (`queuePostings`). */
+  private readonly queuedPostings = new Map<string, PostingChange[]>();
+
+  /**
+   * Inside a `batchCatalog` scope a change is kept until the batch ends, and each shard
+   * is then read and written once for all of them (issue #30). Reads inside the batch
+   * see the shards as they were; nothing in a sync reads them.
+   */
+  queuePostings(shard: string, change: PostingChange): boolean {
+    if (this.batchScope.getStore() !== true) return false;
+    assertSafeKey(shard, "index shard");
+    const changes = this.queuedPostings.get(shard) ?? [];
+    changes.push(change);
+    this.queuedPostings.set(shard, changes);
+    return true;
+  }
+
+  /** Apply the queued posting changes: each shard read and written once, in shard order. */
+  flushPostings(): void {
+    const queued = [...this.queuedPostings].sort(([a], [b]) => (a < b ? -1 : 1));
+    this.queuedPostings.clear();
+    for (const [shard, changes] of queued) {
+      const data = this.loadShard(shard);
+      if (applyPostingChanges(data, changes)) this.saveShard(shard, data);
+    }
+  }
 
   loadShard(shard: string): IndexShard {
     assertSafeKey(shard, "index shard");

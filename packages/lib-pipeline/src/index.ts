@@ -76,13 +76,21 @@ export interface SyncOptions extends SyncWindow {
 }
 
 /**
- * How many refs one catalog batch covers. The catalog is persisted at the end of
- * each, so a run killed outright (SIGKILL, a power cut) loses the catalog rows of
- * at most this many stored records — and the next sync over the window, or `ka
- * reindex`, puts those back. One batch for the whole run lost every row of a long
- * sync to a Ctrl-C, while its records and postings stayed on disk.
+ * How long one batch of a sync runs before its index postings and catalog rows are
+ * written (`batchCatalog`). A run killed outright (SIGKILL, a power cut) loses the rows
+ * and postings of at most one batch — the records are on disk, and the next sync over
+ * the window, or `ka reindex`, catalogues them again. One batch for the whole run lost
+ * every row of a long sync to a Ctrl-C.
+ *
+ * It was 25 refs. Each batch rewrites every shard its records touch, which for long
+ * papers is all 256 — the whole index, 202 MB in a corpus of 7,500 — so at a fast source
+ * it rewrote the index every few seconds (issue #30). By time, the cost stays a share of
+ * the run.
  */
-export const CATALOG_CHECKPOINT = 25;
+export const CHECKPOINT_MS = 120_000;
+
+/** The most refs one batch takes, whatever the time: what it keeps in memory until it is written. */
+export const CHECKPOINT_REFS = 250;
 
 export interface ProgressEvent {
   index: number;
@@ -132,9 +140,14 @@ export interface SyncTiming {
   upstreamMsP95?: number;
   /** Time spent waiting before requests: pacing (`--min-host-interval`, a source's floor) and retry backoff. */
   waitMs: number;
-  /** Time spent extracting records, and writing them with their index. */
+  /** Time spent extracting records, and writing the records. */
   extractMs: number;
   storeMs: number;
+  /**
+   * Time spent writing the index postings and catalog rows, once per batch
+   * (`CHECKPOINT_MS`). It was inside `storeMs`, and was most of it (issue #30).
+   */
+  indexMs: number;
 }
 
 export interface SyncReport {
@@ -197,7 +210,7 @@ export async function sync(rawOptions: SyncOptions): Promise<SyncReport> {
 
 async function syncLocked(options: SyncOptions): Promise<SyncReport> {
   const clock = options.now ?? (() => new Date());
-  const watch: Stopwatch = { extractMs: 0, storeMs: 0 };
+  const watch: Stopwatch = { extractMs: 0, storeMs: 0, indexMs: 0 };
   const timing = timingSince(options.engine, clock, watch);
   const report = await syncTimed(options, watch, timing);
   report.timing = timing();
@@ -208,6 +221,7 @@ async function syncLocked(options: SyncOptions): Promise<SyncReport> {
 interface Stopwatch {
   extractMs: number;
   storeMs: number;
+  indexMs: number;
 }
 
 /** A function that says where the time has gone since now, on `engine` and `watch`. */
@@ -232,6 +246,7 @@ function timingSince(engine: FetchEngine, clock: () => Date, watch: Stopwatch): 
       waitMs: m.waitMs - base.waitMs,
       extractMs: watch.extractMs,
       storeMs: watch.storeMs,
+      indexMs: watch.indexMs,
     };
     if (durations.length > 0) {
       timing.upstreamMsAvg = Math.round((m.upstreamMs - base.upstreamMs) / durations.length);
@@ -351,9 +366,10 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
     fetched: options.documents ?? new DocumentMemo(),
   };
 
-  // One catalog write per `CATALOG_CHECKPOINT` refs rather than one per record:
-  // the catalog grows with the corpus, and rewriting it per record made a sync
-  // quadratic in catalog bytes. Each batch also flushes when the loop throws.
+  // One write of the catalog and of each touched index shard per batch rather than
+  // per record (`CHECKPOINT_MS`, `CHECKPOINT_REFS`): both grow with the corpus, and
+  // rewriting them per record made a sync quadratic in corpus size. Each batch also
+  // writes when the loop throws.
   const refs = selection.refs;
   let failed = state.failed ?? [];
   let index = 0;
@@ -396,9 +412,12 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
       options.onProgress?.({ index, total: refs.length, id: ref.reference, action: "failed", detail: message, ...details() });
     }
   };
-  for (let start = 0; start < refs.length && !report.interrupted && report.lowSpace === undefined; start += CATALOG_CHECKPOINT) {
+  let next = 0;
+  while (next < refs.length && !report.interrupted && report.lowSpace === undefined) {
+    const batchStart = now().getTime();
+    let handling = 0;
     await store.batchCatalog(async () => {
-      for (const ref of refs.slice(start, start + CATALOG_CHECKPOINT)) {
+      for (let taken = 0; next < refs.length && taken < CHECKPOINT_REFS; taken++) {
         if (options.signal?.aborted === true) {
           report.interrupted = true;
           return;
@@ -410,9 +429,14 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
           report.lowSpace = low;
           return;
         }
-        await handle(ref);
+        const began = now().getTime();
+        await handle(refs[next++] as DocRef);
+        handling += Math.max(0, now().getTime() - began);
+        if (now().getTime() - batchStart >= CHECKPOINT_MS) return;
       }
     });
+    // What the batch took beyond its refs is the writing of the index and catalog.
+    watch.indexMs += Math.max(0, now().getTime() - batchStart - handling);
   }
 
   // A run stopped early still records the validators of what it stored: every one

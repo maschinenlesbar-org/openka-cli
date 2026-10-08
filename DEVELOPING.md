@@ -334,7 +334,8 @@ What the library now computes that a `ka` action used to compute on its own:
   carries the first as `uncatalogued`, and `ka stats`/`ka verify` print a note. A
   sync killed before its catalog was saved used to leave its records in the first
   group for good, since every later run called them "unchanged"; `sync()` now
-  saves the catalog every `CATALOG_CHECKPOINT` refs, stops between refs on an
+  saves the catalog and the index postings every `CHECKPOINT_MS` (or `CHECKPOINT_REFS`
+  refs), each touched shard once per batch (issue #30), stops between refs on an
   `AbortSignal` (`ka sync`'s Ctrl-C), and indexes an unchanged record that has no
   row (`recatalogued` in the report).
 - **Who may write a corpus** — `FileStore.lock(purpose)` (`lib-store`) and

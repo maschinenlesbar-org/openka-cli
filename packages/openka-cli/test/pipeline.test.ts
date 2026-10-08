@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  CATALOG_CHECKPOINT,
+  CHECKPOINT_MS,
   SYNC_LIMIT_MIN,
   isoInstant,
   normalizeSyncWindow,
@@ -481,12 +481,16 @@ describe("sync pipeline", () => {
     strictEqual(store.batches, 1);
   });
 
-  it("saves the catalog every CATALOG_CHECKPOINT refs, so a killed run loses few rows", async () => {
+  it("saves the index and catalog every CHECKPOINT_MS, so a killed run loses little (issue #30)", async () => {
     const store = new MemoryStore();
     const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
-    const report = await sync({ source: new ManySource(CATALOG_CHECKPOINT + 2), store, engine: testEngine(transport) });
-    strictEqual(report.stored, CATALOG_CHECKPOINT + 2);
-    strictEqual(store.batches, 2);
+    // A clock that moves a third of a checkpoint each time it is read.
+    let clock = Date.parse("2026-10-09T00:00:00Z");
+    const now = (): Date => new Date((clock += CHECKPOINT_MS / 3));
+    const report = await sync({ source: new ManySource(4), store, engine: testEngine(transport), now });
+    strictEqual(report.stored, 4);
+    ok(store.batches > 1 && store.batches <= 4, String(store.batches));
+    ok(report.timing.indexMs >= 0);
   });
 
   // Findings 02#1 and 05#3 of the 2026-10-05 review: a run killed before its

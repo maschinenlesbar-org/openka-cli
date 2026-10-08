@@ -4,7 +4,7 @@
 
 import { CorpusLockedError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
-import type { IndexShard } from "./fts.js";
+import type { IndexShard, Posting } from "./fts.js";
 
 /**
  * The denormalised row the search and list commands read, so neither has to load
@@ -171,7 +171,20 @@ export interface IndexStore {
   saveShard(shard: string, data: IndexShard): void;
   /** Every index shard present, sorted. */
   shardNames(): string[];
+  /**
+   * Inside `batchCatalog`: keep a change to `shard`'s postings and apply it when the
+   * batch ends, with every other change to that shard, before the catalog is written.
+   * Returns false outside a batch, and the caller applies the change at once. Optional:
+   * a store without it applies every change at once (issue #30).
+   */
+  queuePostings?(shard: string, change: PostingChange): boolean;
 }
+
+/**
+ * A change to one shard's postings: take a record's postings out (of `tokens` when
+ * they are known, else of every token), or add the record's postings.
+ */
+export type PostingChange = { kind: "remove"; id: string; tokens?: readonly string[] } | { kind: "add"; id: string; postings: readonly Posting[] };
 
 export interface SourceStateStore {
   getSourceState(source: string): SourceState;

@@ -18,7 +18,7 @@ Everything is re-exported from the package root:
 
 ```
 SyncOptions, ProgressEvent, SyncReport, sync, isoInstant, SourceStatusRow, sourceStatus,
-CATALOG_CHECKPOINT, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, syncRefsProblem, isSelective, SyncWindow,
+CHECKPOINT_MS, CHECKPOINT_REFS, SYNC_LIMIT_MIN, normalizeSyncWindow, syncLimitProblem, syncPeriodProblem, syncRefsProblem, isSelective, SyncWindow,
 selectRefs, RefSelection, isComplete, noteOutcome, refIs, sameReference,
 syncSources, SyncSourcesOptions, SourceOutcome, planLanes, sourceListProblem,
 syncJobs, SyncJob, SyncJobsOptions, jobListProblem,
@@ -98,8 +98,12 @@ prints: each registry entry with its record count and last sync state.
 
 ## An interrupted run
 
-The catalog is saved every `CATALOG_CHECKPOINT` (25) refs, not once at the end, so a
-run killed outright loses the catalog rows of at most that many stored records.
+The index postings and the catalog are saved together every `CHECKPOINT_MS` (2 min),
+or every `CHECKPOINT_REFS` (250) refs if that comes first, and at the end. A run killed
+outright therefore loses the rows and postings of at most one batch, and the next sync
+catalogues those records again. Until 2026-10-09 the catalog was saved every 25 refs and
+the postings with every record (issue #30). `timing.indexMs` is the time spent writing
+them.
 `signal` (an `AbortSignal`) stops a run between two refs: the ref in hand is
 finished, the catalog saved, and the report says `interrupted: true`; the source's
 `last_success` is left as it was. A record that is unchanged but has no catalog row —
