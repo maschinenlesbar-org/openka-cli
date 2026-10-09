@@ -254,8 +254,10 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   failed record; `ERROR` for a failed job. With jsonl they go to stderr in place of the
   progress line. `--log-file` taps the run's logger (`Logger.tap`), so the file gets the
   events and every other record of the run as JSON Lines whatever the format, down to
-  the error `run()` ends a failed run with — but not the progress records, which are
-  written on a logger of their own: the events say more. A plan's job log is the text record of
+  the error `run()` ends a failed run with — but not the progress records nor the text
+  summary's warnings and errors (`printReport`), which are written to stderr on a logger
+  of their own: the events say more, and say each failure once. With jsonl the summary's
+  warnings and errors are left out altogether, for the same reason. A plan's job log is the text record of
   each line, `<ts> <LEVEL> [ka.sync] <job>: <message>`, whatever the format: it was
   already a timestamped row, and the level and topic are what it lacked.
 - **Left raw**: the redrawn progress line on a terminal, `ka config set`'s no-echo

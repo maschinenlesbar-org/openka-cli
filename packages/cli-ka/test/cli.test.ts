@@ -1716,6 +1716,37 @@ describe("ka", () => {
       }
     });
 
+    it("logs a failed Anfrage and a source warning once among the events: the text summary is stderr's, in text only (01-1)", async () => {
+      const transport = (): Transport =>
+        scriptedTransport([
+          { match: "pardok-wp19.xml", body: PARDOK },
+          { match: "S19-10004.pdf", status: 500 },
+          { match: "S19-10002.pdf", status: 404 },
+          { match: ".pdf", body: PDF },
+        ]).transport;
+      const plainAbout = (events: Event[]): Event[] => events.filter((event) => event.event === undefined && /1000[24]/.test(event.msg));
+      for (const format of ["jsonl", "text"]) {
+        const harness = cliHarness({ transport: transport() });
+        const log = join(harness.corpus, "..", `openka-once-${format}.jsonl`);
+        try {
+          strictEqual(await run(["--corpus", harness.corpus, "--max-retries", "0", "--log-format", format, "sync", "--source", "berlin", "--log-file", log], harness.deps), EXIT_OK, harness.stderr());
+          const file = parse(harness.files.get(log)?.toString("utf8") ?? "");
+          const failed = file.filter((event) => event.event === "record" && event.status === "failed");
+          deepStrictEqual(failed.map((event) => [event.level, event.id]), [["WARN", "19/10004"]]);
+          ok(file.some((event) => event.event === "warning" && /now answers 404/.test(event.msg)), format);
+          deepStrictEqual(plainAbout(file), [], `${format}: the file has the events only`);
+          if (format === "jsonl") deepStrictEqual(plainAbout(parse(harness.err.join("\n"))), [], "jsonl stderr: the events only");
+          else {
+            // The text summary for people stays on stderr.
+            match(harness.stderr(), /^WARN  \[ka\.sync\] 19\/10002: .*now answers 404/m);
+            match(harness.stderr(), /^ERROR \[ka\.sync\] 19\/10004: HTTP 500/m);
+          }
+        } finally {
+          harness.cleanup();
+        }
+      }
+    });
+
     it("prints \"cannot write the (event) log\" above the progress line on a terminal, not glued to it (04-1)", async () => {
       for (const [flags, said] of [
         [(dir: string) => ["--source", "berlin", "--log-file", join(dir, "ro", "ev.log")], "cannot write the event log"],

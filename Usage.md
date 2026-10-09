@@ -287,7 +287,11 @@ failed, an `INFO` when the run was interrupted); the run with `report`, which is
 failed job. Every other diagnostic of the run — a source's request floor, a volume
 warning, the error a failed run ends with — is a record of its own area (`ka.http`,
 `ka.store`, `ka.cli`, …) without an `event`, in the same stream and in the `--log-file`
-too, so both are JSON throughout. Until 2026-10-09 the events had no `level`, `topic` or `msg`,
+too, so both are JSON throughout. The text summary a run ends with on stderr — each
+warning and error of the report once more, for people — is left out with `--log-format
+jsonl` and never reaches the `--log-file`: the events already say each of them (a
+failed Anfrage as its `record`, a warning as a `warning`, a failed job as `failed`), so
+a failure is one record at one level wherever the events are read. Until 2026-10-09 the events had no `level`, `topic` or `msg`,
 their `ts` had no milliseconds, and the other lines were wrapped into `note` events.
 `--json` and the summary on stdout are unchanged.
 

@@ -191,10 +191,15 @@ export function registerSync(program: Command, deps: CliDeps): void {
         // The progress line is the text log; the events on stderr replace it (jsonl), a
         // log file does not. Its records go to stderr only, on a logger of their own
         // that the file does not tap: the file has the events, which say more.
-        const progress =
-          ctx.global.quiet === true || jsonl
-            ? undefined
-            : new SyncProgress(io, ctx.deps.now, createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now }));
+        const stderrOnly = (): Logger => createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now });
+        const progress = ctx.global.quiet === true || jsonl ? undefined : new SyncProgress(io, ctx.deps.now, stderrOnly());
+        // The text summary at the end repeats the run's warnings and errors for people.
+        // The events carry each of them already (a failed Anfrage's `record`, a
+        // `warning`, a job's `failed`, the `report`), so with the events on stderr
+        // (jsonl) it is left out, and the --log-file does not get it either: like the
+        // progress records, it goes to stderr on a logger the file does not tap. A
+        // failure is then one record at one level wherever the events are read.
+        const summary = jsonl ? undefined : stderrOnly();
         say = (level, text) => {
           if (progress === undefined) log.log(level, "sync", text);
           else progress.above(() => log.log(level, "sync", text));
@@ -347,7 +352,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           const all = jobs.map((job) => run.get(job.label) ?? { job: job.label, source: job.spec.source, skipped: true, reason: "done-earlier" });
           printJson(ctx, several ? all.map((entry) => ("status" in entry ? outcomeJson(entry) : entry)) : done[0]?.report);
         } else {
-          for (const outcome of done) printReport(io, log, outcome.job, outcome.report, several ? `${outcome.job}: ` : "");
+          for (const outcome of done) printReport(io, summary, outcome.job, outcome.report, several ? `${outcome.job}: ` : "");
           if (queue !== undefined) printSummary(io, jobs, new Map(outcomes.map((outcome) => [outcome.job, outcome])));
         }
         if (round !== undefined && round.closeIfComplete(jobs)) {
@@ -360,7 +365,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           log.warn("sync", `${afterFailure.length} job(s) not started, since a job failed and the plan sets continue_on_error = false.`);
         }
         for (const outcome of failed.slice(1)) {
-          log.error("sync", `${outcome.job}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
+          summary?.error("sync", `${outcome.job}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
         }
         if (stopped !== undefined) throw stopped;
         const low = done.filter((outcome) => outcome.report.lowSpace !== undefined);
@@ -372,7 +377,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           );
         }
         if (failed[0] !== undefined) {
-          if (several) log.error("sync", `${failed[0].job} failed:`);
+          if (several) summary?.error("sync", `${failed[0].job} failed:`);
           throw failed[0].error;
         }
         const empty = done.filter((outcome) => outcome.report.errors.length > 0 && outcome.report.stored === 0).map((outcome) => outcome.job);
@@ -550,8 +555,11 @@ function outcomeJson(outcome: SourceOutcome): unknown {
   return { job: outcome.job, source: outcome.source, error: errorMessage(outcome.error) };
 }
 
-/** The text summary of one report, named by its job; `prefix` names it again when several ran. */
-function printReport(io: CliIO, log: Logger, label: string, report: SyncReport, prefix: string): void {
+/**
+ * The text summary of one report, named by its job; `prefix` names it again when several
+ * ran. Its warnings and errors go to `log`, which is unset when the events say them.
+ */
+function printReport(io: CliIO, log: Logger | undefined, label: string, report: SyncReport, prefix: string): void {
   if (report.upstreamUnchanged) {
     io.out(`${label}: upstream reports no change since the last complete sync of this window — nothing to do (--force rediscovers).`);
     return;
@@ -560,7 +568,7 @@ function printReport(io: CliIO, log: Logger, label: string, report: SyncReport, 
     // Not "0 discovered": nothing was looked at, and a cron job reading this must not
     // take it for a quiet day.
     io.out(`${label}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
-    for (const warning of report.warnings) log.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+    for (const warning of report.warnings) log?.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
     return;
   }
   io.out(
@@ -579,9 +587,9 @@ function printReport(io: CliIO, log: Logger, label: string, report: SyncReport, 
         "(left by an interrupted run) and are searchable again.",
     );
   }
-  for (const warning of report.warnings) log.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
-  for (const error of report.errors.slice(0, 10)) log.error("sync", `${prefix}${truncate(error, MESSAGE_WIDTH)}`);
-  if (report.errors.length > 10) log.error("sync", `${prefix}… and ${report.errors.length - 10} more errors`);
+  for (const warning of report.warnings) log?.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+  for (const error of report.errors.slice(0, 10)) log?.error("sync", `${prefix}${truncate(error, MESSAGE_WIDTH)}`);
+  if (report.errors.length > 10) log?.error("sync", `${prefix}… and ${report.errors.length - 10} more errors`);
 }
 
 /**
