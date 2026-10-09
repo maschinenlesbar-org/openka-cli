@@ -41,6 +41,18 @@ literal, because the line reads no manifest at run time — which is what `ka --
 lifecycle script (`tools/version.mjs`) rewrites and stages it during `npm version`,
 and a test in `lib-repro` fails if the two ever disagree.
 
+**A release restamps the golden fixtures.** Every golden record's `extractor_version` is
+`pkg:<package version>+extract:<digest>`, in the `meta.json` and `record.json` of each
+fixture (48 files at 0.9.0), and the tests `release.yml` runs compare it with the new
+package version: left at `pkg:<old>+extract:`, the release fails there. The version commit
+must therefore carry `pkg:<old>+extract:` -> `pkg:<new>+extract:` in all of them — the 0.8.0
+commit did, and 0.9.0 forgot and needed a `chore(fixtures)` follow-up. `tools/version.mjs`
+does it in the same run that rewrites `PACKAGE_VERSION` and stages every file it touched
+(`restampFixtures`, tested in `lib-repro`), so `npm version` is enough; the script's output
+names the count. It restamps from the `PACKAGE_VERSION` it replaces, and leaves a record
+pinned with `OPENKA_EXTRACTOR_VERSION` alone. If the digest part changed too, that is
+`npm run stamp` and a re-freeze, as before.
+
 **The README npm shows is the repository's** (prepack swaps it in), so a relative link
 in it must point to a document the tarball carries — `LICENSE`, `LICENSING.md`,
 `CONTRIBUTING.md`, `DATA_LICENSE.md`, `CONCEPT.md`; anything else (DEVELOPING.md, a
