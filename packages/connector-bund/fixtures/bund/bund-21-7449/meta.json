@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
+  "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
   "human_verified": false,
   "id": "bund-21-7449",
   "note": "Bundestag: question and answer are separate Drucksachen; the questions come from the question paper, the answers from the answer paper",

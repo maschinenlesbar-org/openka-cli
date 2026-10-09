@@ -15,7 +15,7 @@
       "answered_by.ministry",
       "dates.answered"
     ],
-    "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
+    "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
     "input_sha256": "df1cf65c008bf7bc81628768bebb70af4762d001c4c147779d60006907356f4c",
     "model_artifacts": [],
     "parse_complete": false,

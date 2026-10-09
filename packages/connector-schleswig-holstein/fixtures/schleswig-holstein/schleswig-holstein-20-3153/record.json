@@ -16,7 +16,7 @@
     "abstained_fields": [
       "dates.submitted"
     ],
-    "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
+    "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
     "input_sha256": "81ebcfb1cc55ca11c8209e88de3cc569c4007e23720cb258f4f3364b283b71d2",
     "model_artifacts": [],
     "parse_complete": false,

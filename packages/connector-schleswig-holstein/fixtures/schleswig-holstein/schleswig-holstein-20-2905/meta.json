@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
+  "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
   "human_verified": false,
   "id": "schleswig-holstein-20-2905",
   "note": "Schleswig-Holstein: six real questions followed by a 160-row numbered table; qa abstains rather than publishing table rows as questions",

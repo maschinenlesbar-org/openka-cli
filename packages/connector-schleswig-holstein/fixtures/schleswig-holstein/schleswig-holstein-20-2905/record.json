@@ -17,7 +17,7 @@
       "dates.submitted",
       "qa"
     ],
-    "extractor_version": "pkg:0.8.0+extract:92e420073a5d",
+    "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
     "input_sha256": "71f7105a24fc2012a8c3c31f9b7c95acabfac3a63bfff39ff3db6fa1067724f4",
     "model_artifacts": [],
     "parse_complete": false,
