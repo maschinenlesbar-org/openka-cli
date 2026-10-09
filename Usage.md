@@ -34,8 +34,9 @@ the program and the area the record comes from. The default text form:
 `--log-format jsonl` writes the same records one JSON object per line —
 `{"ts":"…","level":"ERROR","topic":"ka.cli","msg":"unknown option '--sorce'"}` — and
 `ka sync`'s events add their fields after `msg` (below). The areas of `ka`: `cli` (usage
-errors, commander's messages, unexpected errors), `http` (an upstream's error answer or
-a dropped connection, a source's request floor), `store` (the corpus: missing, locked,
+errors, commander's messages, unexpected errors), `http` (a dropped connection, a
+retry, a source's request floor), `api` (everything the server sent: its error answers and
+answers that could not be read), `store` (the corpus: missing, locked,
 the volume it is on, catalog gaps, macOS files), `sync` (progress off a terminal, the
 events, warnings and errors of a run), and every other command under its own name —
 `search`, `export`, `review`, `verify`, `reextract`, `rm`, `status`, `sources`, `stats`,
@@ -43,7 +44,7 @@ events, warnings and errors of a run), and every other command under its own nam
 `ERROR` record (commander's help after a usage error follows as one `INFO` record per
 line, and a command run without its subcommand, bare `ka` or `ka config`, logs
 "missing command: …" first): under `cli` for a usage error, `store` for a corpus problem, `http` for
-an upstream's error answer or a dropped connection, `api` for an answer that could not be read (bad JSON, the wrong shape), and otherwise under the command. `ka-factory` writes the same records under
+a dropped connection, `api` for anything the server sent (its error answer, an answer that could not be read: bad JSON, the wrong shape), and otherwise under the command. `ka-factory` writes the same records under
 its own name: `ka-factory.cli`, `ka-factory.goldens`, `ka-factory.health`,
 `ka-factory.drift`, `ka-factory.lint`, `ka-factory.answers`, `ka-factory.embed`.
 

@@ -147,15 +147,16 @@ export function trackCommandArea(program: Command): () => string | undefined {
 
 /**
  * Which area an error that ends the run is logged under: a usage error is the
- * command line's (`cli`), a corpus problem the store's, an upstream's error answer or a
- * dropped connection `http`, an answer that could not be read (bad JSON, wrong shape)
- * `api`; anything else belongs to the command that ran.
+ * command line's (`cli`), a corpus problem the store's, dropped connection `http`,
+ * anything the server sent (its error answer, an answer that could not be read: bad JSON,
+ * wrong shape) `api`; anything else belongs to the command that ran.
  */
 export function errorArea(err: unknown, commandArea: string | undefined): string {
   if (err instanceof UsageError) return "cli";
   if (err instanceof StoreError) return "store";
-  if (err instanceof OpenKaApiError || err instanceof NetworkError) return "http";
-  if (err instanceof ParseError) return "api";
+  if (err instanceof NetworkError) return "http";
+  // `api` is everything the server sent: its error answers and its malformed ones.
+  if (err instanceof OpenKaApiError || err instanceof ParseError) return "api";
   return commandArea ?? "cli";
 }
 

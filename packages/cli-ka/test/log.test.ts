@@ -12,7 +12,7 @@ import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import type { SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, errorArea, run } from "../src/run.js";
-import { OpenKaApiError, ParseError } from "@maschinenlesbar.org/openka-lib-errors";
+import { NetworkError, OpenKaApiError, ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
 import { MAX_RECORD_MESSAGE, createLogger, escapeForRecord, formatLogRecord, installWarningLog, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
@@ -443,7 +443,8 @@ describe("the area an ending error is logged under", () => {
     strictEqual(errorArea(new ParseError("XML fragment contains no element"), undefined), "api");
   });
 
-  it("leaves an error answer under http", () => {
-    strictEqual(errorArea(new OpenKaApiError({ status: 500, url: "http://x/", method: "GET", body: "" }), "sync"), "http");
+  it("puts an error answer under api, and a dropped connection under http", () => {
+    strictEqual(errorArea(new OpenKaApiError({ status: 500, url: "http://x/", method: "GET", body: "" }), "sync"), "api");
+    strictEqual(errorArea(new NetworkError("socket hang up"), "sync"), "http");
   });
 });
