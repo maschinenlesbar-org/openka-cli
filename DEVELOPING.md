@@ -271,7 +271,10 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
 
 Tests read stderr through `untimed()` (`test/harness.ts`, applied by
 `CliHarness.stderr()`), which drops the leading timestamp: `ERROR [ka.store] No corpus
-at …`. The format itself is `test/log.test.ts`'s.
+at …`. The format itself is `test/log.test.ts`'s, and the checks every repository of the
+workspace shares are `packages/cli-ka/test/conformance-p23-log-format.test.ts` (P23): its
+body is the other repositories', with one switch of its own (`BASE_URL = false`: `ka` has
+no `--base-url`), and its adapter counts the Bundestag (`sources count --source bund`).
 
 ## The library validates its own inputs
 
