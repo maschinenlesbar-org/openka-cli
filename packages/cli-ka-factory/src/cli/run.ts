@@ -11,6 +11,7 @@ import {
   configureTree,
   defaultDeps,
   errorArea,
+  followParsedLogFormat,
   logOf,
   trackCommandArea,
   withLogger,
@@ -24,6 +25,7 @@ export const FACTORY_LOG_PROGRAM = "ka-factory";
 export async function runFactory(argv: string[], deps: CliDeps = defaultDeps): Promise<number> {
   deps = withLogger(deps, argv, FACTORY_LOG_PROGRAM);
   const program = buildFactoryProgram(deps);
+  followParsedLogFormat(program, deps, argv);
   configureTree(program, deps);
   const commandArea = trackCommandArea(program);
   try {

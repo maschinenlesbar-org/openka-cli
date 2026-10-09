@@ -126,7 +126,12 @@ export function formatLogRecord(record: LogRecord, format: LogFormat): string {
 }
 
 export interface Logger {
-  readonly format: LogFormat;
+  /**
+   * The format records are written in. Mutable for one reason: it is read from argv
+   * before commander parses (for commander's own errors), then set again from what
+   * commander parsed, before the action runs (`followParsedLogFormat`).
+   */
+  format: LogFormat;
   /** The first part of every topic: `ka`, `ka-factory`. */
   readonly program: string;
   error(area: string, msg: string, fields?: Record<string, unknown>): void;
@@ -170,11 +175,11 @@ export function createLogger(options: { format: LogFormat; write: (line: string)
     ...(fields === undefined ? {} : { fields }),
   });
   const write: Logger["write"] = (made) => {
-    options.write(formatLogRecord(made, options.format));
+    options.write(formatLogRecord(made, logger.format));
     for (const listener of listeners) listener(made);
   };
   const log: Logger["log"] = (level, area, msg, fields) => write(record(level, area, msg, fields));
-  return {
+  const logger: Logger = {
     format: options.format,
     program,
     record,
@@ -185,6 +190,7 @@ export function createLogger(options: { format: LogFormat; write: (line: string)
     warn: (area, msg, fields) => log("WARN", area, msg, fields),
     info: (area, msg, fields) => log("INFO", area, msg, fields),
   };
+  return logger;
 }
 
 /** Why `value` is not a log format, or undefined. */
@@ -195,15 +201,24 @@ export function logFormatProblem(value: string): string | undefined {
 /**
  * The `--log-format` in `argv`, read before commander parses it: commander's own
  * usage errors are logged too, and they happen while parsing. A missing or unknown
- * value gives the default here; commander then reports an unknown one.
+ * value gives the default here; commander then reports an unknown one; the last one
+ * counts, as in commander. This scan is only for the records of a parse error: once
+ * commander has parsed argv, its value is the format (`followParsedLogFormat`), so
+ * `--user-agent --log-format=jsonl` (a User-Agent) logs text, and `ka sync` draws its
+ * progress line. `valueOptions` names the program's options that take a value
+ * (`--user-agent`): the token after one is its value, never an option, as commander
+ * reads it, so `--user-agent --log-format jsonl` and `--user-agent -- --log-format jsonl`
+ * agree with commander in a parse error too. A subcommand's value option does not
+ * count: commander takes the program's own options out of argv first.
  */
-export function logFormatFromArgv(argv: readonly string[]): LogFormat {
+export function logFormatFromArgv(argv: readonly string[], valueOptions: ReadonlySet<string> = new Set()): LogFormat {
   let format: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i] as string;
     if (token === "--") break;
-    if (token === "--log-format") format = argv[i + 1];
+    if (token === "--log-format") format = argv[++i];
     else if (token.startsWith("--log-format=")) format = token.slice("--log-format=".length);
+    else if (valueOptions.has(token)) i++;
   }
   return format !== undefined && logFormatProblem(format) === undefined ? (format as LogFormat) : DEFAULT_LOG_FORMAT;
 }

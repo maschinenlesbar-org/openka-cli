@@ -229,7 +229,12 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   shows after one an `INFO` record per line, in the chosen format (`writeCommanderErr`).
   A command group run without its subcommand (bare `ka`, `ka config`, bare `ka-factory`)
   logs an `ERROR` "missing command: `ka config <subcommand>`" before that help, so every
-  failed run has an `ERROR` record. The
+  failed run has an `ERROR` record. That scan of argv skips the value of the program's
+  own value options (`--user-agent`), and it serves only the records of a parse error:
+  once commander has parsed argv, a `preAction` hook sets the logger's format from
+  commander's value (`followParsedLogFormat`, shared with `ka-factory`). So
+  `--user-agent --log-format=jsonl` sends that User-Agent and logs text — and `ka sync`
+  draws its progress line rather than writing events. The
   option is the program's, and commander takes a program option after the subcommand
   too, so `ka sync --log-format jsonl` still works (it was a sync option until
   2026-10-09).

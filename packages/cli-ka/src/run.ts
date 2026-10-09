@@ -6,7 +6,7 @@ import { CommanderError, type Command } from "commander";
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { buildProgram, defaultDeps } from "./program.js";
 import { InterruptedRunError, logOf, type CliDeps } from "./io.js";
-import { LOG_PROGRAM, createLogger, logFormatFromArgv } from "./log.js";
+import { DEFAULT_LOG_FORMAT, LOG_PROGRAM, createLogger, logFormatFromArgv, type LogFormat } from "./log.js";
 import { VersionOnlyError } from "@maschinenlesbar.org/openka-lib-verify";
 
 /**
@@ -92,6 +92,38 @@ export function withLogger(deps: CliDeps, argv: readonly string[], program: stri
 }
 
 /**
+ * The names (long and short) of the program's own options that require a value
+ * (`--user-agent`). Only the program's: commander takes them out of argv wherever they
+ * stand, before a subcommand sees the rest.
+ */
+function valueOptionsOf(program: Command): Set<string> {
+  const names = new Set<string>();
+  for (const option of program.options) {
+    if (!option.required) continue;
+    if (option.long !== undefined) names.add(option.long);
+    if (option.short !== undefined) names.add(option.short);
+  }
+  return names;
+}
+
+/**
+ * One source for the log format: for the records of a parse error, the scan of argv,
+ * knowing which of the program's options take a value; once commander has parsed argv,
+ * its value (a `preAction` hook, which runs before every other one, so before an action
+ * reads `log.format`). An option's value can look like `--log-format`. Shared with
+ * `ka-factory`.
+ */
+export function followParsedLogFormat(program: Command, deps: CliDeps, argv: readonly string[]): void {
+  const log = deps.log;
+  if (log === undefined) return;
+  log.format = logFormatFromArgv(argv, valueOptionsOf(program));
+  program.hook("preAction", (_program, actionCommand) => {
+    const format = (actionCommand.optsWithGlobals() as { logFormat?: LogFormat }).logFormat;
+    log.format = format ?? DEFAULT_LOG_FORMAT;
+  });
+}
+
+/**
  * The area the command that runs logs under: its top-level name (`sync`, `sources`,
  * `goldens`), known once commander has picked it. Read by `errorArea`.
  */
@@ -120,6 +152,7 @@ export function errorArea(err: unknown, commandArea: string | undefined): string
 export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<number> {
   deps = withLogger(deps, argv);
   const program = buildProgram(deps);
+  followParsedLogFormat(program, deps, argv);
   configureTree(program, deps);
   const commandArea = trackCommandArea(program);
 

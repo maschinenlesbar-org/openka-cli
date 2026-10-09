@@ -120,6 +120,14 @@ describe("the log record", () => {
     strictEqual(logFormatProblem("xml"), "Expected one of text, jsonl.");
   });
 
+  it("skips the value of the program's value options in the scan, as commander does (#5)", () => {
+    const values = new Set(["--user-agent", "--corpus"]);
+    strictEqual(logFormatFromArgv(["--user-agent", "--log-format=jsonl", "stats"], values), "text");
+    strictEqual(logFormatFromArgv(["--user-agent", "--log-format", "jsonl", "stats"], values), "text");
+    strictEqual(logFormatFromArgv(["--user-agent", "--", "--log-format", "jsonl", "stats"], values), "jsonl");
+    strictEqual(logFormatFromArgv(["--log-format", "jsonl", "--log-format", "text"], values), "text", "the last one counts, as in commander");
+  });
+
   it("hands every record written after a tap to the listener too", () => {
     const lines: string[] = [];
     const copies: LogRecord[] = [];
@@ -198,6 +206,30 @@ describe("ka's stderr", () => {
       } finally {
         harness.cleanup();
       }
+    }
+  });
+
+  it("is in the format commander parsed, also where an option's value looks like --log-format (#5)", async () => {
+    const harness = cliHarness();
+    try {
+      const missing = join(harness.corpus, "missing");
+      // commander takes "--log-format=jsonl" as the User-Agent: the log stays text.
+      strictEqual(await run(["--user-agent", "--log-format=jsonl", "--corpus", missing, "stats"], harness.deps), 3);
+      match(harness.err[0] ?? "", /^2026-01-02T03:04:05\.000Z ERROR \[ka\.store\] No corpus at /);
+      // commander takes "--" as the User-Agent and then parses --log-format jsonl.
+      harness.err.length = 0;
+      strictEqual(await run(["--user-agent", "--", "--log-format", "jsonl", "--corpus", missing, "stats"], harness.deps), 3);
+      deepStrictEqual(records(harness.err).map((entry) => [entry["level"], entry["topic"]]), [["ERROR", "ka.store"]]);
+      // A parse error after a User-Agent that looks like the flag: text, as commander read it.
+      harness.err.length = 0;
+      strictEqual(await run(["--user-agent", "--log-format", "jsonl", "stats"], harness.deps), EXIT_USAGE);
+      match(harness.err[0] ?? "", /^2026-01-02T03:04:05\.000Z ERROR \[ka\.cli\] unknown command 'jsonl'/);
+      // ka-factory follows the same rule.
+      harness.err.length = 0;
+      strictEqual(await runFactory(["--user-agent", "--log-format=jsonl", "goldens", "list", "--dir", missing], harness.deps), EXIT_ERROR);
+      match(harness.err[0] ?? "", /^2026-01-02T03:04:05\.000Z ERROR \[ka-factory\.goldens\] No goldens in /);
+    } finally {
+      harness.cleanup();
     }
   });
 
