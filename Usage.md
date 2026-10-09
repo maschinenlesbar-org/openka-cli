@@ -54,6 +54,9 @@ controls as `\uXXXX` — in jsonl in the event fields too — so nothing can spl
 forge a second one or steer the terminal. A message longer than 4,000 characters is cut
 and ends in `… (N more characters)`.
 
+Node's own process warnings (with `NODE_TLS_REJECT_UNAUTHORIZED=0`, say) are `WARN`
+records of `ka.cli` too, `(node) Warning: …`.
+
 Left as they are: the progress line `ka sync` redraws in place on a terminal (it is
 redrawn, not added to), the prompt of `ka config set`, and `--help`/`--version`, which
 go to stdout.

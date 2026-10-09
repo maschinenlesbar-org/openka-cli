@@ -13,7 +13,7 @@ import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import type { SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, run } from "../src/run.js";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
-import { MAX_RECORD_MESSAGE, createLogger, escapeForRecord, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
+import { MAX_RECORD_MESSAGE, createLogger, escapeForRecord, formatLogRecord, installWarningLog, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
 import { cutText, truncate } from "../src/text.js";
 import { JobLogs } from "../src/commands/sync-jobs.js";
@@ -277,6 +277,21 @@ describe("ka's stderr", () => {
     streams.stdout.emit("error", Object.assign(new Error("EIO"), { code: "EIO" }));
     deepStrictEqual(exits, [1]);
     deepStrictEqual(records(lines), [{ ts: TS, level: "ERROR", topic: "ka.cli", msg: "Output error: EIO" }]);
+  });
+
+  it("logs Node's process warnings as WARN records of <program>.cli, Node's own line removed (#12)", () => {
+    for (const program of ["ka", "ka-factory"]) {
+      const target = new EventEmitter();
+      const nodeOwn: string[] = [];
+      target.on("warning", (w: Error) => nodeOwn.push(w.message));
+      const lines: string[] = [];
+      installWarningLog(target, createLogger({ format: "jsonl", write: (line) => lines.push(line), now: () => new Date(TS), program }));
+      const warning = new Error("Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.");
+      warning.name = "Warning";
+      target.emit("warning", warning);
+      deepStrictEqual(nodeOwn, [], "Node's default listener is gone");
+      deepStrictEqual(records(lines), [{ ts: TS, level: "WARN", topic: `${program}.cli`, msg: `(node) Warning: ${warning.message}` }]);
+    }
   });
 
   it("falls back to text records through io.err for deps without a logger", () => {

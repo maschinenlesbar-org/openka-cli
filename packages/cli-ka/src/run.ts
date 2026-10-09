@@ -6,7 +6,7 @@ import { CommanderError, type Command } from "commander";
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { buildProgram, defaultDeps } from "./program.js";
 import { InterruptedRunError, logOf, type CliDeps } from "./io.js";
-import { DEFAULT_LOG_FORMAT, LOG_PROGRAM, createLogger, logFormatFromArgv, type LogFormat } from "./log.js";
+import { DEFAULT_LOG_FORMAT, LOG_PROGRAM, createLogger, logFormatFromArgv, type LogFormat, type Logger } from "./log.js";
 import { VersionOnlyError } from "@maschinenlesbar.org/openka-lib-verify";
 
 /**
@@ -81,6 +81,14 @@ function writeCommanderErr(command: Command, deps: CliDeps, state: { errorLogged
     log.error("cli", `missing command: \`${commandPath(command)} <subcommand>\``);
   }
   for (const line of text.split("\n")) if (line.trim() !== "") log.info("cli", line.trimEnd());
+}
+
+/**
+ * The logger for what happens outside `run()` — Node's process warnings, a stdout write
+ * error — in the format argv asks for, on the real stderr. The bin shims build it.
+ */
+export function processLogger(argv: readonly string[], program: string = LOG_PROGRAM): Logger {
+  return createLogger({ format: logFormatFromArgv(argv), write: (line) => process.stderr.write(line + "\n"), program });
 }
 
 /**

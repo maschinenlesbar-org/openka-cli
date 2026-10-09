@@ -260,7 +260,11 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
 - **Left raw**: the redrawn progress line on a terminal, `ka config set`'s no-echo
   prompt (`readSecretFrom`), and `--help`/`--version`, which commander writes to stdout.
   `handleOutputErrors`' "Output error" is a record too, in the format of the process's
-  argv, since it fires outside `run()`.
+  argv, since it fires outside `run()`; so are Node's own process warnings (`(node:PID)
+  Warning: …`, e.g. with `NODE_TLS_REJECT_UNAUTHORIZED=0`), a `WARN` record of
+  `<program>.cli`, `(node) <name>: <message>`: both bin shims build `processLogger(argv)`
+  and hand it to `installWarningLog`, which removes Node's default listener (checked on
+  Node 22, 24 and 26), and to `handleOutputErrors`.
 
 Tests read stderr through `untimed()` (`test/harness.ts`, applied by
 `CliHarness.stderr()`), which drops the leading timestamp: `ERROR [ka.store] No corpus

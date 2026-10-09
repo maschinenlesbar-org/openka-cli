@@ -2,8 +2,14 @@
 // The `ka` bin shim: argv in, exit code out. All the logic lives in run().
 
 import { handleOutputErrors } from "./io.js";
-import { run } from "./run.js";
+import { installWarningLog } from "./log.js";
+import { processLogger, run } from "./run.js";
 
-// A closed pipe (`ka export | head`) is ordinary use, not a crash.
-handleOutputErrors();
-process.exitCode = await run(process.argv.slice(2));
+// What happens outside run() is logged too, in the format argv asks for: Node's own
+// process warnings, and an output error. A closed pipe (`ka export | head`) is ordinary
+// use, not a crash.
+const argv = process.argv.slice(2);
+const log = processLogger(argv);
+installWarningLog(process, log);
+handleOutputErrors(process, undefined, log);
+process.exitCode = await run(argv);
