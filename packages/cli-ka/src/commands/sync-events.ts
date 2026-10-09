@@ -33,6 +33,11 @@ export class SyncEvents {
     private readonly log: Logger,
     /** Whether the events go to stderr (`--log-format jsonl`); a log file gets them either way. */
     private readonly toStderr: boolean,
+    /**
+     * Where "cannot write the event log" goes: on a terminal above the redrawn progress
+     * line (`SyncProgress.above`), not glued to it. Unset, the run's logger.
+     */
+    private readonly warn: (msg: string) => void = (msg) => log.warn("sync", msg),
   ) {}
 
   /**
@@ -58,7 +63,7 @@ export class SyncEvents {
     } catch (err) {
       // A log that cannot be written is said once; the sync goes on without it.
       this.broken = true;
-      this.log.warn("sync", `cannot write the event log ${this.file}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
+      this.warn(`cannot write the event log ${this.file}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
     }
   }
 

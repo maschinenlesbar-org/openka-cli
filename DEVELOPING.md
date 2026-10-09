@@ -245,8 +245,9 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   so this adds no edge to the guardrail.
 - **`ka sync`** (`progress.ts`, `commands/sync-events.ts`, `commands/sync-jobs.ts`): on a
   terminal the progress line is redrawn in place and is not a record; a record that must
-  stay (a failed Anfrage, an interrupt) is printed above it and the line drawn again
-  below (`SyncProgress.above`). Off a terminal the progress lines are `INFO` records of
+  stay (a failed Anfrage, an interrupt, "cannot write the event log" or a job's log) is
+  printed above it and the line drawn again below (`SyncProgress.above`; `SyncEvents` and
+  `JobLogs` take that writer for their warning). Off a terminal the progress lines are `INFO` records of
   `ka.sync`, a failed Anfrage a `WARN`. The events (issue #10) are records of `ka.sync`
   with `event`, `job`, `source` and the event's fields after `msg` — `INFO` for start,
   discovered, a stored or unchanged record, done and report; `WARN` for a warning and a

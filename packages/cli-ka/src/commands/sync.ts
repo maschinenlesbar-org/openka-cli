@@ -124,7 +124,10 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const log = logOf(ctx.deps);
         ctx.deps = { ...ctx.deps, log };
         const jsonl = log.format === "jsonl";
-        const events = new SyncEvents(io, log, jsonl);
+        // A record that must stay while the progress line is drawn goes above it; `say`
+        // takes the line into account once there is one (below).
+        let say = (level: "WARN" | "INFO", text: string): void => log.log(level, "sync", text);
+        const events = new SyncEvents(io, log, jsonl, (text) => say("WARN", text));
         const logFile = ctx.opts["logFile"] as string | undefined;
         if (logFile !== undefined) events.toFile(logFile);
         const selection = selectJobs(ctx);
@@ -192,11 +195,11 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ctx.global.quiet === true || jsonl
             ? undefined
             : new SyncProgress(io, ctx.deps.now, createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now }));
-        const say = (level: "WARN" | "INFO", text: string): void => {
+        say = (level, text) => {
           if (progress === undefined) log.log(level, "sync", text);
           else progress.above(() => log.log(level, "sync", text));
         };
-        const logs = new JobLogs(io, log, jobs);
+        const logs = new JobLogs(io, log, jobs, (text) => say("WARN", text));
         const sourceOf = (label: string): string => jobs.find((job) => job.label === label)?.spec.source ?? label;
 
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one

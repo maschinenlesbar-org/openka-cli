@@ -1716,6 +1716,39 @@ describe("ka", () => {
       }
     });
 
+    it("prints \"cannot write the (event) log\" above the progress line on a terminal, not glued to it (04-1)", async () => {
+      for (const [flags, said] of [
+        [(dir: string) => ["--source", "berlin", "--log-file", join(dir, "ro", "ev.log")], "cannot write the event log"],
+        [(dir: string) => ["--plan", join(dir, "jobs.toml")], "cannot write the log"],
+      ] as const) {
+        const harness = cliHarness({ transport: berlinTransport().transport });
+        const dir = mkdtempSync(join(tmpdir(), "openka-tty-"));
+        try {
+          writeFileSync(join(dir, "jobs.toml"), '[[job]]\nsource = "berlin"\nlog = "ro/berlin.log"\n');
+          // One stream, as a terminal shows it: records end in a newline, the line is redrawn.
+          const screen: string[] = [];
+          Object.assign(harness.deps.io, {
+            errIsTerminal: true,
+            errPartial: (text: string) => screen.push(text),
+            err: (text: string) => screen.push(text + "\n"),
+            appendFile: (path: string) => {
+              if (path.includes(`${join(dir, "ro")}`)) throw new Error("EACCES: permission denied");
+            },
+          });
+          strictEqual(await run(["--corpus", harness.corpus, "sync", ...flags(dir)], harness.deps), EXIT_OK, screen.join(""));
+          const all = screen.join("");
+          const at = all.indexOf(`WARN  [ka.sync] ${said}`);
+          ok(at > 0, all);
+          // The record starts a line: after a newline or after the line was cleared, never after drawn text.
+          const before = all.slice(0, at - "2026-01-02T03:04:05.000Z ".length);
+          ok(before.endsWith("\n") || before.endsWith("\r\u001b[K"), JSON.stringify(before.slice(-40)));
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+          harness.cleanup();
+        }
+      }
+    });
+
     it("writes the sync's other diagnostics as records of their own area, so the stream stays JSON", async () => {
       const harness = cliHarness({ transport: scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]).transport });
       const log = join(harness.corpus, "..", "openka-notes.jsonl");

@@ -146,6 +146,11 @@ export class JobLogs {
     private readonly io: CliIO,
     private readonly log: Logger,
     jobs: readonly CliJob[],
+    /**
+     * Where "cannot write the log" goes: on a terminal above the redrawn progress line
+     * (`SyncProgress.above`), not glued to it. Unset, the run's logger.
+     */
+    private readonly warn: (msg: string) => void = (msg) => log.warn("sync", msg),
   ) {
     for (const job of jobs) if (job.log !== undefined) this.paths.set(job.label, job.log);
   }
@@ -157,7 +162,7 @@ export class JobLogs {
       this.io.appendFile(path, formatLogRecord(this.log.record(level, "sync", `${label}: ${text}`), "text") + "\n");
     } catch (err) {
       this.broken.add(path);
-      this.log.warn("sync", `cannot write the log ${path}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
+      this.warn(`cannot write the log ${path}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
     }
   }
 
