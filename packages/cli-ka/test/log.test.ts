@@ -13,7 +13,7 @@ import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import type { SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, run } from "../src/run.js";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
-import { createLogger, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
+import { createLogger, escapeForRecord, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
 import { JobLogs } from "../src/commands/sync-jobs.js";
 import { cliHarness } from "./harness.js";
@@ -48,11 +48,33 @@ describe("the log record", () => {
     strictEqual(formatLogRecord({ ...record, msg: "a\u009bb" }, "jsonl").includes("\\u009b"), true, "C1 is escaped, as in every JSON the CLI prints");
   });
 
-  it("sanitises every line of a message, in either format, and keeps its line breaks", () => {
+  it("sanitises every line of a message, in either format, and writes its line breaks as \\n", () => {
     const lines: string[] = [];
     const log = createLogger({ format: "text", write: (line) => lines.push(line), now: () => new Date(TS) });
     log.info("cli", "first\u001b[31m\nsecond‮");
-    strictEqual(lines[0], `${TS} INFO  [ka.cli] first [31m\nsecond`);
+    strictEqual(lines[0], `${TS} INFO  [ka.cli] first [31m\\nsecond`);
+    // A trailing line break (OpenSSL's EPROTO message ends in one) says nothing.
+    log.warn("http", "write EPROTO 0A00010B:SSL routines:wrong version number:\n");
+    strictEqual(lines[1], `${TS} WARN  [ka.http] write EPROTO 0A00010B:SSL routines:wrong version number:`);
+  });
+
+  it("escapes whatever could split a record, forge one or steer a terminal (escapeForRecord)", () => {
+    strictEqual(escapeForRecord("a\nb\rc\td"), "a\\nb\\rc\td", "LF and CR as \\n and \\r, TAB kept");
+    strictEqual(escapeForRecord("\u001b[31m\u007f\u0085\u009b"), "\\u001b[31m\\u007f\\u0085\\u009b", "ESC, DEL, NEL, CSI");
+    strictEqual(escapeForRecord("\u2028\u2029\u202e\u2066\u061c\u200e"), "\\u2028\\u2029\\u202e\\u2066\\u061c\\u200e", "separators and bidi");
+    strictEqual(escapeForRecord("C:\\path ä €"), "C:\\path ä €", "backslashes and ordinary text stay");
+  });
+
+  it("is one line whatever reaches it: a forged record in the message or a field stays inside", () => {
+    const forged = `19/1\n${TS} ERROR [ka.sync] FORGED\u2028x\u202ey`;
+    for (const format of ["text", "jsonl"] as const) {
+      const line = formatLogRecord({ ...record, msg: forged, fields: { id: forged, error: forged, reports: [{ errors: [forged] }] } }, format);
+      ok(!/[\n\r\u2028\u2029\u202e]/.test(line), `${format}: ${line}`);
+      if (format === "jsonl") {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        strictEqual(parsed["id"], forged, "the field keeps its value, escaped");
+      }
+    }
   });
 
   it("names the program first in every topic: ka by default, ka-factory for the factory", () => {
@@ -264,5 +286,25 @@ describe("the sync's own records", () => {
     logs.line("bund", "INFO", "again");
     strictEqual(files.get("/berlin.log"), `${TS} INFO  [ka.sync] berlin: started\n${TS} ERROR [ka.sync] berlin: failed: HTTP 503\n`, "text, whatever --log-format is");
     deepStrictEqual(records(err), [{ ts: TS, level: "WARN", topic: "ka.sync", msg: "cannot write the log /broken.log: EACCES; the sync goes on without it." }]);
+  });
+
+  it("keeps a job log one record per line, whatever the message or the label holds (02-1)", () => {
+    const forgedLabel = `berlin@ref=19/1\n${TS} ERROR [ka.sync] FORGED label`;
+    const forgedLog = `/dev/null/x\n${TS} ERROR [ka.sync] FORGED via log path`;
+    const { io, files, err } = sink(forgedLog);
+    const log = createLogger({ format: "text", write: (line) => io.err(line), now });
+    const logs = new JobLogs(io, log, [
+      { label: "berlin", spec: { source: "berlin" }, log: "/berlin.log" },
+      { label: forgedLabel, spec: { source: "berlin" }, log: "/label.log" },
+      { label: "bremen", spec: { source: "bremen" }, log: forgedLog },
+    ]);
+    // An EPROTO message ends in a newline.
+    logs.line("berlin", "WARN", "1/3 failed 19/1: write EPROTO 0A00010B:SSL routines:wrong version number:\n");
+    logs.line(forgedLabel, "INFO", "started");
+    logs.line("bremen", "INFO", "started");
+    strictEqual(files.get("/berlin.log"), `${TS} WARN  [ka.sync] berlin: 1/3 failed 19/1: write EPROTO 0A00010B:SSL routines:wrong version number:\n`);
+    strictEqual(files.get("/label.log")?.split("\n").length, 2, String(files.get("/label.log")));
+    strictEqual(err.length, 1, err.join("\n"));
+    ok(err.every((line) => line.startsWith(`${TS} WARN  [ka.sync] cannot write the log /dev/null/x\\n`)), err.join("\n"));
   });
 });

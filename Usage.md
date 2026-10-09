@@ -45,6 +45,12 @@ an upstream's, and otherwise under the command. `ka-factory` writes the same rec
 its own name: `ka-factory.cli`, `ka-factory.goldens`, `ka-factory.health`,
 `ka-factory.drift`, `ka-factory.lint`, `ka-factory.answers`, `ka-factory.embed`.
 
+A record is always one line, in either format and in a plan's job log: a line break in a
+message (a server's text, a feed's reference, a value you typed) is written as `\n`, a
+CR as `\r`, other control characters, the line and paragraph separators and the bidi
+controls as `\uXXXX` — in jsonl in the event fields too — so nothing can split a record,
+forge a second one or steer the terminal.
+
 Left as they are: the progress line `ka sync` redraws in place on a terminal (it is
 redrawn, not added to), the prompt of `ka config set`, and `--help`/`--version`, which
 go to stdout.

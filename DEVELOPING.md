@@ -199,7 +199,12 @@ global `--log-format text` (the default) writes it log4j style,
 object per line starting with `ts`, `level`, `topic`, `msg`, in that order, and a record
 may carry fields of its own after `msg` (`ka sync`'s events do; the text form shows the
 message only). The logger sanitises every line of a message (`sanitizeForTerminal`) in
-either format, since a message quotes upstream data as often as not.
+either format, since a message quotes upstream data as often as not, and drops a trailing
+line break. `formatLogRecord` then makes the record one line whatever reached it
+(`escapeForRecord`): CR and LF as `\r` and `\n`, every other C0 control but TAB, DEL and
+C1 as `\u00XX`, U+2028, U+2029 and the bidi controls as `\uXXXX`, over the message in
+text and over the whole JSON object — the event fields included — in jsonl. A plan's job
+log is the text form, so it is one record per line too.
 
 - **Code logs through `logOf(deps)`** (`level(area, msg, fields?)`), never with
   `io.err` directly. A command's own notes go under its name — `ActionContext.area` is

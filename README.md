@@ -96,7 +96,9 @@ its process is gone; `--stalled-after 10m` turns that into an exit code for cron
 terminal — every progress line on stderr is a record with a timestamp, a level and a
 topic: `2026-10-09T14:03:12.481Z WARN  [ka.sync] berlin: …`. `--log-format jsonl` writes
 one JSON object per line instead (`ts`, `level`, `topic`, `msg`; `ka sync`'s events add
-their fields), and `ka sync --log-file <path>` appends them to a file.
+their fields), and `ka sync --log-file <path>` appends them to a file. A record is always
+one line: a line break in a message is written as `\n`, and nothing in it can steer the
+terminal.
 
 **Not past a full disk.** `ka sync` keeps 1 GB free on each volume it writes to
 (`--min-free 20G` for more, `--min-free 0` to turn it off). It refuses to start below
