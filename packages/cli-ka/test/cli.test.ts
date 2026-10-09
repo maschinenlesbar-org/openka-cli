@@ -1641,6 +1641,29 @@ describe("ka", () => {
     });
   });
 
+  describe("a source whose discovery fails", () => {
+    it("ends with an ERROR event and a log line, and its plan job does not count as done", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "openka-plan-"));
+      const harness = cliHarness({ transport: scriptedTransport([{ match: /./, status: 404 }]).transport });
+      try {
+        writeFileSync(join(dir, "jobs.toml"), '[[job]]\nsource = "berlin"\nlog = "logs/{source}.log"\n');
+        const plan = join(dir, "jobs.toml");
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan, "--log-format", "jsonl"], harness.deps), EXIT_ERROR, harness.stderr());
+        const events = harness.err.join("\n").split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as { level: string; msg: string; event?: string });
+        const done = events.find((event) => event.event === "done");
+        strictEqual(done?.level, "ERROR");
+        match(done?.msg ?? "", /^berlin: discovery failed — 0 stored, 0 unchanged, 0 failed$/);
+        const log = harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8") ?? "";
+        match(log, / ERROR \[ka\.sync\] berlin: discovery failed: 0 discovered, 0 stored, 0 unchanged, 0 failed$/m);
+        ok(!events.some((event) => /every job of the plan is done/.test(event.msg)), "the round is not closed");
+        ok(events.some((event) => /1 job\(s\) of the plan are not done/.test(event.msg)));
+      } finally {
+        harness.cleanup();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("the event log in JSON Lines (issue #10)", () => {
     type Event = { ts: string; level: string; topic: string; msg: string; event?: string; job?: string; source?: string; id?: string; status?: string; [key: string]: unknown };
     const parse = (text: string): Event[] => text.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as Event);

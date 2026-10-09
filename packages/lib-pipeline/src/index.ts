@@ -169,6 +169,12 @@ export interface SyncReport {
    * an empty one, and is not recorded as a sync in the source's state.
    */
   blocked?: string;
+  /**
+   * True when discovery itself failed (the search page answered an error, the feed was
+   * unreadable): the run looked at nothing, so it is neither a quiet day nor a job that
+   * covered its window. Its `errors` hold the reason.
+   */
+  discoveryFailed?: true;
   /** True when the upstream said nothing changed and no work was done. */
   upstreamUnchanged: boolean;
   /**
@@ -312,6 +318,7 @@ async function syncTimed(options: SyncOptions, watch: Stopwatch, timing: () => S
     if (err instanceof UsageError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     report.errors.push(message);
+    report.discoveryFailed = true;
     store.putSourceState({ ...state, last_sync: startedAt, last_error: message });
     return report;
   }

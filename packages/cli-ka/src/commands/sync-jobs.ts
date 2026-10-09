@@ -183,7 +183,7 @@ export class JobLogs {
     for (const error of report.errors) this.line(label, "ERROR", error);
     this.line(
       label,
-      "INFO",
+      report.discoveryFailed === true ? "ERROR" : "INFO",
       `${statusOf(outcome)}: ${report.discovered} discovered, ${report.stored} stored, ${report.unchanged} unchanged, ${report.failed} failed` +
         (report.lowSpace === undefined ? "" : ` — ${report.lowSpace}`),
     );
@@ -198,6 +198,7 @@ export function statusOf(outcome: SourceOutcome): string {
   if (report.interrupted) return "interrupted";
   if (report.lowSpace !== undefined) return "low on space";
   if (report.blocked !== undefined) return "blocked";
+  if (report.discoveryFailed === true) return "discovery failed";
   return "done";
 }
 
@@ -208,28 +209,28 @@ export function jobEnd(outcome: SourceOutcome): JobEnd {
     return { state: "not-started", message: outcome.reason === "interrupted" ? "the run was interrupted" : "an earlier job failed" };
   }
   const report = outcome.report;
-  const state = report.interrupted ? "interrupted" : report.lowSpace !== undefined ? "low-space" : report.blocked !== undefined ? "blocked" : "done";
+  const state = report.interrupted ? "interrupted" : report.lowSpace !== undefined ? "low-space" : report.blocked !== undefined ? "blocked" : report.discoveryFailed === true ? "failed" : "done";
   return {
     state,
     discovered: report.discovered,
     stored: report.stored,
     unchanged: report.unchanged,
     failed: report.failed,
-    ...(report.lowSpace !== undefined ? { message: report.lowSpace } : report.blocked !== undefined ? { message: report.blocked } : {}),
+    ...(report.lowSpace !== undefined ? { message: report.lowSpace } : report.blocked !== undefined ? { message: report.blocked } : report.discoveryFailed === true ? { message: report.errors[0] ?? "discovery failed" } : {}),
   };
 }
 
 /** How a run ended, for its status file: a signal, then a failure, then low space. */
 export function runResult(outcomes: readonly SourceOutcome[], interrupted: boolean): RunResult {
   if (interrupted) return "interrupted";
-  if (outcomes.some((outcome) => outcome.status === "failed")) return "failed";
+  if (outcomes.some((outcome) => outcome.status === "failed" || (outcome.status === "done" && outcome.report.discoveryFailed === true))) return "failed";
   if (outcomes.some((outcome) => outcome.status === "done" && outcome.report.lowSpace !== undefined)) return "stopped";
   return "finished";
 }
 
 /** Whether a job's window was covered, so a rerun of its plan may skip it. */
 export function finished(outcome: SourceOutcome): boolean {
-  return outcome.status === "done" && !outcome.report.interrupted && outcome.report.lowSpace === undefined;
+  return outcome.status === "done" && !outcome.report.interrupted && outcome.report.lowSpace === undefined && outcome.report.discoveryFailed !== true;
 }
 
 /**
@@ -274,13 +275,13 @@ export class QueueRound {
 export function printSummary(io: CliIO, jobs: readonly CliJob[], outcomes: ReadonlyMap<string, SourceOutcome>): void {
   const width = Math.max(4, ...jobs.map((job) => job.label.length));
   const num = (n: number | undefined): string => (n === undefined ? "—" : formatCount(n)).padStart(10);
-  io.out(`${pad("JOB", width)}  ${pad("STATUS", 13)}${"DISCOVERED".padStart(10)}${"STORED".padStart(10)}${"UNCHANGED".padStart(10)}${"FAILED".padStart(10)}`);
+  io.out(`${pad("JOB", width)}  ${pad("STATUS", 17)}${"DISCOVERED".padStart(10)}${"STORED".padStart(10)}${"UNCHANGED".padStart(10)}${"FAILED".padStart(10)}`);
   for (const job of jobs) {
     const outcome = outcomes.get(job.label);
     const report = outcome?.status === "done" ? outcome.report : undefined;
     const status = outcome === undefined ? "done earlier" : statusOf(outcome);
     io.out(
-      `${pad(job.label, width)}  ${pad(status, 13)}${num(report?.discovered)}${num(report?.stored)}${num(report?.unchanged)}${num(report?.failed)}`.trimEnd(),
+      `${pad(job.label, width)}  ${pad(status, 17)}${num(report?.discovered)}${num(report?.stored)}${num(report?.unchanged)}${num(report?.failed)}`.trimEnd(),
     );
   }
 }

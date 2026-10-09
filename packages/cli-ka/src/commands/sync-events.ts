@@ -121,7 +121,7 @@ export class SyncEvents {
     const { warnings, errors, source: _source, ...counts } = outcome.report;
     for (const message of warnings) this.emit("WARN", "warning", `${outcome.job}: ${truncate(message, MESSAGE_WIDTH)}`, { ...ids, message });
     this.emit(
-      "INFO",
+      counts.discoveryFailed === true ? "ERROR" : "INFO",
       "done",
       `${outcome.job}: ${statusOf(outcome)} — ${counts.stored} stored, ${counts.unchanged} unchanged, ${counts.failed} failed`,
       { ...ids, ...counts, errors: errors.length },

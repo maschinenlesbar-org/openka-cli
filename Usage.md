@@ -213,15 +213,17 @@ and error (`ERROR`) in full, and how the job ended. The run ends with a summary 
 plan, one row per job:
 
 ```
-JOB                            STATUS       DISCOVERED    STORED UNCHANGED    FAILED
-berlin@2025-01-01..2025-12-31  done             12,904    12,880        24         0
-bund@period=21                 done earlier          —         —         —         —
-bund@period=20                 failed                —         —         —         —
+JOB                            STATUS           DISCOVERED    STORED UNCHANGED    FAILED
+berlin@2025-01-01..2025-12-31  done                 12,904    12,880        24         0
+bund@period=21                 done earlier              —         —         —         —
+bund@period=20                 failed                    —         —         —         —
 ```
 
 **A plan picks up where it stopped.** The corpus keeps which of the plan's jobs are done
 in its current round (under `state/queues/`, keyed by the plan file's path). A job is
-done when it covered its window — not when it failed, was interrupted, or stopped low on
+done when it covered its window — not when it failed, when its discovery failed (status
+`discovery failed`: the search page or feed answered an error, so nothing was looked at; its
+`done` event and its job log's last line are `ERROR`s), was interrupted, or stopped low on
 space; per-Anfrage errors in a job that ran through do not hold it back. A rerun of the
 plan skips the done jobs, with a note, so a queue stopped by Ctrl-C, a reboot or a full
 disk continues with the job it stopped in. Once every job is done the round closes, and
