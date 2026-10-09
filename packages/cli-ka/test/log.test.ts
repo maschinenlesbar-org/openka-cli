@@ -13,7 +13,7 @@ import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import type { SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, run } from "../src/run.js";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
-import { createLogger, escapeForRecord, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
+import { MAX_RECORD_MESSAGE, createLogger, escapeForRecord, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
 import { cutText, truncate } from "../src/text.js";
 import { JobLogs } from "../src/commands/sync-jobs.js";
@@ -84,6 +84,14 @@ describe("the log record", () => {
     const line = formatLogRecord({ ...record, msg: half, fields: { id: half, reports: [{ errors: [half] }] } }, "jsonl");
     ok(!/\\ud83d/.test(line), line);
     deepStrictEqual(JSON.parse(line), { ...record, msg: "berlin-19-1 \ufffd", id: "berlin-19-1 \ufffd", reports: [{ errors: ["berlin-19-1 \ufffd"] }] });
+  });
+
+  it("is bounded: a long message is cut and says how much is missing", () => {
+    const line = formatLogRecord({ ...record, msg: "x".repeat(MAX_RECORD_MESSAGE + 1234) }, "text");
+    strictEqual(line, `${TS} WARN  [ka.sync] ${"x".repeat(MAX_RECORD_MESSAGE)}… (1234 more characters)`);
+    const emoji = JSON.parse(formatLogRecord({ ...record, msg: "a" + "\u{1f600}".repeat(MAX_RECORD_MESSAGE) }, "jsonl")) as Record<string, string>;
+    match(emoji["msg"] ?? "", /… \(2001 more characters\)$/);
+    ok(!/[\ud800-\udbff](?![\udc00-\udfff])/.test(emoji["msg"] ?? ""));
   });
 
   it("cuts a long text before a character, never inside one (truncate, cutText)", () => {
@@ -278,6 +286,19 @@ describe("the sync's own records", () => {
       ],
     );
     deepStrictEqual(Object.keys(records(err)[0] ?? {}), ["ts", "level", "topic", "msg", "event", "job", "source", "id", "status", "index", "total", "error"]);
+  });
+
+  it("bounds the message of a failed Anfrage's event; its id and error fields stay whole (02-2)", () => {
+    const { io, err } = sink();
+    const events = new SyncEvents(io, createLogger({ format: "jsonl", write: (line) => io.err(line), now }), true);
+    const id = "19/" + "1".repeat(20_000);
+    const detail = "HTTP 500 " + "e".repeat(20_000);
+    events.record("berlin", "berlin", { index: 1, total: 1, id, action: "failed", detail });
+    const [entry] = records(err);
+    ok(String(entry?.["msg"]).length < 2400, `msg is ${String(entry?.["msg"]).length} characters`);
+    match(String(entry?.["msg"]), /^19\/1+… failed: HTTP 500 e+…$/);
+    strictEqual(entry?.["id"], id);
+    strictEqual(entry?.["error"], detail);
   });
 
   it("says once on stderr that the event log cannot be written, and goes on", () => {

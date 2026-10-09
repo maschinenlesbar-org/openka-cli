@@ -33,6 +33,17 @@ export function sanitizeForTerminal(text: string): string {
   return stripBidiControls(stripControlCharacters(text, { keepWhitespace: false }));
 }
 
+/**
+ * The most of one warning or error line that is printed. These are this program's own
+ * sentences, often with an upstream reason or URL inside; at 200 characters the part
+ * that explained them was cut ("… from the aggregator rather …"). The cap stays only
+ * to bound upstream text.
+ */
+export const MESSAGE_WIDTH = 2000;
+
+/** The most of a record id or a feed's reference a message quotes. */
+export const ID_WIDTH = 200;
+
 /** Truncate to `width` display columns, appending an ellipsis when cut — never inside a character. */
 export function truncate(text: string, width: number): string {
   const clean = sanitizeForTerminal(text).replace(/\s+/g, " ").trim();

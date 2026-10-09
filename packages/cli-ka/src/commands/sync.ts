@@ -45,18 +45,11 @@ import {
   toEngineOptions,
   volumeOptionsFrom,
 } from "../shared.js";
-import { formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
+import { MESSAGE_WIDTH, formatBytes, formatCount, sanitizeForTerminal, truncate } from "../text.js";
 import { SyncProgress } from "../progress.js";
 import { SyncEvents } from "./sync-events.js";
 import { JobLogs, QueueRound, collectJobSpec, finished, jobEnd, printSummary, runResult, selectJobs, type CliJob } from "./sync-jobs.js";
 
-/**
- * The most of one warning or error line that is printed. These are this program's own
- * sentences, often with an upstream reason or URL inside; at 200 characters the part
- * that explained them was cut ("… from the aggregator rather …"). The cap stays only
- * to bound upstream text.
- */
-const MESSAGE_WIDTH = 2000;
 
 type Source = ReturnType<typeof createSource>;
 

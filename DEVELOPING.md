@@ -208,7 +208,10 @@ log is the text form, so it is one record per line too. A record is also well-fo
 `formatLogRecord` replaces half a character (a lone surrogate) with U+FFFD, in the
 message and in every string field, and `truncate` (text.ts, through `cutText`) cuts
 before a character, never inside one — a lone `\ud83d` in jsonl makes jq reject the
-whole stream.
+whole stream. And it is bounded: a message longer than `MAX_RECORD_MESSAGE` (4000,
+log.ts) is cut at a character and ends in `… (N more characters)`; the messages that quote
+a reference or an upstream reason cut it at the source too (`truncate` with `ID_WIDTH`,
+200, and `MESSAGE_WIDTH`, 2000, text.ts), while an event's own fields stay whole.
 
 - **Code logs through `logOf(deps)`** (`level(area, msg, fields?)`), never with
   `io.err` directly. A command's own notes go under its name — `ActionContext.area` is

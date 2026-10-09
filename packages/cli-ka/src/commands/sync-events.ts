@@ -21,6 +21,7 @@ import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CliIO } from "../io.js";
 import { formatLogRecord, type LogLevel, type LogRecord, type Logger } from "../log.js";
 import { statusOf } from "./sync-jobs.js";
+import { ID_WIDTH, MESSAGE_WIDTH, truncate } from "../text.js";
 
 export class SyncEvents {
   private file: string | undefined;
@@ -79,7 +80,9 @@ export class SyncEvents {
 
   record(job: string, source: string, event: ProgressEvent): void {
     const failed = event.action === "failed";
-    this.emit(failed ? "WARN" : "INFO", "record", failed ? `${event.id} failed: ${event.detail ?? "failed"}` : `${event.id} ${event.action}`, {
+    // The message is for people and bounded like the text records; `id` and `error` keep the whole text.
+    const id = truncate(event.id, ID_WIDTH);
+    this.emit(failed ? "WARN" : "INFO", "record", failed ? `${id} failed: ${truncate(event.detail ?? "failed", MESSAGE_WIDTH)}` : `${id} ${event.action}`, {
       job,
       source,
       id: event.id,
@@ -99,7 +102,7 @@ export class SyncEvents {
     const ids = { job: outcome.job, source: outcome.source };
     if (outcome.status === "failed") {
       const error = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-      this.emit("ERROR", "failed", `${outcome.job}: failed: ${error}`, { ...ids, error });
+      this.emit("ERROR", "failed", `${outcome.job}: failed: ${truncate(error, MESSAGE_WIDTH)}`, { ...ids, error });
       return;
     }
     if (outcome.status === "skipped") {
@@ -111,7 +114,7 @@ export class SyncEvents {
       return;
     }
     const { warnings, errors, source: _source, ...counts } = outcome.report;
-    for (const message of warnings) this.emit("WARN", "warning", `${outcome.job}: ${message}`, { ...ids, message });
+    for (const message of warnings) this.emit("WARN", "warning", `${outcome.job}: ${truncate(message, MESSAGE_WIDTH)}`, { ...ids, message });
     this.emit(
       "INFO",
       "done",

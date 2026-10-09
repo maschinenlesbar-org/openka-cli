@@ -15,7 +15,7 @@
 //
 // Both bins share this module: `ka-factory` builds its logger with its own program name.
 
-import { sanitizeForTerminal, toWellFormed } from "./text.js";
+import { cutText, sanitizeForTerminal, toWellFormed } from "./text.js";
 
 /** The log formats `--log-format` takes. */
 export const LOG_FORMATS = ["text", "jsonl"] as const;
@@ -78,6 +78,35 @@ export function escapeForRecord(text: string): string {
 }
 
 /**
+ * The longest message (in characters) a record carries. A longer one is cut at a
+ * code-point boundary and ends in `… (N more characters)`: one huge server text, feed
+ * reference or typed value cannot flood stderr, a job log or a log store with a line of
+ * megabytes. Own messages that quote upstream data are bounded at their source too
+ * (`truncate`); this is the backstop for every path. A record's own fields (`ka sync`'s
+ * events) are data and stay whole.
+ */
+export const MAX_RECORD_MESSAGE = 4000;
+
+/** `msg` within `MAX_RECORD_MESSAGE`, the cut marked with the number of characters left out. */
+function boundRecordMessage(msg: string): string {
+  if (msg.length <= MAX_RECORD_MESSAGE) return msg;
+  const kept = cutText(msg, MAX_RECORD_MESSAGE);
+  return `${kept}… (${codePoints(msg, kept.length)} more characters)`;
+}
+
+/** The number of characters (code points) in `text` from `from` on. */
+function codePoints(text: string, from: number): number {
+  let n = 0;
+  for (let i = from; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    // The low half of a pair is not a character of its own.
+    if (c >= 0xdc00 && c <= 0xdfff && i > from && text.charCodeAt(i - 1) >= 0xd800 && text.charCodeAt(i - 1) <= 0xdbff) continue;
+    n++;
+  }
+  return n;
+}
+
+/**
  * One record as one line, whatever the message holds: `escapeForRecord` runs over the
  * message (text) or over the whole JSON object, its own fields included (jsonl), so no
  * text that reaches a record — a server's, a feed's, the user's — can split it, forge
@@ -87,7 +116,7 @@ export function escapeForRecord(text: string): string {
 export function formatLogRecord(record: LogRecord, format: LogFormat): string {
   // Well-formed first: half a character would be `\ud83d` in jsonl, which jq rejects,
   // stopping the whole stream.
-  const msg = toWellFormed(record.msg);
+  const msg = toWellFormed(boundRecordMessage(record.msg));
   if (format === "jsonl") {
     const fields = Object.entries(record.fields ?? {}).filter(([key]) => !RECORD_KEYS.has(key));
     const wellFormed = (_key: string, value: unknown): unknown => (typeof value === "string" ? toWellFormed(value) : value);

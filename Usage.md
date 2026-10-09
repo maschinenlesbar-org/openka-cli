@@ -49,7 +49,8 @@ A record is always one line, in either format and in a plan's job log: a line br
 message (a server's text, a feed's reference, a value you typed) is written as `\n`, a
 CR as `\r`, other control characters, the line and paragraph separators and the bidi
 controls as `\uXXXX` — in jsonl in the event fields too — so nothing can split a record,
-forge a second one or steer the terminal.
+forge a second one or steer the terminal. A message longer than 4,000 characters is cut
+and ends in `… (N more characters)`.
 
 Left as they are: the progress line `ka sync` redraws in place on a terminal (it is
 redrawn, not added to), the prompt of `ka config set`, and `--help`/`--version`, which
@@ -254,8 +255,10 @@ again below); written to a file, a pipe or cron's mail it is an `INFO` record of
 after `sync`) every event is a log record of `ka.sync` on stderr, in place of the progress
 line; `--log-file <path>` appends the same records to a file whatever `--log-format` is,
 and keeps the progress line on stderr. A record starts with `ts`, `level`, `topic` and
-`msg`, a sentence for people; then `event`, and for a job's events `job` and `source`, so
-the events of several sources share one stream:
+`msg`, a sentence for people, bounded like the text records (a reference or id it quotes
+is cut at 200 characters, a reason at 2,000; the fields after it keep the whole text);
+then `event`, and for a job's events `job` and `source`, so the events of several sources
+share one stream:
 
 ```jsonl
 {"ts":"2026-10-06T18:00:01.020Z","level":"INFO","topic":"ka.sync","msg":"berlin: started","event":"start","job":"berlin","source":"berlin"}
