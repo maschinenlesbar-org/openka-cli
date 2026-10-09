@@ -19,6 +19,7 @@ import {
   MIN_RESPONSE_BYTES,
   assertHttpScheme,
   retryDelayMs,
+  type RetryEvent,
   sanitizeServerText,
   userAgentProblem,
 } from "../src/engine.js";
@@ -705,5 +706,81 @@ describe("a kept-alive connection the server has closed (issue #31)", () => {
       [engine.metrics.retries, engine.metrics.retryReasons, engine.metrics.reconnects],
       [3, { throttled: 1, timeout: 1, connection: 1, other: 0 }, 1],
     );
+  });
+});
+
+describe("onRetry", () => {
+  const reset = (): never => {
+    throw new NetworkError("socket hang up");
+  };
+
+  it("is told about each retry before its sleep: number, limit, real delay, status, redacted url", async () => {
+    const log: string[] = [];
+    const events: RetryEvent[] = [];
+    let calls = 0;
+    const engine = testEngine(
+      async () => {
+        calls++;
+        return calls < 3
+          ? { status: calls === 1 ? 503 : 429, headers: calls === 1 ? {} : { "retry-after": "5" }, body: Buffer.alloc(0) }
+          : { status: 200, headers: {}, body: Buffer.from("ok") };
+      },
+      {
+        onRetry: (event) => {
+          events.push(event);
+          log.push(`retry ${event.retry}`);
+        },
+        sleep: async (ms) => {
+          log.push(`sleep ${ms}`);
+        },
+      },
+    );
+    await engine.get("https://user:secret@example.invalid/flaky?x=1");
+    deepStrictEqual(events, [
+      { retry: 1, maxRetries: 3, delayMs: 1000, status: 503, url: "https://example.invalid/flaky?x=1" },
+      { retry: 2, maxRetries: 3, delayMs: 5000, status: 429, url: "https://example.invalid/flaky?x=1" },
+    ]);
+    ok(!JSON.stringify(events).includes("secret"));
+    deepStrictEqual(log, ["retry 1", "sleep 1000", "retry 2", "sleep 5000"]);
+  });
+
+  it("has no status for a reset connection", async () => {
+    const events: RetryEvent[] = [];
+    let calls = 0;
+    const engine = testEngine(async () => (++calls === 1 ? reset() : { status: 200, headers: {}, body: Buffer.from("ok") }), {
+      onRetry: (event) => events.push(event),
+    });
+    await engine.get("https://example.invalid/x");
+    deepStrictEqual(events, [{ retry: 1, maxRetries: 3, delayMs: 1000, url: "https://example.invalid/x" }]);
+  });
+
+  it("is never called on success, an error not retried, or when the retries are used up", async () => {
+    const events: RetryEvent[] = [];
+    const onRetry = (event: RetryEvent): void => void events.push(event);
+    await testEngine(async () => ({ status: 200, headers: {}, body: Buffer.from("ok") }), { onRetry }).get("https://example.invalid/a");
+    await rejects(
+      () => testEngine(async () => ({ status: 404, headers: {}, body: Buffer.alloc(0) }), { onRetry }).get("https://example.invalid/b"),
+      OpenKaApiError,
+    );
+    await rejects(
+      () => testEngine(async () => { throw new NetworkError("big", { failure: "too_large" }); }, { onRetry }).get("https://example.invalid/c"),
+      NetworkError,
+    );
+    strictEqual(events.length, 0);
+    await rejects(
+      () => testEngine(async () => ({ status: 503, headers: {}, body: Buffer.alloc(0) }), { onRetry, maxRetries: 2 }).get("https://example.invalid/d"),
+      OpenKaApiError,
+    );
+    deepStrictEqual(events.map((event) => event.retry), [1, 2]);
+  });
+
+  it("is swallowed when it throws, and refused when it is not a function", async () => {
+    let calls = 0;
+    const engine = testEngine(
+      async () => (++calls === 1 ? { status: 503, headers: {}, body: Buffer.alloc(0) } : { status: 200, headers: {}, body: Buffer.from("ok") }),
+      { onRetry: () => { throw new Error("log failed"); } },
+    );
+    strictEqual((await engine.get("https://example.invalid/x")).body.toString(), "ok");
+    throws(() => new FetchEngine({ onRetry: "nope" as unknown as () => void }), OpenKaValidationError);
   });
 });

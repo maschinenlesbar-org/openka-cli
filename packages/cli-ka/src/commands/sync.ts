@@ -274,7 +274,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
                 outcomes = await syncJobs({
                   jobs: toRun.map((job) => ({ label: job.label, source: createSource(job.spec.source), window: windowOf(job.spec) })),
                   store,
-                  engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+                  engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global, ctx.deps), pacer }),
                   apiKeyFor: keyFor,
                   perceiver,
                   now: ctx.deps.now,
@@ -427,7 +427,7 @@ async function dryRun(
       const plan = await planSync({
         source,
         store,
-        engine: ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+        engine: ctx.deps.createEngine({ ...toEngineOptions(ctx.global, ctx.deps), pacer }),
         ...windowOf(job.spec),
         ...(apiKey === undefined ? {} : { apiKey }),
         ...(ctx.opts["metadataOnly"] === true ? { metadataOnly: true } : {}),

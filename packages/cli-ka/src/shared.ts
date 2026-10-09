@@ -27,7 +27,7 @@ import {
   MIN_RESPONSE_BYTES,
   userAgentProblem,
 } from "@maschinenlesbar.org/openka-lib-http";
-import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
+import type { EngineOptions, RetryEvent } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
 import { describeRequestFloor, floorKeptNote } from "@maschinenlesbar.org/openka-lib-source";
 import { CredentialStore } from "@maschinenlesbar.org/openka-lib-store";
@@ -162,9 +162,22 @@ export interface GlobalOptions {
   logFormat?: string;
 }
 
-/** Translate global CLI options into engine options. */
-export function toEngineOptions(global: GlobalOptions): EngineOptions {
-  const options: EngineOptions = {};
+/** `HTTP 503 from host: retry 1 of 3 in 2 s` (host only; whole seconds, ms under 1 s). */
+export function retryMessage(event: RetryEvent): string {
+  let host: string;
+  try {
+    host = new URL(event.url).host;
+  } catch {
+    host = "the server";
+  }
+  const why = event.status === undefined ? "connection reset" : `HTTP ${event.status}`;
+  const wait = event.delayMs < 1000 ? `${event.delayMs} ms` : `${Math.round(event.delayMs / 1000)} s`;
+  return `${why} from ${host}: retry ${event.retry} of ${event.maxRetries} in ${wait}`;
+}
+
+/** Translate global CLI options into engine options; each retry is a WARN record of `http`. */
+export function toEngineOptions(global: GlobalOptions, deps: Pick<CliDeps, "io" | "now" | "log">): EngineOptions {
+  const options: EngineOptions = { onRetry: (event) => logOf(deps).warn("http", retryMessage(event)) };
   if (global.timeout !== undefined) options.timeoutMs = global.timeout;
   if (global.userAgent !== undefined) options.userAgent = global.userAgent;
   if (global.maxRetries !== undefined) options.maxRetries = global.maxRetries;

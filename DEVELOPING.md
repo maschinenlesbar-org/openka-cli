@@ -236,6 +236,12 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   `OpenKaApiError`/`NetworkError` under `http`, `ParseError` under `api`, anything else under the command that
   ran (a `preAction` hook, `trackCommandArea`). `problem:` lines of `ka doctor` are
   `ERROR`s, warnings `WARN`, notes, counts and "Wrote …" `INFO`.
+- **A retry is a `WARN` record of `http`.** `lib-http`'s `FetchEngine` takes
+  `onRetry(event: RetryEvent)` (`retry`, `maxRetries`, `delayMs`, `status` absent for a
+  failed connection, `url` without userinfo), called once per retry right before the backoff
+  sleep, never on success or when the retries are used up; a throw is swallowed and a
+  non-function is refused. `toEngineOptions(global, deps)` sets it for every engine the
+  `ka` and `ka-factory` commands build, and logs `retryMessage(event)`.
 - **`run()` builds the logger from argv before commander parses it**
   (`logFormatFromArgv`, `withLogger`), so commander's own "error: …" is an `ERROR`
   record of `cli` (a "(Did you mean …?)" after it part of that record) and the help it

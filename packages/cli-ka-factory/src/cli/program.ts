@@ -290,7 +290,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
           );
         }
         const report = await sweepAnswers({
-          engine: ctx.deps.createEngine(toEngineOptions(ctx.global)),
+          engine: ctx.deps.createEngine(toEngineOptions(ctx.global, ctx.deps)),
           store: ctx.store(),
           // The range (to >= from included) is the library's to check.
           period: ctx.opts["period"] as number,

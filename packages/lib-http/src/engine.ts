@@ -82,6 +82,9 @@ export function assertEngineOptions(options: EngineOptions): void {
   check("minHostIntervalMs", intRangeProblem(0, MAX_HOST_INTERVAL_MS));
   check("maxResponseBytes", intRangeProblem(MIN_RESPONSE_BYTES));
   if (options.userAgent !== undefined) assertValid("userAgent", options.userAgent, userAgentProblem);
+  if (options.onRetry !== undefined) {
+    assertValid("onRetry", options.onRetry, (value) => (typeof value === "function" ? undefined : "must be a function"));
+  }
 }
 
 /** Headers that must never travel to a different host on a redirect. */
@@ -109,6 +112,37 @@ export interface EngineOptions {
    * both reach, such as the Parlamentsspiegel.
    */
   pacer?: HostPacer;
+  /**
+   * Called once per retry, right before the backoff sleep, for each retried 429/503 and
+   * each retried failure; never when there is no retry. A throw is swallowed.
+   */
+  onRetry?: (event: RetryEvent) => void;
+}
+
+/** What `EngineOptions.onRetry` is told about one retry. */
+export interface RetryEvent {
+  /** Which retry this is, counting from 1. */
+  retry: number;
+  /** The most retries this request may make. */
+  maxRetries: number;
+  /** How long the engine waits before sending the request again. */
+  delayMs: number;
+  /** The HTTP status that caused the retry; absent for a failed connection. */
+  status?: number;
+  /** The URL being retried, userinfo removed. */
+  url: string;
+}
+
+/** The URL without its userinfo, which a log must not carry. */
+function withoutUserinfo(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -286,6 +320,7 @@ export class FetchEngine {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly pacer: HostPacer;
+  private readonly onRetry: ((event: RetryEvent) => void) | undefined;
   /** Per-host floors raised during a run, above the engine-wide minimum. */
   private readonly hostIntervals = new Map<string, number>();
 
@@ -303,6 +338,7 @@ export class FetchEngine {
     this.now = options.now ?? (() => Date.now());
     this.sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
     this.pacer = options.pacer ?? new HostPacer();
+    this.onRetry = options.onRetry;
     if (this.baseUrl !== undefined) assertHttpScheme(this.baseUrl);
   }
 
@@ -530,7 +566,7 @@ export class FetchEngine {
         if (response.status === 429 || response.status === 503) counters.throttled++;
         if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
           counters.retryReasons.throttled++;
-          await this.backoff(retryDelayMs(response.headers["retry-after"], attempt));
+          await this.backoff(retryDelayMs(response.headers["retry-after"], attempt), attempt + 1, maxRetries, url, response.status);
           continue;
         }
         return response;
@@ -546,7 +582,7 @@ export class FetchEngine {
         if (failure === "too_large" || failure === "bad_url") break;
         if (failure === "timeout" && ++timeouts > 1) break;
         counters.retryReasons[retryReason(err)]++;
-        await this.backoff(retryDelayMs(undefined, attempt));
+        await this.backoff(retryDelayMs(undefined, attempt), attempt + 1, maxRetries, url);
       }
     }
     // The loop always runs once (maxRetries >= 0) and leaves only through a
@@ -578,8 +614,13 @@ export class FetchEngine {
     this.minHostIntervalMs = Math.max(this.minHostIntervalMs, ms);
   }
 
-  /** Sleep before a retry, counted as waiting. */
-  private async backoff(ms: number): Promise<void> {
+  /** Tell `onRetry` about a retry, then sleep, counted as waiting. A throwing hook never breaks the request. */
+  private async backoff(ms: number, retry: number, maxRetries: number, url: string, status?: number): Promise<void> {
+    try {
+      this.onRetry?.({ retry, maxRetries, delayMs: ms, ...(status === undefined ? {} : { status }), url: withoutUserinfo(url) });
+    } catch {
+      // a logging hook is no reason to fail the request
+    }
     const before = this.now();
     await this.sleep(ms);
     this.counters.waitMs += Math.max(0, this.now() - before);

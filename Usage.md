@@ -11,7 +11,7 @@ are authoritative; this is the narrative version.
 | `--blobs <dir>` | keep the archived documents in this existing directory instead of `<corpus>/blobs` (default: `$OPENKA_BLOBS`); while it is missing, `sync`, `open` and `verify` exit 3 and every other command works |
 | `--timeout <ms>` | timeout per request attempt; a timed-out request is retried once |
 | `--user-agent <ua>` | override the identifying User-Agent; not blank, no control characters, nothing above U+00FF |
-| `--max-retries <n>` | retries (0–10) for a transient 429/503 or a dropped connection; a response over `--max-response-bytes` is never retried |
+| `--max-retries <n>` | retries (0–10) for a transient 429/503 or a dropped connection, each retry logged as one `WARN` record of `ka.http` (`HTTP 503 from host: retry 1 of 3 in 2 s`); a response over `--max-response-bytes` is never retried |
 | `--max-response-bytes <n>` | hard cap on one response body (at least 1024; default 134217728, 128 MiB). A body that declares more is not downloaded. A document over it is left out of its record — the record is stored with holes, in `ka review` — and the sync warns with the value to pass to fetch it; `ka sync --dry-run` names sampled documents over it |
 | `--min-host-interval <ms>` | minimum delay between two requests to one host (0–60000; default 500). A source with a floor of its own — Brandenburg and Sachsen-Anhalt, 4000 ms, see `ka sources show <key>` — is never made faster by it: a lower value is kept out, and `ka sync` says so |
 | `--max-redirects <n>` | redirects to follow (0–10); `0` surfaces a 3xx as an error |

@@ -271,7 +271,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         const rows = await countSources({
           sources: sourcesToCount,
           store: ctx.store(),
-          engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global), pacer }),
+          engineFor: () => ctx.deps.createEngine({ ...toEngineOptions(ctx.global, ctx.deps), pacer }),
           apiKeyFor: apiKeyLookup(ctx),
           ...(ctx.opts["period"] === undefined ? {} : { period: ctx.opts["period"] as number }),
         });
