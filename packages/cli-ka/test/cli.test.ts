@@ -549,6 +549,30 @@ describe("ka", () => {
     }
   });
 
+  it("refuses an --api-key with control characters as a usage error and asks nothing", async () => {
+    const { transport, requests } = scriptedTransport([{ match: /./, status: 200, body: "{}" }]);
+    const harness = cliHarness({ transport });
+    try {
+      for (const key of ["sec\u007fret", "secret\u202e x", "sec\nret"]) {
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "bund", "--api-key", key, "--dry-run"], harness.deps), EXIT_USAGE, JSON.stringify(key));
+        match(harness.stderr(), /^ERROR \[ka\.cli\] .*--api-key.*control characters/m, JSON.stringify(key));
+        ok(!harness.stderr().includes("sec"), "the key is not quoted");
+      }
+      // The same through the environment, from the library's check.
+      const env = cliHarness({ transport, env: { DIP_API_KEY: "sec\u007fret" } });
+      try {
+        strictEqual(await run(["--corpus", env.corpus, "sync", "--source", "bund", "--dry-run"], env.deps), EXIT_USAGE, env.stderr());
+        match(env.stderr(), /control characters/);
+      } finally {
+        env.cleanup();
+      }
+      strictEqual(requests.length, 0);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("skips a source without its credential under --all, and names it", async () => {
     // Everything but Berlin answers 404 here, so the others fail; what matters is
     // that the Bundestag, which needs a key, was not even started.

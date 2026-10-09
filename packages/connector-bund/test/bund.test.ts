@@ -2,6 +2,7 @@
 
 import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
+import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { BundDipSource, FIRST_VORGANG_DATE, askersOf, drucksacheRef, drucksacheWindow, parseDipAuthor, toRef } from "../src/index.js";
 import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
@@ -81,6 +82,23 @@ describe("Bundestag DIP source", () => {
       () => new BundDipSource().discover({ engine: testEngine(transport), state: { source: "bund", http_cache: {} } }),
       /needs a key/,
     );
+  });
+
+  it("refuses a key a header cannot carry as a usage error, before any request", async () => {
+    let requests = 0;
+    const engine = testEngine(async () => {
+      requests++;
+      return { status: 200, headers: {}, body: Buffer.from("{}") };
+    });
+    for (const apiKey of ["sec\u007fret", "sec\nret", "secret\u202e", "sec\u0085ret"]) {
+      await rejects(
+        () => new BundDipSource().discover({ engine, state: { source: "bund", http_cache: {} }, apiKey }),
+        (err: unknown) => err instanceof UsageError && /control characters/.test(err.message) && !err.message.includes("sec"),
+        JSON.stringify(apiKey),
+      );
+      await rejects(() => new BundDipSource().count({ engine, apiKey }), UsageError, JSON.stringify(apiKey));
+    }
+    strictEqual(requests, 0);
   });
 
   it("sends the key and walks the cursor to the end", async () => {

@@ -16,7 +16,7 @@ import {
   type SearchFilters,
 } from "@maschinenlesbar.org/openka-lib-search";
 import { statSync } from "node:fs";
-import { MissingCorpusError, OpenKaError, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
+import { MissingCorpusError, OpenKaError, apiKeyProblem, StoreError, UsageError, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
 import {
   DEFAULT_MAX_RESPONSE_BYTES,
   DEFAULT_MIN_HOST_INTERVAL_MS,
@@ -92,6 +92,18 @@ export function problemParser(problem: Problem<string>): (value: string) => stri
  * library's `nonBlankProblem`, so "blank" means the same on both sides.
  */
 export const parseNonEmpty: (value: string) => string = problemParser(nonBlankProblem);
+
+/**
+ * commander value-parser for `--api-key`: non-blank, and a key a header can carry
+ * (`apiKeyProblem`). A key that fails is a `UsageError` of its own, not commander's
+ * `InvalidArgumentError`, because commander quotes the argument in its message and the
+ * key (a real one with a stray newline from a paste) must not reach the log.
+ */
+export function parseApiKey(value: string): string {
+  const reason = nonBlankProblem(value) ?? apiKeyProblem(value);
+  if (reason !== undefined) throw new UsageError(`--api-key: ${reason}`);
+  return value;
+}
 
 /**
  * commander value-parser: a record id — the library's `recordIdProblem`. A

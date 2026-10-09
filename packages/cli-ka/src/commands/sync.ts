@@ -40,6 +40,7 @@ import {
   type ActionContext,
   parseBoundedInt,
   parseIsoDate,
+  parseApiKey,
   parseNonEmpty,
   printJson,
   toEngineOptions,
@@ -94,7 +95,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
     )
     .option("--retry-failed", "handle only the Anfragen of the window whose last attempt failed (with --ref: those as well)")
     .option("--only-new", "skip every Anfrage the corpus holds with all its documents, without a request; handle the rest")
-    .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
+    .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseApiKey)
     .option("--metadata-only", "download no documents: a new record abstains on qa, a stored one is rebuilt from its archived documents")
     .option("--force", "re-extract even when inputs and extractor version are unchanged")
     .option(

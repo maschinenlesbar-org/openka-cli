@@ -14,7 +14,7 @@
 // of a pair — those are completed with a targeted per-Vorgang request rather than
 // being published as a record with an invented counterpart.
 
-import { ParseError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { ParseError, UsageError, apiKeyProblem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { AnsweredBy, Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { periodFromReference } from "@maschinenlesbar.org/openka-lib-extract";
 import type { CountOptions, DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source, UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
@@ -63,6 +63,10 @@ function requireKey(apiKey: string | undefined): asserts apiKey is string {
         "The Bundestag publishes a public key on https://dip.bundestag.de/über-dip/hilfe/api.",
     );
   }
+  // Node would refuse the header locally and the engine would retry it: say what is wrong
+  // with the key (never the key itself) before any request.
+  const problem = apiKeyProblem(apiKey);
+  if (problem !== undefined) throw new UsageError(`The Bundestag DIP API key is not usable: ${problem}`);
 }
 
 export class BundDipSource implements Source {

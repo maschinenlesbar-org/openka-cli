@@ -14,7 +14,7 @@ import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import { PERIOD_RANGE, knownGaps, onlyKnownGaps } from "@maschinenlesbar.org/openka-lib-models";
 import { logOf, type CliDeps } from "../io.js";
 import { describeRequestFloor } from "@maschinenlesbar.org/openka-lib-source";
-import { action, apiKeyLookup, noteRequestFloors, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions, type ActionContext } from "../shared.js";
+import { action, apiKeyLookup, noteRequestFloors, parseApiKey, parseBoundedInt, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions, type ActionContext } from "../shared.js";
 import { formatCount, pad, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
@@ -255,7 +255,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
     .description("how many Anfragen each upstream holds, beside how many the corpus has — a request or two per source, no download")
     .option("--source <key>", "count only this source (repeatable; default: every parliament)", collectSourceKey)
     .option("--period <n>", "count one legislative period (DIP can; the Parlamentsspiegel cannot)", parseBoundedInt(...PERIOD_RANGE))
-    .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseNonEmpty)
+    .option("--api-key <key>", "credential for sources that need one (overrides the env var)", parseApiKey)
     .option("--json", "print as JSON")
     .action(
       action(deps, async (ctx) => {

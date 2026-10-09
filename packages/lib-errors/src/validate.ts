@@ -39,6 +39,17 @@ export const nonBlankProblem: Problem<string | undefined> = (value) =>
   value !== undefined && isBlank(value) ? BLANK_REASON : undefined;
 
 /**
+ * An API key must be a header value: no control character (C0, DEL, C1) and nothing
+ * above Latin-1, which Node refuses in a header (a bidi mark among them). Without this
+ * the request fails locally, after its retries, as an "Unexpected error". Blank is
+ * `nonBlankProblem`'s. The key is never quoted in the reason.
+ */
+export const apiKeyProblem: Problem<string> = (value) =>
+  /[\u0000-\u001f\u007f-\u009f]|[^\u0000-\u00ff]/.test(value)
+    ? "The key holds control characters or characters a header cannot carry (a stray line break from a paste?)."
+    : undefined;
+
+/**
  * An integer in `[min, max]` (no upper bound when `max` is omitted). The reasons
  * read as `ka`'s `parseBoundedInt` prints them, because that parser calls this.
  */

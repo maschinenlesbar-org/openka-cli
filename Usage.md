@@ -671,7 +671,9 @@ A source that needs a key (`bund`) takes it from `--api-key`, else from its envi
 variable (`DIP_API_KEY`), else from this file; the file is only read when the first two
 have nothing. One that can be read by others, belongs to another user or is a link is
 not used, and a command that needs it exits 3 naming the fix (`chmod 600 …`). Output,
-`--json` and logs show a key masked at most. The Bundestag rotates its public key, so
+`--json` and logs show a key masked at most. A key from `--api-key` or the environment that holds a control character or
+character a header cannot carry (a line break from a paste) is a usage error (exit 2) before any
+request, and the message does not quote it. The Bundestag rotates its public key, so
 a run that DIP rejects needs a new one stored with `ka config set bund.api-key`. No OS
 keychain is used yet: on servers, under cron, systemd and in containers it is usually
 locked or missing, and this file is what such a setup would use anyway.
