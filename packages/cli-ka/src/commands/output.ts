@@ -26,7 +26,7 @@ import {
   renderJsonLines,
 } from "@maschinenlesbar.org/openka-lib-render";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
-import type { CliDeps } from "../io.js";
+import { logOf, type CliDeps } from "../io.js";
 import { formatBytes, formatCount, pad, sanitizeForTerminal } from "../text.js";
 import {
   action,
@@ -69,8 +69,9 @@ function selection(ctx: ActionContext, limit?: number): Selection {
   if (selected.missing.length > 0) {
     const shown = selected.missing.slice(0, 5).join(", ");
     const more = selected.missing.length > 5 ? `, and ${selected.missing.length - 5} more` : "";
-    ctx.deps.io.err(
-      `Note: ${selected.missing.length} catalog row(s) have no record file and were left out: ${shown}${more}. ` +
+    logOf(ctx.deps).info(
+      "store",
+      `${selected.missing.length} catalog row(s) have no record file and were left out: ${shown}${more}. ` +
         "`ka reindex` rebuilds the catalog from the records.",
     );
   }
@@ -90,14 +91,16 @@ function someIds(ids: readonly string[]): string {
  */
 export function noteCatalogGaps(ctx: ActionContext, gaps: CatalogGaps): void {
   if (gaps.missingFiles.length > 0) {
-    ctx.deps.io.err(
-      `Note: ${gaps.missingFiles.length} catalog row(s) have no record file, so they are counted and listed ` +
+    logOf(ctx.deps).info(
+      "store",
+      `${gaps.missingFiles.length} catalog row(s) have no record file, so they are counted and listed ` +
         `but cannot be read: ${someIds(gaps.missingFiles)}. \`ka reindex\` rebuilds the catalog from the records.`,
     );
   }
   if (gaps.uncatalogued.length > 0) {
-    ctx.deps.io.err(
-      `Note: ${gaps.uncatalogued.length} record file(s) are not in the catalog, so search, stats and export ` +
+    logOf(ctx.deps).info(
+      "store",
+      `${gaps.uncatalogued.length} record file(s) are not in the catalog, so search, stats and export ` +
         `do not see them: ${someIds(gaps.uncatalogued)}. \`ka reindex\` adds them.`,
     );
   }
@@ -124,7 +127,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       else text = renderJsonLdDocument(records);
 
       emit(ctx, text, out);
-      if (out !== undefined) ctx.deps.io.err(`${records.length} record(s) exported.`);
+      if (out !== undefined) logOf(ctx.deps).info(ctx.area, `${records.length} record(s) exported.`);
     }),
   );
 
@@ -270,7 +273,7 @@ function printVersions(ctx: ActionContext, stats: CorpusStats): void {
   if (others > 0) io.out(`  ${formatCount(others)} record(s) were made by another build — \`ka reextract --all\` brings them to this one.`);
   const notIndexed = stats.extractor_versions_unknown + 0;
   if (notIndexed > 0) {
-    io.err(`Note: ${formatCount(notIndexed)} catalog row(s) predate the version, ministry and question counts; \`ka reindex\` adds them.`);
+    logOf(ctx.deps).info("store", `${formatCount(notIndexed)} catalog row(s) predate the version, ministry and question counts; \`ka reindex\` adds them.`);
   }
 }
 
@@ -287,5 +290,5 @@ function printBreakdown(ctx: ActionContext, breakdown: StatsBreakdown): void {
     const share = row.records === 0 ? "" : ` (${Math.round((row.needs_review / row.records) * 100)}%)`;
     io.out(`${keys}  ${formatCount(row.records).padStart(9)}  ${formatCount(row.needs_review)}${share}`);
   }
-  if (breakdown.overlapping) io.err("Note: a record asked by several parties counts for each, so the rows add up to more than the records.");
+  if (breakdown.overlapping) logOf(ctx.deps).info(ctx.area, "a record asked by several parties counts for each, so the rows add up to more than the records.");
 }

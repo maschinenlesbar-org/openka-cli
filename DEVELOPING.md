@@ -182,11 +182,68 @@ a subprocess, touches the network, or reads the clock.
 - **`CliDeps`** (`src/cli/io.ts`) — I/O, the store factories (`createStore` for a
   command that writes, `openStore` for one that only reads an existing corpus), the
   engine factory, the environment, **the clock**, the volume probe (`volumes`:
-  filesystem and free space) and `sleep` (only `ka status --watch` waits). `run()` returns an exit code rather than calling
+  filesystem and free space), `sleep` (only `ka status --watch` waits) and `log`, the
+  logger every diagnostic goes through (below). `run()` returns an exit code rather than calling
   `process.exit`.
 
 A fourth, narrower one: **`Perceiver`** (`lib-perceive`), the only
 place a trained model may run at execution time.
+
+## The log on stderr
+
+stdout carries data; every diagnostic line on stderr is a **log record**
+(`packages/cli-ka/src/log.ts`): a timestamp (UTC ISO 8601 with milliseconds, from
+`CliDeps.now`), a level (`ERROR`, `WARN`, `INFO`) and a topic `<program>.<area>`. The
+global `--log-format text` (the default) writes it log4j style,
+`<ts> <LEVEL padded to 5> [<topic>] <message>`; `--log-format jsonl` writes one JSON
+object per line starting with `ts`, `level`, `topic`, `msg`, in that order, and a record
+may carry fields of its own after `msg` (`ka sync`'s events do; the text form shows the
+message only). The logger sanitises every line of a message (`sanitizeForTerminal`) in
+either format, since a message quotes upstream data as often as not.
+
+- **Code logs through `logOf(deps)`** (`level(area, msg, fields?)`), never with
+  `io.err` directly. A command's own notes go under its name — `ActionContext.area` is
+  the top-level command (`sync`, `export`, `sources`); cross-cutting records keep
+  theirs: `cli` (usage errors, commander's messages, unexpected errors), `http` (an
+  upstream's error answer, a dropped connection, a source's request floor), `store`
+  (missing or locked corpus, the volume, catalog gaps, macOS files). An error that ends
+  a run is logged by `run()`: `UsageError` under `cli`, `StoreError` under `store`,
+  `OpenKaApiError`/`NetworkError` under `http`, anything else under the command that
+  ran (a `preAction` hook, `trackCommandArea`). `problem:` lines of `ka doctor` are
+  `ERROR`s, warnings `WARN`, notes, counts and "Wrote …" `INFO`.
+- **`run()` builds the logger from argv before commander parses it**
+  (`logFormatFromArgv`, `withLogger`), so commander's own "error: …" is an `ERROR`
+  record of `cli` and the help it shows after one an `INFO`, in the chosen format. The
+  option is the program's, and commander takes a program option after the subcommand
+  too, so `ka sync --log-format jsonl` still works (it was a sync option until
+  2026-10-09).
+- **`ka-factory` shares the module**: `runFactory()` builds the same logger with the
+  program name `ka-factory` (`withLogger(deps, argv, "ka-factory")`), and the helpers it
+  reuses from `cli-ka` (`action`, `emit`) log under whatever program the deps' logger
+  names. The factory imports `cli-ka` already, and the line never imports the factory,
+  so this adds no edge to the guardrail.
+- **`ka sync`** (`progress.ts`, `commands/sync-events.ts`, `commands/sync-jobs.ts`): on a
+  terminal the progress line is redrawn in place and is not a record; a record that must
+  stay (a failed Anfrage, an interrupt) is printed above it and the line drawn again
+  below (`SyncProgress.above`). Off a terminal the progress lines are `INFO` records of
+  `ka.sync`, a failed Anfrage a `WARN`. The events (issue #10) are records of `ka.sync`
+  with `event`, `job`, `source` and the event's fields after `msg` — `INFO` for start,
+  discovered, a stored or unchanged record, done and report; `WARN` for a warning and a
+  failed record; `ERROR` for a failed job. With jsonl they go to stderr in place of the
+  progress line. `--log-file` taps the run's logger (`Logger.tap`), so the file gets the
+  events and every other record of the run as JSON Lines whatever the format, down to
+  the error `run()` ends a failed run with — but not the progress records, which are
+  written on a logger of their own: the events say more. A plan's job log is the text record of
+  each line, `<ts> <LEVEL> [ka.sync] <job>: <message>`, whatever the format: it was
+  already a timestamped row, and the level and topic are what it lacked.
+- **Left raw**: the redrawn progress line on a terminal, `ka config set`'s no-echo
+  prompt (`readSecretFrom`), and `--help`/`--version`, which commander writes to stdout.
+  `handleOutputErrors`' "Output error" is a record too, in the format of the process's
+  argv, since it fires outside `run()`.
+
+Tests read stderr through `untimed()` (`test/harness.ts`, applied by
+`CliHarness.stderr()`), which drops the leading timestamp: `ERROR [ka.store] No corpus
+at …`. The format itself is `test/log.test.ts`'s.
 
 ## The library validates its own inputs
 
@@ -199,7 +256,7 @@ commander parser calls the same `Problem` and turns its reason into an
 `InvalidArgumentError`. The library throws **`OpenKaValidationError`** (a
 `UsageError`, message `Invalid <name>: <reason>`); a promise-returning function
 rejects rather than throwing synchronously. Both `run()` and `runFactory()` map it to
-exit 2, printed as `Error: <message>`.
+exit 2, logged as an `ERROR` record of `ka.cli` (`ka-factory.cli`).
 
 `packages/cli-ka/test/helpers.ts` has the `parity()` helper: one input through
 `run()`/`runFactory()` and through the library call, on one recording transport and

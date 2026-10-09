@@ -15,6 +15,12 @@ mocked transport and captured output. No subprocess, no network, no clock.
 that possible. Exit codes: `0` success, `1` error, `2` usage error, `3` corpus
 problem, `4` not found.
 
+**stderr is a log.** Every diagnostic is a record with a timestamp, a level and a topic
+(`log.ts`): log4j-style text by default, one JSON object per line with the global
+`--log-format jsonl`. Code logs through `logOf(deps)` (`CliDeps.log`, stamped by
+`CliDeps.now`), never with `io.err`; `ka-factory` uses the same module under its own
+program name.
+
 **Every option that takes a value gets a parser.** A blank filter is a usage error,
 never a silently dropped constraint — a search that quietly ignores `--parliament ""`
 returns the whole corpus and looks like it worked.
@@ -30,16 +36,17 @@ use them.
 - **`src/commands/reextract.ts`** — `ka reextract` — bring stored records up to this build's extractor, offline.
 - **`src/commands/rm.ts`** — `ka rm` — remove records under the lock, with their catalog rows, postings and, on request, documents.
 - **`src/commands/status.ts`** — `ka status` — what a running sync is doing, from another terminal.
-- **`src/commands/sync-events.ts`** — `ka sync`'s event log in JSON Lines (`--log-format jsonl`, `--log-file`).
+- **`src/commands/sync-events.ts`** — `ka sync`'s event log: each event a log record of `ka.sync` (`--log-format jsonl`, `--log-file`).
 - **`src/commands/sync-jobs.ts`** — The jobs one `ka sync` runs: `--source key@window` and `--plan`, the job logs, a plan's progress and its summary.
 - **`src/commands/maintain.ts`** — `verify`, `review`, `reindex` and `sources` — the commands that keep the corpus honest about itself.
 - **`src/commands/output.ts`** — `export`, `feed` and `schema` — getting the corpus out in bulk.
 - **`src/commands/query.ts`** — The read side: `search`, `get`, `show` and `open`.
 - **`src/commands/sync.ts`** — `ka sync` — the ingest command.
-- **`src/io.ts`** — I/O seam for the CLI.
-- **`src/progress.ts`** — `ka sync`'s progress line: redrawn on a terminal, throttled plain lines in a log.
+- **`src/io.ts`** — I/O seam for the CLI, and `logOf(deps)`.
+- **`src/log.ts`** — the log on stderr: records with timestamp, level and topic; `--log-format text|jsonl`.
+- **`src/progress.ts`** — `ka sync`'s progress line: redrawn on a terminal, throttled `ka.sync` records in a log.
 - **`src/program.ts`** — Assembles the `ka` command tree from injectable deps.
-- **`src/run.ts`** — Parse argv, run the command, return an exit code.
+- **`src/run.ts`** — Parse argv, run the command, return an exit code; commander's messages and the final error as log records.
 - **`src/shared.ts`** — Shared CLI helpers: option parsers, global-option resolution, and the few rendering paths every command group uses.
 - **`src/text.ts`** — Text helpers shared by the CLI's output paths.
 
@@ -48,7 +55,7 @@ use them.
 Everything is re-exported from the package root:
 
 ```
-registerMaintain, registerOutput, renderShowLines, registerQuery, registerSync, CliIO, CliDeps, defaultIO, defaultDeps, buildProgram, EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_STORE, EXIT_NOT_FOUND, run, CORPUS_ENV, parseBoundedInt, problemParser, parseNonEmpty, parseIsoDate, collect, collectInt, GlobalOptions, toEngineOptions, ActionContext, action, printJson, emit, addCorpusFilters, corpusFiltersFrom, choiceOption, addGlobalOptions, escapeControlChars, sanitizeForTerminal, truncate, pad
+registerMaintain, registerOutput, renderShowLines, registerQuery, registerSync, CliIO, CliDeps, defaultIO, defaultDeps, logOf, buildProgram, EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_STORE, EXIT_NOT_FOUND, run, configureTree, withLogger, trackCommandArea, errorArea, LOG_FORMATS, LogFormat, DEFAULT_LOG_FORMAT, LogLevel, LOG_PROGRAM, LogRecord, formatLogRecord, Logger, createLogger, logFormatProblem, logFormatFromArgv, CORPUS_ENV, parseBoundedInt, problemParser, parseNonEmpty, parseIsoDate, collect, collectInt, GlobalOptions, toEngineOptions, ActionContext, action, printJson, emit, addCorpusFilters, corpusFiltersFrom, choiceOption, addGlobalOptions, escapeControlChars, sanitizeForTerminal, truncate, pad
 ```
 
 ## Depends on

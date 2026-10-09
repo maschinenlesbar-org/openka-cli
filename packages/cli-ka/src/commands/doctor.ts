@@ -6,7 +6,8 @@ import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { OpenKaError, StoreError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FileStore, diagnoseCorpus, removePlatformFiles, type CorpusDiagnosis, type VolumeReport } from "@maschinenlesbar.org/openka-lib-store";
-import type { CliDeps, CliIO } from "../io.js";
+import { logOf, type CliDeps, type CliIO } from "../io.js";
+import type { Logger } from "../log.js";
 import { action, addVolumeOptions, printJson, volumeOptionsFrom } from "../shared.js";
 import { formatBytes, formatCount, pad, sanitizeForTerminal } from "../text.js";
 
@@ -30,7 +31,7 @@ export function registerDoctor(program: Command, deps: CliDeps): void {
         if (ctx.opts["json"] === true) {
           printJson(ctx, removed === undefined ? diagnosis : { ...diagnosis, removed_platform_files: removed });
         } else {
-          printDiagnosis(ctx.deps.io, diagnosis, removed);
+          printDiagnosis(ctx.deps.io, logOf(ctx.deps), diagnosis, removed);
         }
         if (diagnosis.problems.length > 0) {
           throw new StoreError(`${diagnosis.problems.length} problem(s) with the corpus at ${diagnosis.corpus}.`);
@@ -42,7 +43,7 @@ export function registerDoctor(program: Command, deps: CliDeps): void {
   );
 }
 
-function printDiagnosis(io: CliIO, diagnosis: CorpusDiagnosis, removed: number | undefined): void {
+function printDiagnosis(io: CliIO, log: Logger, diagnosis: CorpusDiagnosis, removed: number | undefined): void {
   const row = (label: string, value: string): void => io.out(`${pad(label, 13)} ${value}`);
   const volume = (report: VolumeReport | undefined): void => {
     if (report === undefined) return;
@@ -80,7 +81,7 @@ function printDiagnosis(io: CliIO, diagnosis: CorpusDiagnosis, removed: number |
   }
   if (diagnosis.exists) row("platform", diagnosis.platform_files === 0 ? "no macOS ._* / .DS_Store files" : `${formatCount(diagnosis.platform_files)} macOS ._* / .DS_Store file(s)`);
 
-  for (const warning of diagnosis.warnings) io.err(`warning: ${sanitizeForTerminal(warning)}`);
-  for (const problem of diagnosis.problems) io.err(`problem: ${sanitizeForTerminal(problem)}`);
+  for (const warning of diagnosis.warnings) log.warn("doctor", warning);
+  for (const problem of diagnosis.problems) log.error("doctor", problem);
   if (diagnosis.problems.length === 0) io.out("No problems found.");
 }

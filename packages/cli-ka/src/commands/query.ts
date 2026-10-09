@@ -9,7 +9,7 @@ import { searchLike } from "@maschinenlesbar.org/openka-lib-search";
 import { RENDER_FORMATS, renderRecord, type RenderFormat } from "@maschinenlesbar.org/openka-lib-render";
 import { archivedDocument, catalogGaps, documentRoleProblem, type CatalogEntry, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { noteCatalogGaps } from "./output.js";
-import type { CliDeps } from "../io.js";
+import { logOf, type CliDeps } from "../io.js";
 import {
   action,
   addCorpusFilters,
@@ -116,8 +116,9 @@ function noteIndexGaps(ctx: Parameters<typeof noteCatalogGaps>[0], store: Store)
   noteCatalogGaps(ctx, catalogGaps(store));
   const catalogued = store.catalog().length;
   if (catalogued > 0 && store.shardNames().length === 0) {
-    ctx.deps.io.err(
-      `Note: the search index is empty although the catalog lists ${catalogued} record(s), so nothing can match. ` +
+    logOf(ctx.deps).info(
+      "store",
+      `the search index is empty although the catalog lists ${catalogued} record(s), so nothing can match. ` +
         "`ka reindex` rebuilds it.",
     );
   }
@@ -168,7 +169,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
           return;
         }
         for (const hit of similar.hits) ctx.deps.io.out(formatHit(hit.entry, hit.score));
-        ctx.deps.io.err(`${similar.hits.length} of ${similar.total} similar record(s).`);
+        logOf(ctx.deps).info("search", `${similar.hits.length} of ${similar.total} similar record(s).`);
         return;
       }
 
@@ -196,14 +197,15 @@ export function registerQuery(program: Command, deps: CliDeps): void {
       for (const hit of result.hits) ctx.deps.io.out(formatHit(hit.entry, hit.score, hit.snippet));
       const missing = result.missing ?? [];
       if (missing.length > 0) {
-        ctx.deps.io.err(
-          `Note: ${missing.length} of these catalog row(s) have no record file: ${missing.slice(0, 5).join(", ")}` +
+        logOf(ctx.deps).info(
+          "store",
+          `${missing.length} of these catalog row(s) have no record file: ${missing.slice(0, 5).join(", ")}` +
             `${missing.length > 5 ? `, and ${missing.length - 5} more` : ""}. \`ka reindex\` rebuilds the catalog from the records.`,
         );
       }
       const shown = result.hits.length;
       const offset = (ctx.opts["offset"] as number | undefined) ?? 0;
-      ctx.deps.io.err(`${shown} of ${result.total} match(es)${offset > 0 ? `, from offset ${offset}` : ""}.`);
+      logOf(ctx.deps).info("search", `${shown} of ${result.total} match(es)${offset > 0 ? `, from offset ${offset}` : ""}.`);
     }),
   );
 
@@ -255,7 +257,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
         // The path is printed rather than handed to an opener: the CLI does not
         // launch other programs, and `open "$(ka open <id>)"` is one keystroke more.
         ctx.deps.io.out(path);
-        ctx.deps.io.err(`${document.role} · ${sanitizeForTerminal(document.url)}`);
+        logOf(ctx.deps).info("open", `${document.role} · ${document.url}`);
       }),
     );
 }

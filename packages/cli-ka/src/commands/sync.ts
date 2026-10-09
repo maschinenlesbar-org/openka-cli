@@ -28,7 +28,8 @@ import {
   type SpaceGuard,
   type Store,
 } from "@maschinenlesbar.org/openka-lib-store";
-import { InterruptedRunError, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
+import { InterruptedRunError, logOf, type CliDeps, type CliIO, type InterruptSignal } from "../io.js";
+import { createLogger, type Logger } from "../log.js";
 import {
   action,
   addVolumeOptions,
@@ -112,33 +113,27 @@ export function registerSync(program: Command, deps: CliDeps): void {
     .option("--ocr-version <version>", "require exactly this OCR engine version", parseNonEmpty)
     .option("--ocr-traineddata <path>", "traineddata file to hash into the provenance record", parseNonEmpty)
     .option("--json", "print the sync report as JSON (an array of reports for several jobs, --all or --plan)")
-    .addOption(choiceOption("--log-format <format>", "text: the progress line on stderr; jsonl: one JSON event per line on stderr instead", ["text", "jsonl"]))
-    .option("--log-file <path>", "append the run's events to this file as JSON Lines, keeping the progress line on stderr", parseNonEmpty);
+    // `--log-format` is the program's (`ka --log-format jsonl sync …` and `ka sync
+    // --log-format jsonl …` alike): with jsonl, the events take the progress line's place.
+    .option(
+      "--log-file <path>",
+      "append the run's events and its other log records to this file as JSON Lines, whatever --log-format is",
+      parseNonEmpty,
+    );
   addVolumeOptions(command)
     .action(
       action(deps, async (ctx) => {
-        // The event log (issue #10). With `--log-format jsonl`, stderr carries events
-        // only: every other line the sync would print there becomes a `note` event.
-        // With `--log-file`, stderr stays as it was and the file gets the same events.
-        const plain = ctx.deps.io;
-        const events = new SyncEvents(plain, ctx.deps.now);
-        const jsonl = ctx.opts["logFormat"] === "jsonl";
-        if (jsonl) events.toStderr((line) => plain.err(line));
+        // The event log (issue #10). With `--log-format jsonl` the events are records on
+        // stderr, in place of the progress line; with `--log-file` the file gets them,
+        // and every other record of the run, whatever the format.
+        const io = ctx.deps.io;
+        // One logger for the run, so that the log file's tap sees every record of it.
+        const log = logOf(ctx.deps);
+        ctx.deps = { ...ctx.deps, log };
+        const jsonl = log.format === "jsonl";
+        const events = new SyncEvents(io, log, jsonl);
         const logFile = ctx.opts["logFile"] as string | undefined;
         if (logFile !== undefined) events.toFile(logFile);
-        if (events.active) {
-          ctx.deps = {
-            ...ctx.deps,
-            io: {
-              ...plain,
-              err: (text: string) => {
-                if (!jsonl) plain.err(text);
-                events.emit("note", { message: text });
-              },
-            },
-          };
-        }
-        const io = ctx.deps.io;
         const selection = selectJobs(ctx);
         const queue = selection.queue;
         let jobs = selection.jobs;
@@ -156,7 +151,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           for (const job of jobs) {
             const env = missing(job);
             if (env !== undefined) {
-              io.err(`Note: skipped ${job.label}: it needs a credential (--api-key, ${env} or \`ka config set ${job.spec.source}.api-key\`).`);
+              log.info("sync", `skipped ${job.label}: it needs a credential (--api-key, ${env} or \`ka config set ${job.spec.source}.api-key\`).`);
             }
           }
           jobs = jobs.filter((job) => missing(job) === undefined);
@@ -166,7 +161,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         const store = ctx.store();
         if (ctx.opts["dryRun"] === true) {
           const skip = queue === undefined || !(store instanceof FileStore) || ctx.opts["restart"] === true ? undefined : doneEarlier(store, queue.path);
-          if (skip !== undefined && skip.done.size > 0) noteDoneEarlier(io, jobs, skip.done, skip.started);
+          if (skip !== undefined && skip.done.size > 0) noteDoneEarlier(log, jobs, skip.done, skip.started);
           await dryRun(ctx, skip === undefined ? jobs : jobs.filter((job) => !skip.done.has(job.label)), store, keyFor, several);
           return;
         }
@@ -197,10 +192,18 @@ export function registerSync(program: Command, deps: CliDeps): void {
           ...(ctx.opts["ocrTraineddata"] === undefined ? {} : { traineddataPath: ctx.opts["ocrTraineddata"] as string }),
         });
 
-        // The progress line is the text log; JSON Lines on stderr replace it, a log file does not.
-        const progress = ctx.global.quiet === true || jsonl ? undefined : new SyncProgress(plain, ctx.deps.now);
-        const say = (text: string): void => (progress === undefined ? io.err(text) : progress.line(text));
-        const logs = new JobLogs(io, ctx.deps.now, jobs);
+        // The progress line is the text log; the events on stderr replace it (jsonl), a
+        // log file does not. Its records go to stderr only, on a logger of their own
+        // that the file does not tap: the file has the events, which say more.
+        const progress =
+          ctx.global.quiet === true || jsonl
+            ? undefined
+            : new SyncProgress(io, ctx.deps.now, createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now }));
+        const say = (level: "WARN" | "INFO", text: string): void => {
+          if (progress === undefined) log.log(level, "sync", text);
+          else progress.above(() => log.log(level, "sync", text));
+        };
+        const logs = new JobLogs(io, log, jobs);
         const sourceOf = (label: string): string => jobs.find((job) => job.label === label)?.spec.source ?? label;
 
         // Ctrl-C finishes the Anfrage in hand and saves the catalog; a second one
@@ -212,6 +215,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           caught = signal;
           controller.abort();
           say(
+            "INFO",
             `${signal === "SIGINT" ? "Interrupted" : "Terminated"} — finishing the current Anfrage and saving the ` +
               "catalog. Signal again to stop at once.",
           );
@@ -230,18 +234,18 @@ export function registerSync(program: Command, deps: CliDeps): void {
             release = await lockCorpus(store, purpose, {
               wait: ctx.opts["wait"] === true,
               signal: controller.signal,
-              onWaiting: (held) => io.err(`Waiting for the corpus: it is in use by another run (${sanitizeForTerminal(held.holder)}).`),
+              onWaiting: (held) => log.info("store", `Waiting for the corpus: it is in use by another run (${held.holder}).`),
             });
           } catch (err) {
             if (caught !== undefined) throw new InterruptedRunError(caught, "stopped waiting for the corpus; nothing was synced.");
             throw err;
           }
           try {
-            if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(ctx.deps, store);
+            if (store instanceof FileStore && store.writesAppleDouble) warnAppleDouble(log, store);
             if (queue !== undefined && store instanceof FileStore) {
               round = new QueueRound(store, queue.path, ctx.deps.now, ctx.opts["restart"] === true);
               const open = round;
-              if (open.done.size > 0) noteDoneEarlier(io, jobs, open.done, open.started);
+              if (open.done.size > 0) noteDoneEarlier(log, jobs, open.done, open.started);
               toRun = jobs.filter((job) => !open.done.has(job.label));
             }
             if (toRun.length === 0) {
@@ -255,7 +259,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
                       command: purpose,
                       jobs: toRun.map((job) => ({ job: job.label, source: job.spec.source })),
                       now: ctx.deps.now,
-                      onError: (err) => say(`warning: cannot write the run status for \`ka status\`: ${errorMessage(err)}; the sync goes on.`),
+                      onError: (err) => say("WARN", `cannot write the run status for \`ka status\`: ${errorMessage(err)}; the sync goes on.`),
                     })
                   : undefined;
               let result: RunResult = "failed";
@@ -283,19 +287,19 @@ export function registerSync(program: Command, deps: CliDeps): void {
                     progress?.start(job);
                     events.start(job, sourceOf(job));
                     status?.start(job);
-                    logs.line(job, "started");
+                    logs.line(job, "INFO", "started");
                   },
                   onDiscovered: (job: string, count: number) => {
                     progress?.discovered(job, count);
                     events.discovered(job, sourceOf(job), count);
                     status?.discovered(job, count);
-                    logs.line(job, `${count} Anfragen discovered`);
+                    logs.line(job, "INFO", `${count} Anfragen discovered`);
                   },
                   onProgress: (job: string, event: ProgressEvent) => {
                     progress?.update(job, event);
                     events.record(job, sourceOf(job), event);
                     status?.progress(job, event);
-                    logs.line(job, `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
+                    logs.line(job, event.action === "failed" ? "WARN" : "INFO", `${event.index}/${event.total} ${event.action} ${event.id}${event.detail === undefined ? "" : `: ${event.detail}`}`);
                   },
                   onDone: (outcome: SourceOutcome) => {
                     progress?.finish(outcome.job);
@@ -320,7 +324,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
         }
 
         // The last event is what --json prints, so one log covers the whole run.
-        events.emit("report", { reports: outcomes.map(outcomeJson) });
+        events.report(outcomes.map(outcomeJson));
         const failed = outcomes.filter((outcome) => outcome.status === "failed");
         const done = outcomes.flatMap((outcome) => (outcome.status === "done" ? [outcome] : []));
         // A single source keeps the shape it always had: its report, and the error
@@ -347,20 +351,20 @@ export function registerSync(program: Command, deps: CliDeps): void {
           const all = jobs.map((job) => run.get(job.label) ?? { job: job.label, source: job.spec.source, skipped: true, reason: "done-earlier" });
           printJson(ctx, several ? all.map((entry) => ("status" in entry ? outcomeJson(entry) : entry)) : done[0]?.report);
         } else {
-          for (const outcome of done) printReport(io, outcome.job, outcome.report, several ? `${outcome.job}: ` : "");
+          for (const outcome of done) printReport(io, log, outcome.job, outcome.report, several ? `${outcome.job}: ` : "");
           if (queue !== undefined) printSummary(io, jobs, new Map(outcomes.map((outcome) => [outcome.job, outcome])));
         }
         if (round !== undefined && round.closeIfComplete(jobs)) {
-          io.err("Note: every job of the plan is done; its next run starts over.");
+          log.info("sync", "every job of the plan is done; its next run starts over.");
         } else if (round !== undefined && toRun.length > 0) {
-          io.err(`Note: ${jobs.length - round.done.size} job(s) of the plan are not done; run it again to continue (--restart runs every job).`);
+          log.info("sync", `${jobs.length - round.done.size} job(s) of the plan are not done; run it again to continue (--restart runs every job).`);
         }
         const afterFailure = outcomes.filter((outcome) => outcome.status === "skipped" && outcome.reason === "after-failure");
         if (afterFailure.length > 0) {
-          io.err(`Note: ${afterFailure.length} job(s) not started, since a job failed and the plan sets continue_on_error = false.`);
+          log.warn("sync", `${afterFailure.length} job(s) not started, since a job failed and the plan sets continue_on_error = false.`);
         }
         for (const outcome of failed.slice(1)) {
-          io.err(`error: ${outcome.job}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
+          log.error("sync", `${outcome.job}: ${truncate(errorMessage(outcome.error), MESSAGE_WIDTH)}`);
         }
         if (stopped !== undefined) throw stopped;
         const low = done.filter((outcome) => outcome.report.lowSpace !== undefined);
@@ -372,7 +376,7 @@ export function registerSync(program: Command, deps: CliDeps): void {
           );
         }
         if (failed[0] !== undefined) {
-          if (several) io.err(`error: ${failed[0].job} failed:`);
+          if (several) log.error("sync", `${failed[0].job} failed:`);
           throw failed[0].error;
         }
         const empty = done.filter((outcome) => outcome.report.errors.length > 0 && outcome.report.stored === 0).map((outcome) => outcome.job);
@@ -387,11 +391,12 @@ function doneEarlier(store: FileStore, plan: string): { done: Set<string>; start
   return open === undefined ? undefined : { done: new Set(open.done), started: open.started };
 }
 
-function noteDoneEarlier(io: CliIO, jobs: readonly CliJob[], done: ReadonlySet<string>, started: string): void {
+function noteDoneEarlier(log: Logger, jobs: readonly CliJob[], done: ReadonlySet<string>, started: string): void {
   const skipped = jobs.filter((job) => done.has(job.label)).map((job) => job.label);
   if (skipped.length === 0) return;
-  io.err(
-    `Note: skipping ${skipped.length} job(s) done in this plan's unfinished round (begun ${started}): ${skipped.join(", ")}. ` +
+  log.info(
+    "sync",
+    `skipping ${skipped.length} job(s) done in this plan's unfinished round (begun ${started}): ${skipped.join(", ")}. ` +
       "--restart runs them again.",
   );
 }
@@ -409,10 +414,11 @@ async function dryRun(
   several: boolean,
 ): Promise<void> {
   const io = ctx.deps.io;
+  const log = logOf(ctx.deps);
   const pacer = new HostPacer();
   const results: { job: string; source: string; plan?: SyncPlan; error?: unknown }[] = [];
   for (const job of jobs) {
-    if (ctx.global.quiet !== true) io.err(`${job.label}: discovering (no document is downloaded)…`);
+    if (ctx.global.quiet !== true) log.info("sync", `${job.label}: discovering (no document is downloaded)…`);
     const source = createSource(job.spec.source);
     const apiKey = keyFor(source);
     try {
@@ -456,7 +462,7 @@ async function dryRun(
         );
         io.out(`${prefix}documents to fetch: ${fetchLabel(plan, ctx.opts["metadataOnly"] === true)}`);
       }
-      for (const warning of plan.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+      for (const warning of plan.warnings) log.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
     }
     if (plans.length > 1) {
       const sum = (pick: (plan: SyncPlan) => number): number => plans.reduce((total, plan) => total + pick(plan), 0);
@@ -471,9 +477,9 @@ async function dryRun(
   }
   if (store instanceof FileStore) dryRunSpace(ctx, store, plans);
   const failed = results.filter((result) => result.error !== undefined);
-  for (const result of failed.slice(1)) io.err(`error: ${result.job}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
+  for (const result of failed.slice(1)) log.error("sync", `${result.job}: ${truncate(errorMessage(result.error), MESSAGE_WIDTH)}`);
   if (failed[0] !== undefined) {
-    io.err(`error: ${failed[0].job} failed:`);
+    log.error("sync", `${failed[0].job} failed:`);
     throw failed[0].error;
   }
 }
@@ -486,7 +492,7 @@ async function dryRun(
 function preflight(ctx: ActionContext, store: FileStore): SpaceGuard {
   const options = volumeOptionsFrom(ctx);
   const reports = checkCorpusVolumes(store, options);
-  for (const warning of reports.flatMap((report) => report.warnings)) ctx.deps.io.err(`warning: ${sanitizeForTerminal(warning)}`);
+  for (const warning of reports.flatMap((report) => report.warnings)) logOf(ctx.deps).warn("store", warning);
   const problems = reports.flatMap((report) => report.problems);
   if (problems.length > 0) throw new StoreError(`${problems.map((problem) => problem.replace(/\.$/, "")).join("; ")}. Nothing was synced.`);
   return spaceGuard(store, options.minFreeBytes, options.probe);
@@ -498,17 +504,18 @@ function preflight(ctx: ActionContext, store: FileStore): SpaceGuard {
  */
 function dryRunSpace(ctx: ActionContext, store: FileStore, plans: readonly SyncPlan[]): void {
   const io = ctx.deps.io;
+  const log = logOf(ctx.deps);
   const options = volumeOptionsFrom(ctx);
   const reports = checkCorpusVolumes(store, options);
-  for (const problem of reports.flatMap((report) => report.problems)) io.err(`warning: a sync would refuse: ${sanitizeForTerminal(problem)}`);
-  for (const warning of reports.flatMap((report) => report.warnings)) io.err(`warning: ${sanitizeForTerminal(warning)}`);
+  for (const problem of reports.flatMap((report) => report.problems)) log.warn("store", `a sync would refuse: ${problem}`);
+  for (const warning of reports.flatMap((report) => report.warnings)) log.warn("store", warning);
   if (ctx.opts["metadataOnly"] === true) return;
   const bytes = plans.reduce((sum, plan) => sum + (plan.estimate?.total_bytes ?? 0), 0);
   const blobs = reports[reports.length - 1];
   if (bytes === 0 || blobs?.space === undefined) return;
   const problem = spaceGuard(store, options.minFreeBytes, options.probe).fitProblem(bytes);
   if (problem !== undefined) {
-    io.err(`warning: ${sanitizeForTerminal(problem)}`);
+    log.warn("store", problem);
   } else if (ctx.opts["json"] !== true) {
     io.out(`space: ≈ ${formatBytes(bytes)} to fetch, ${formatBytes(blobs.space.free)} free for ${sanitizeForTerminal(blobs.path)}`);
   }
@@ -548,7 +555,7 @@ function outcomeJson(outcome: SourceOutcome): unknown {
 }
 
 /** The text summary of one report, named by its job; `prefix` names it again when several ran. */
-function printReport(io: CliIO, label: string, report: SyncReport, prefix: string): void {
+function printReport(io: CliIO, log: Logger, label: string, report: SyncReport, prefix: string): void {
   if (report.upstreamUnchanged) {
     io.out(`${label}: upstream reports no change since the last complete sync of this window — nothing to do (--force rediscovers).`);
     return;
@@ -557,7 +564,7 @@ function printReport(io: CliIO, label: string, report: SyncReport, prefix: strin
     // Not "0 discovered": nothing was looked at, and a cron job reading this must not
     // take it for a quiet day.
     io.out(`${label}: blocked — nothing was looked at, and the run is not recorded as a sync (see the warning)`);
-    for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+    for (const warning of report.warnings) log.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
     return;
   }
   io.out(
@@ -576,9 +583,9 @@ function printReport(io: CliIO, label: string, report: SyncReport, prefix: strin
         "(left by an interrupted run) and are searchable again.",
     );
   }
-  for (const warning of report.warnings) io.err(`warning: ${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
-  for (const error of report.errors.slice(0, 10)) io.err(`error: ${prefix}${truncate(error, MESSAGE_WIDTH)}`);
-  if (report.errors.length > 10) io.err(`… and ${report.errors.length - 10} more errors`);
+  for (const warning of report.warnings) log.warn("sync", `${prefix}${truncate(warning, MESSAGE_WIDTH)}`);
+  for (const error of report.errors.slice(0, 10)) log.error("sync", `${prefix}${truncate(error, MESSAGE_WIDTH)}`);
+  if (report.errors.length > 10) log.error("sync", `${prefix}… and ${report.errors.length - 10} more errors`);
 }
 
 /**
@@ -587,9 +594,10 @@ function printReport(io: CliIO, label: string, report: SyncReport, prefix: strin
  * adds a few thousand more, and names the other limit of FAT32 that a flat
  * `records/` directory runs into.
  */
-function warnAppleDouble(deps: CliDeps, store: FileStore): void {
-  deps.io.err(
-    `warning: ${sanitizeForTerminal(store.root)} is on a volume without extended attributes (FAT32 or exFAT), so macOS ` +
+function warnAppleDouble(log: Logger, store: FileStore): void {
+  log.warn(
+    "store",
+    `${store.root} is on a volume without extended attributes (FAT32 or exFAT), so macOS ` +
       "writes a ._ companion file beside every file of the corpus. ka ignores them, and `ka doctor --fix` removes them. " +
       "FAT32 also caps a directory at 65,534 entries, and a long file name takes several, so records/ tops out at " +
       "roughly 8,000–16,000 records there; APFS, HFS+ or ext4 have neither problem.",

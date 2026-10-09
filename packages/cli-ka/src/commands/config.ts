@@ -9,7 +9,7 @@ import { InvalidArgumentError } from "commander";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 import { CredentialStore, credentialValueProblem, maskCredential } from "@maschinenlesbar.org/openka-lib-store";
-import type { CliDeps } from "../io.js";
+import { logOf, type CliDeps } from "../io.js";
 import { action, type ActionContext } from "../shared.js";
 import { sanitizeForTerminal } from "../text.js";
 
@@ -59,7 +59,7 @@ export function registerConfig(program: Command, deps: CliDeps): void {
         const reason = credentialValueProblem(value);
         if (reason !== undefined) throw new UsageError(`${reason} Nothing was stored.`);
         store.set(name, value);
-        ctx.deps.io.err(`Stored ${name} (${maskCredential(value)}) in ${sanitizeForTerminal(store.path)}.`);
+        logOf(ctx.deps).info("config", `Stored ${name} (${maskCredential(value)}) in ${sanitizeForTerminal(store.path)}.`);
       }),
     );
 
@@ -87,7 +87,7 @@ export function registerConfig(program: Command, deps: CliDeps): void {
         const name = positionals[0] as string;
         const store = storeOf(ctx);
         if (!store.unset(name)) throw new OpenKaError(`No ${name} is stored in ${store.path}.`);
-        ctx.deps.io.err(`Removed ${name} from ${sanitizeForTerminal(store.path)}.`);
+        logOf(ctx.deps).info("config", `Removed ${name} from ${sanitizeForTerminal(store.path)}.`);
       }),
     );
 
@@ -98,7 +98,7 @@ export function registerConfig(program: Command, deps: CliDeps): void {
       action(deps, async (ctx) => {
         const store = storeOf(ctx);
         for (const name of store.names()) ctx.deps.io.out(`${name}  ${maskCredential(store.get(name) as string)}`);
-        ctx.deps.io.err(`Credentials file: ${sanitizeForTerminal(store.path)}`);
+        logOf(ctx.deps).info("config", `Credentials file: ${sanitizeForTerminal(store.path)}`);
       }),
     );
 }

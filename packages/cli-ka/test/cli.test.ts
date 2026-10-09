@@ -104,7 +104,7 @@ describe("a record an earlier build filed under another paper's id (issue #25)",
       indexRecord(store, record);
 
       strictEqual(await run([...corpus, "doctor"], harness.deps), EXIT_STORE);
-      match(harness.stderr(), /problem: 1 record\(s\) hold the id of another paper/);
+      match(harness.stderr(), /ERROR \[ka\.doctor\] 1 record\(s\) hold the id of another paper/);
       harness.out.length = 0;
       strictEqual(await run([...corpus, "reextract", "--parliament", "sachsen-anhalt"], harness.deps), EXIT_OK, harness.stderr());
       match(harness.stdout(), /^MOVED sachsen-anhalt-8-1487 → sachsen-anhalt-8-ka-1487: an earlier build gave it the id of another paper$/m);
@@ -363,7 +363,7 @@ describe("ka", () => {
       match(harness.stdout(), /1\/1 record\(s\) reproduced byte-identically/);
       // …and says what that does not cover: the metadata re-extraction takes
       // from the record itself.
-      match(harness.stderr(), /^Note: verify re-derives .* Title, askers, answered_by, dates and the documents' URLs come from the record itself and are not checked against anything archived\.$/m);
+      match(harness.stderr(), /^INFO  \[ka\.verify\] verify re-derives .* Title, askers, answered_by, dates and the documents' URLs come from the record itself and are not checked against anything archived\.$/m);
     } finally {
       harness.cleanup();
     }
@@ -482,7 +482,7 @@ describe("ka", () => {
         harness.err.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, argv.join(" "));
         if (argv[0] !== "search") {
-          match(harness.stderr(), /^Note: ignored 2 macOS AppleDouble\/\.DS_Store file\(s\) in the corpus; `ka doctor --fix` or `dot_clean .*` removes them\.$/m);
+          match(harness.stderr(), /^INFO  \[ka\.store\] ignored 2 macOS AppleDouble\/\.DS_Store file\(s\) in the corpus; `ka doctor --fix` or `dot_clean .*` removes them\.$/m);
         }
       }
       // A name the store would never write still stops: that is the guard against path tricks.
@@ -504,7 +504,7 @@ describe("ka", () => {
       try {
         strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK);
         // With the harness's frozen clock there is no rate; the timing still follows.
-        const progress = /^berlin: \d+ Anfragen discovered$[\s\S]*^berlin: (\d+)\/\1 · 0 failed · upstream [\d.]+ s\/req/m;
+        const progress = /^INFO  \[ka\.sync\] berlin: \d+ Anfragen discovered$[\s\S]*^INFO  \[ka\.sync\] berlin: (\d+)\/\1 · 0 failed · upstream [\d.]+ s\/req/m;
         if (expected) match(harness.stderr(), progress, argv.join(" "));
         else strictEqual(harness.stderr(), "", argv.join(" "));
         if ((argv as readonly string[]).includes("--json")) JSON.parse(harness.stdout());
@@ -560,7 +560,7 @@ describe("ka", () => {
     const harness = cliHarness({ transport });
     try {
       await run(["--corpus", harness.corpus, "sync", "--all", "--limit", "1"], harness.deps);
-      match(harness.stderr(), /^Note: skipped bund: it needs a credential \(--api-key, DIP_API_KEY or `ka config set bund\.api-key`\)\.$/m);
+      match(harness.stderr(), /^INFO  \[ka\.sync\] skipped bund: it needs a credential \(--api-key, DIP_API_KEY or `ka config set bund\.api-key`\)\.$/m);
       ok(!requests.some((request) => request.url.includes("dip.bundestag.de")));
       match(harness.stdout(), /^berlin: 1 discovered, 1 stored/m);
     } finally {
@@ -575,7 +575,7 @@ describe("ka", () => {
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
       setTimeout(release, 100);
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--wait"], harness.deps), EXIT_OK);
-      match(harness.stderr(), /^Waiting for the corpus: it is in use by another run \(sync --source bund, pid \d+/m);
+      match(harness.stderr(), /^INFO  \[ka\.store\] Waiting for the corpus: it is in use by another run \(sync --source bund, pid \d+/m);
       match(harness.stdout(), /^berlin: \d+ discovered/m);
     } finally {
       harness.cleanup();
@@ -667,7 +667,7 @@ describe("ka", () => {
       for (const argv of [["open", "berlin-19-10006"], ["verify", "--all"], ["sync", "--source", "berlin"], ["sync", "--source", "berlin", "--metadata-only"]]) {
         harness.err.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_STORE, argv.join(" "));
-        match(harness.stderr(), /^Error: blob store .* is not available/m, argv.join(" "));
+        match(harness.stderr(), /^ERROR \[ka\.store\] blob store .* is not available/m, argv.join(" "));
       }
       ok(!existsSync(join(drive, "blobs")));
       strictEqual(await run(["--corpus", harness.corpus, "--blobs", " ", "stats"], harness.deps), EXIT_USAGE);
@@ -712,7 +712,7 @@ describe("ka", () => {
       // What FAT32 does by itself the moment `ka sync` writes its lock file.
       writeFileSync(join(harness.corpus, "._lock"), "");
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_OK);
-      match(harness.stderr(), /^warning: .* is on a volume without extended attributes \(FAT32 or exFAT\).*65,534 entries/m);
+      match(harness.stderr(), /^WARN  \[ka\.store\] .* is on a volume without extended attributes \(FAT32 or exFAT\).*65,534 entries/m);
       ok(!existsSync(join(harness.corpus, "lock")), "the command's lock is released");
 
       const clean = cliHarness({ transport: berlinTransport().transport });
@@ -733,7 +733,7 @@ describe("ka", () => {
       const harness = cliHarness({ transport, volumes: volumesOf({ name, kind }, 100e9) });
       try {
         strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE, kind);
-        match(harness.stderr(), new RegExp(`^Error: the corpus .* is on (FAT32|exFAT) \\(${name}\\).*--allow-fs ${kind} to use it anyway\\. Nothing was synced\\.$`, "m"));
+        match(harness.stderr(), new RegExp(`^ERROR \\[ka\\.store\\] the corpus .* is on (FAT32|exFAT) \\(${name}\\).*--allow-fs ${kind} to use it anyway\\. Nothing was synced\\.$`, "m"));
         strictEqual(requests.length, 0);
         deepStrictEqual(readdirSync(harness.corpus), [], "not even the lock file");
 
@@ -749,9 +749,9 @@ describe("ka", () => {
     const harness = cliHarness({ transport: berlinTransport().transport, volumes: volumesOf({ name: "smbfs", kind: "network" }, 800e6) });
     try {
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
-      match(harness.stderr(), /^Error: only 800 MB free for the corpus .*, less than the 1\.0 GB to keep \(--min-free\)\. Nothing was synced\.$/m);
+      match(harness.stderr(), /^ERROR \[ka\.store\] only 800 MB free for the corpus .*, less than the 1\.0 GB to keep \(--min-free\)\. Nothing was synced\.$/m);
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--min-free", "500M"], harness.deps), EXIT_OK, harness.stderr());
-      match(harness.stderr(), /^warning: the corpus .* is on a network filesystem \(smbfs\)/m);
+      match(harness.stderr(), /^WARN  \[ka\.store\] the corpus .* is on a network filesystem \(smbfs\)/m);
       for (const bad of ["lots", "-1", ""]) {
         strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--min-free", bad], harness.deps), EXIT_USAGE, bad);
       }
@@ -773,7 +773,7 @@ describe("ka", () => {
     try {
       strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_STORE);
       match(harness.stdout(), /^berlin: \d+ discovered, 1 stored, 0 unchanged, 0 failed$/m);
-      match(harness.stderr(), /^Error: berlin: stopped after 1 of \d+ Anfragen — only 200 MB free for the corpus .*; what was stored is catalogued\. Free some space, then run the same sync again to continue\.$/m);
+      match(harness.stderr(), /^ERROR \[ka\.store\] berlin: stopped after 1 of \d+ Anfragen — only 200 MB free for the corpus .*; what was stored is catalogued\. Free some space, then run the same sync again to continue\.$/m);
       strictEqual(new FileStore(harness.corpus).catalog().length, 1);
       ok(!existsSync(join(harness.corpus, "lock")));
     } finally {
@@ -798,8 +798,8 @@ describe("ka", () => {
     const tight = cliHarness({ transport: responses().transport, volumes: volumesOf({ name: "msdos", kind: "fat32" }, 1.0001e9) });
     try {
       strictEqual(await run(["--corpus", tight.corpus, "sync", "--source", "berlin", "--dry-run"], tight.deps), EXIT_OK, tight.stderr());
-      match(tight.stderr(), /^warning: a sync would refuse: the corpus .* is on FAT32 \(msdos\)/m);
-      match(tight.stderr(), /^warning: the documents to fetch \(≈ [\d.]+ (KB|MB)\) do not fit: 1\.0 GB is free for the corpus .*, and 1\.0 GB of it is to be kept \(--min-free\)$/m);
+      match(tight.stderr(), /^WARN  \[ka\.store\] a sync would refuse: the corpus .* is on FAT32 \(msdos\)/m);
+      match(tight.stderr(), /^WARN  \[ka\.store\] the documents to fetch \(≈ [\d.]+ (KB|MB)\) do not fit: 1\.0 GB is free for the corpus .*, and 1\.0 GB of it is to be kept \(--min-free\)$/m);
       doesNotMatch(tight.stdout(), /^space:/m);
     } finally {
       tight.cleanup();
@@ -828,8 +828,8 @@ describe("ka", () => {
       harness.err.length = 0;
       harness.deps.volumes = volumesOf({ name: "msdos", kind: "fat32" }, 100e9);
       strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_STORE);
-      match(harness.stderr(), /^problem: the corpus .* is on FAT32 \(msdos\)/m);
-      match(harness.stderr(), /^Error: 1 problem\(s\) with the corpus at /m);
+      match(harness.stderr(), /^ERROR \[ka\.doctor\] the corpus .* is on FAT32 \(msdos\)/m);
+      match(harness.stderr(), /^ERROR \[ka\.store\] 1 problem\(s\) with the corpus at /m);
       strictEqual(await run(["--corpus", harness.corpus, "doctor", "--allow-fs", "fat32"], harness.deps), EXIT_OK);
     } finally {
       harness.cleanup();
@@ -843,7 +843,7 @@ describe("ka", () => {
       writeFileSync(join(harness.corpus, ".DS_Store"), "");
       strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_OK, harness.stderr());
       match(harness.stdout(), /^platform +2 macOS \._\* \/ \.DS_Store file\(s\)$/m);
-      match(harness.stderr(), /^warning: 2 macOS \._\* \/ \.DS_Store file\(s\) lie in the corpus; `ka doctor --fix` removes them$/m);
+      match(harness.stderr(), /^WARN  \[ka\.doctor\] 2 macOS \._\* \/ \.DS_Store file\(s\) lie in the corpus; `ka doctor --fix` removes them$/m);
       doesNotMatch(harness.stderr(), /dot_clean/, "one remedy, not two");
 
       const release = new FileStore(harness.corpus).lock("sync --source bund");
@@ -865,7 +865,7 @@ describe("ka", () => {
       rmSync(join(harness.corpus, "index", "catalog.json"));
       strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_STORE);
       match(harness.stdout(), /^catalog +\d+ record file\(s\), 0 catalog row\(s\): \d+ uncatalogued, 0 without a file$/m);
-      match(harness.stderr(), /^problem: the catalog and the record files disagree: .* `ka reindex` rebuilds the catalog from the records$/m);
+      match(harness.stderr(), /^ERROR \[ka\.doctor\] the catalog and the record files disagree: .* `ka reindex` rebuilds the catalog from the records$/m);
       strictEqual(await run(["--corpus", harness.corpus, "reindex"], harness.deps), EXIT_OK);
       strictEqual(await run(["--corpus", harness.corpus, "doctor"], harness.deps), EXIT_OK);
 
@@ -928,17 +928,18 @@ describe("ka", () => {
           match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m);
           match(harness.stdout(), /^JOB +STATUS +DISCOVERED +STORED +UNCHANGED +FAILED$/m);
           match(harness.stdout(), /^berlin +done +\d+ +\d+ +0 +0$/m);
-          match(harness.stderr(), /^Note: every job of the plan is done; its next run starts over\.$/m);
+          match(harness.stderr(), /^INFO  \[ka\.sync\] every job of the plan is done; its next run starts over\.$/m);
           const log = harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8") ?? "";
-          match(log, /^2026-01-02T03:04:05\.000Z berlin started$/m);
-          match(log, /^2026-01-02T03:04:05\.000Z berlin \d+ Anfragen discovered$/m);
-          match(log, /^2026-01-02T03:04:05\.000Z berlin 1\/\d+ stored berlin-19-\d+$/m);
-          match(log, /^2026-01-02T03:04:05\.000Z berlin done: \d+ discovered, \d+ stored, 0 unchanged, 0 failed$/m);
+          // Each line is the text log record stderr would show, the job's label leading its message.
+          match(log, /^2026-01-02T03:04:05\.000Z INFO  \[ka\.sync\] berlin: started$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z INFO  \[ka\.sync\] berlin: \d+ Anfragen discovered$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z INFO  \[ka\.sync\] berlin: 1\/\d+ stored berlin-19-\d+$/m);
+          match(log, /^2026-01-02T03:04:05\.000Z INFO  \[ka\.sync\] berlin: done: \d+ discovered, \d+ stored, 0 unchanged, 0 failed$/m);
           deepStrictEqual(readdirSync(join(harness.corpus, "state", "queues")), [], "the round is closed");
 
           // A log is appended to, run after run.
           strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_OK, harness.stderr());
-          strictEqual(harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8").match(/ berlin started$/gm)?.length, 2);
+          strictEqual(harness.files.get(join(dir, "logs", "berlin.log"))?.toString("utf8").match(/ berlin: started$/gm)?.length, 2);
         } finally {
           harness.cleanup();
         }
@@ -953,14 +954,14 @@ describe("ka", () => {
         try {
           strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_USAGE);
           match(harness.stdout(), /^bund@period=21 +failed +— +— +— +—$/m);
-          match(harness.stderr(), /^Note: 1 job\(s\) of the plan are not done; run it again to continue \(--restart runs every job\)\.$/m);
+          match(harness.stderr(), /^INFO  \[ka\.sync\] 1 job\(s\) of the plan are not done; run it again to continue \(--restart runs every job\)\.$/m);
           match(harness.stderr(), /DIP API needs a key/);
 
           const before = requests.length;
           harness.out.length = 0;
           harness.err.length = 0;
           strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan, "--json"], harness.deps), EXIT_USAGE);
-          match(harness.stderr(), /^Note: skipping 1 job\(s\) done in this plan's unfinished round \(begun 2026-01-02T03:04:05Z\): berlin\. --restart runs them again\.$/m);
+          match(harness.stderr(), /^INFO  \[ka\.sync\] skipping 1 job\(s\) done in this plan's unfinished round \(begun 2026-01-02T03:04:05Z\): berlin\. --restart runs them again\.$/m);
           strictEqual(requests.length, before, "Berlin was not asked again");
           const json = JSON.parse(harness.stdout()) as { job: string; reason?: string; error?: string }[];
           deepStrictEqual(json.map((entry) => [entry.job, entry.reason ?? (entry.error === undefined ? "done" : "error")]), [
@@ -985,7 +986,7 @@ describe("ka", () => {
           strictEqual(await run(["--corpus", harness.corpus, "sync", "--plan", plan], harness.deps), EXIT_USAGE);
           match(harness.stdout(), /^bund@period=21 +failed/m);
           match(harness.stdout(), /^bund@period=20 +not started/m);
-          match(harness.stderr(), /^Note: 1 job\(s\) not started, since a job failed and the plan sets continue_on_error = false\.$/m);
+          match(harness.stderr(), /^WARN  \[ka\.sync\] 1 job\(s\) not started, since a job failed and the plan sets continue_on_error = false\.$/m);
         } finally {
           harness.cleanup();
         }
@@ -1072,7 +1073,7 @@ describe("ka", () => {
         // A scheduler's check: still moving, or not.
         strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "1m"], harness.deps), EXIT_OK);
         strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "5s"], harness.deps), EXIT_ERROR);
-        match(harness.stderr(), /^Error: stalled: nothing has moved for 5s \(--stalled-after 5s\)$/m);
+        match(harness.stderr(), /^ERROR \[ka\.status\] stalled: nothing has moved for 5s \(--stalled-after 5s\)$/m);
         strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "soon"], harness.deps), EXIT_USAGE);
         release();
       } finally {
@@ -1112,9 +1113,9 @@ describe("ka", () => {
         writeFileSync(join(harness.corpus, "lock"), JSON.stringify({ host: hostname(), pid: gone, purpose: "sync --source berlin" }));
         strictEqual(await run(["--corpus", harness.corpus, "status"], harness.deps), EXIT_OK);
         match(harness.stdout(), /^sync --source berlin {3}pid \d+ on \S+ {3}stale lock — the process is gone; last status$/m);
-        match(harness.stderr(), /^note: the lock was left by a run that is gone/m);
+        match(harness.stderr(), /^INFO  \[ka\.status\] the lock was left by a run that is gone/m);
         strictEqual(await run(["--corpus", harness.corpus, "status", "--stalled-after", "1h"], harness.deps), EXIT_ERROR);
-        match(harness.stderr(), /^Error: stalled: the run that holds the corpus is gone/m);
+        match(harness.stderr(), /^ERROR \[ka\.status\] stalled: the run that holds the corpus is gone/m);
 
         rmSync(join(harness.corpus, "lock"));
         const release = new FileStore(harness.corpus).lock("reindex");
@@ -1184,7 +1185,7 @@ describe("ka", () => {
         strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_OK, harness.stderr());
         deepStrictEqual(prompts, ["bund.api-key: "]);
         const path = join(harness.config, "openka", "credentials");
-        match(harness.stderr(), new RegExp(`^Stored bund\\.api-key \\(OSOe…Kkhw\\) in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.$`, "m"));
+        match(harness.stderr(), new RegExp(`^INFO  \\[ka\\.config\\] Stored bund\\.api-key \\(OSOe…Kkhw\\) in ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.$`, "m"));
         deepStrictEqual(JSON.parse(readFileSync(path, "utf8")), { "bund.api-key": KEY });
         if (process.platform !== "win32") strictEqual(statSync(path).mode & 0o777, 0o600);
 
@@ -1359,8 +1360,8 @@ describe("ka", () => {
         rmSync(new FileStore(harness.corpus).blobPath(record.source_documents[0]?.sha256 as string));
         harness.err.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, "reextract", "--all"], harness.deps), EXIT_STORE);
-        match(harness.stderr(), /^skipped berlin-19-10006: archived bytes for .* are missing$/m);
-        match(harness.stderr(), /^Error: 1 record\(s\) could not be read and were left as they are$/m);
+        match(harness.stderr(), /^WARN  \[ka\.reextract\] skipped berlin-19-10006: archived bytes for .* are missing$/m);
+        match(harness.stderr(), /^ERROR \[ka\.store\] 1 record\(s\) could not be read and were left as they are$/m);
       } finally {
         harness.cleanup();
       }
@@ -1440,16 +1441,16 @@ describe("ka", () => {
 
     it("says before a sync why a source goes slowly, and when a lower --min-host-interval was kept out", async () => {
       for (const [flags, expected] of [
-        [[], /^Note: sachsen-anhalt: at most one request per 4 s per host — /m],
-        [["--min-host-interval", "1000"], /^Note: sachsen-anhalt: keeping the source's floor of 4000 ms between requests to a host; --min-host-interval 1000 can raise it, not lower it\.$/m],
-        [["--min-host-interval", "1000", "--quiet"], /^Note: sachsen-anhalt: keeping the source's floor/m],
+        [[], /^INFO  \[ka\.http\] sachsen-anhalt: at most one request per 4 s per host — /m],
+        [["--min-host-interval", "1000"], /^INFO  \[ka\.http\] sachsen-anhalt: keeping the source's floor of 4000 ms between requests to a host; --min-host-interval 1000 can raise it, not lower it\.$/m],
+        [["--min-host-interval", "1000", "--quiet"], /^INFO  \[ka\.http\] sachsen-anhalt: keeping the source's floor/m],
         [["--quiet"], undefined],
         [["--min-host-interval", "5000"], undefined],
       ] as const) {
         const harness = cliHarness({ transport: blocked().transport });
         try {
           strictEqual(await run(["--corpus", harness.corpus, ...flags, "sync", "--source", "sachsen-anhalt"], harness.deps), EXIT_OK, flags.join(" "));
-          if (expected === undefined) doesNotMatch(harness.stderr(), /^Note: sachsen-anhalt:/m, flags.join(" "));
+          if (expected === undefined) doesNotMatch(harness.stderr(), /^INFO  \[ka\.http\] sachsen-anhalt:/m, flags.join(" "));
           else match(harness.stderr(), expected, flags.join(" "));
         } finally {
           harness.cleanup();
@@ -1489,7 +1490,7 @@ describe("ka", () => {
         strictEqual(await run(["--corpus", harness.corpus, "review", "--parliament", "sachsen-anhalt"], harness.deps), EXIT_OK, harness.stderr());
         match(harness.stdout(), /^sachsen-anhalt-8-2 /m);
         doesNotMatch(harness.stdout(), /^sachsen-anhalt-8-1 /m);
-        match(harness.stderr(), /^Note: 1 record\(s\) left out: their only holes are fields the parliament never provides \(sachsen-anhalt: dates\.submitted\)\. --include-known-gaps lists them too\.$/m);
+        match(harness.stderr(), /^INFO  \[ka\.review\] 1 record\(s\) left out: their only holes are fields the parliament never provides \(sachsen-anhalt: dates\.submitted\)\. --include-known-gaps lists them too\.$/m);
 
         harness.out.length = 0;
         strictEqual(await run(["--corpus", harness.corpus, "review", "--source", "sachsen-anhalt", "--include-known-gaps"], harness.deps), EXIT_OK);
@@ -1524,20 +1525,31 @@ describe("ka", () => {
   });
 
   describe("the event log in JSON Lines (issue #10)", () => {
-    type Event = { ts: string; event: string; job?: string; source?: string; id?: string; status?: string; [key: string]: unknown };
+    type Event = { ts: string; level: string; topic: string; msg: string; event?: string; job?: string; source?: string; id?: string; status?: string; [key: string]: unknown };
     const parse = (text: string): Event[] => text.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as Event);
 
-    it("writes one event per line on stderr with --log-format jsonl, and nothing else there", async () => {
+    it("writes each event as a ka.sync record on stderr with --log-format jsonl, the record's keys first", async () => {
       const harness = cliHarness({ transport: berlinTransport().transport });
       try {
         strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-format", "jsonl"], harness.deps), EXIT_OK, harness.stderr());
-        const events = parse(harness.stderr());
-        const kinds = events.map((event) => event.event);
+        const lines = harness.err.join("\n").split("\n");
+        const events = parse(harness.err.join("\n"));
+        strictEqual(events.length, lines.length, "every line on stderr is a JSON record");
+        const kinds = events.flatMap((event) => (event.event === undefined ? [] : [event.event]));
         deepStrictEqual([kinds[0], kinds[1], kinds.at(-2), kinds.at(-1)], ["start", "discovered", "done", "report"]);
+        const start = events.find((event) => event.event === "start");
+        deepStrictEqual(Object.keys(start ?? {}), ["ts", "level", "topic", "msg", "event", "job", "source"]);
+        deepStrictEqual([start?.ts, start?.level, start?.topic, start?.msg], ["2026-01-02T03:04:05.000Z", "INFO", "ka.sync", "berlin: started"]);
+        const discovered = events.find((event) => event.event === "discovered");
+        match(discovered?.msg ?? "", /^berlin: \d+ Anfragen discovered$/);
         const records = events.filter((event) => event.event === "record");
-        ok(records.length > 0 && records.every((event) => event.source === "berlin" && event.status === "stored" && typeof event.ms === "number"));
-        strictEqual(records[0]?.ts, "2026-01-02T03:04:05Z");
+        ok(records.length > 0 && records.every((event) => event.source === "berlin" && event.status === "stored" && typeof event.ms === "number" && event.level === "INFO"));
+        deepStrictEqual(Object.keys(records[0] ?? {}).slice(0, 8), ["ts", "level", "topic", "msg", "event", "job", "source", "id"]);
+        strictEqual(records[0]?.msg, `${records[0]?.id} stored`);
         strictEqual(records[0]?.bytes, PDF.length, "the first record fetched the document");
+        const done = events.find((event) => event.event === "done");
+        match(done?.msg ?? "", /^berlin: done — \d+ stored, 0 unchanged, 0 failed$/);
+        deepStrictEqual([events.at(-1)?.level, events.at(-1)?.msg], ["INFO", "report of 1 job(s)"]);
         deepStrictEqual(Object.keys(events.at(-1)?.["reports"] as object), ["0"]);
         match(harness.stdout(), /^berlin: \d+ discovered, \d+ stored/m, "stdout keeps its summary");
 
@@ -1547,7 +1559,19 @@ describe("ka", () => {
       }
     });
 
-    it("appends the same events to --log-file and keeps the progress line, naming each document's gap", async () => {
+    it("takes --log-format jsonl before the command too: it is the program's", async () => {
+      const harness = cliHarness({ transport: berlinTransport().transport });
+      try {
+        strictEqual(await run(["--log-format=jsonl", "--corpus", harness.corpus, "sync", "--source", "berlin"], harness.deps), EXIT_OK, harness.stderr());
+        const events = parse(harness.err.join("\n"));
+        ok(events.some((event) => event.event === "done"));
+        ok(events.every((event) => event.topic === "ka.sync"), "no progress line, and nothing else");
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("appends the same records to --log-file and keeps the progress records, naming each document's gap", async () => {
       // The PDF answers 404: the record is stored with a hole, and the event says which URL and why.
       const { transport } = scriptedTransport([
         { match: "pardok-wp19.xml", body: PARDOK },
@@ -1557,12 +1581,16 @@ describe("ka", () => {
       const log = join(harness.corpus, "..", "openka-events.jsonl");
       try {
         strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-file", log], harness.deps), EXIT_OK, harness.stderr());
-        match(harness.stderr(), /^berlin: \d+ Anfragen discovered$/m, "the text progress stays on stderr");
+        match(harness.stderr(), /^INFO  \[ka\.sync\] berlin: \d+ Anfragen discovered$/m, "the text progress stays on stderr");
         const events = parse(harness.files.get(log)?.toString("utf8") ?? "");
+        ok(events.every((event) => event.ts === "2026-01-02T03:04:05.000Z" && typeof event.level === "string" && typeof event.msg === "string"));
         const record = events.find((event) => event.event === "record");
         deepStrictEqual((record?.["gaps"] as { gap: string; url: string }[] | undefined)?.map((gap) => [gap.gap, gap.url.endsWith(".pdf")]), [["404", true]]);
         ok(Array.isArray(record?.["abstained"]), "a record stored with holes names them");
-        ok(events.some((event) => event.event === "warning" && String(event["message"]).includes("now answers 404")));
+        const warning = events.find((event) => event.event === "warning");
+        deepStrictEqual([warning?.level, warning?.topic], ["WARN", "ka.sync"]);
+        ok(String(warning?.["message"]).includes("now answers 404"));
+        ok(!events.some((event) => /^berlin: \d+\/\d+ · /.test(event.msg)), "the progress records are stderr's only");
         // Run again: the file is appended to.
         strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "berlin", "--log-file", log], harness.deps), EXIT_OK);
         strictEqual(parse(harness.files.get(log)?.toString("utf8") ?? "").filter((event) => event.event === "start").length, 2);
@@ -1571,13 +1599,36 @@ describe("ka", () => {
       }
     });
 
-    it("turns the sync's other stderr lines into note events, so the stream stays JSON", async () => {
+    it("writes the sync's other diagnostics as records of their own area, so the stream stays JSON", async () => {
       const harness = cliHarness({ transport: scriptedTransport([{ match: "robots.txt", body: "User-agent: *\nDisallow: /\n" }]).transport });
+      const log = join(harness.corpus, "..", "openka-notes.jsonl");
       try {
-        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "sachsen-anhalt", "--log-format", "jsonl"], harness.deps), EXIT_OK);
-        const events = parse(harness.stderr());
-        ok(events.some((event) => event.event === "note" && /^Note: sachsen-anhalt: at most one request per 4 s/.test(String(event["message"]))));
-        ok(events.some((event) => event.event === "done" && typeof event["blocked"] === "string"));
+        strictEqual(await run(["--corpus", harness.corpus, "sync", "--source", "sachsen-anhalt", "--log-format", "jsonl", "--log-file", log], harness.deps), EXIT_OK);
+        for (const events of [parse(harness.err.join("\n")), parse(harness.files.get(log)?.toString("utf8") ?? "")]) {
+          const floor = events.find((event) => event.topic === "ka.http");
+          deepStrictEqual(Object.keys(floor ?? {}), ["ts", "level", "topic", "msg"]);
+          match(floor?.msg ?? "", /^sachsen-anhalt: at most one request per 4 s/);
+          ok(events.some((event) => event.event === "done" && typeof event["blocked"] === "string"));
+          ok(!events.some((event) => event.event === "note"), "no note events any more");
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("logs a failed job as an ERROR record, and the --log-file gets the error the run ends with", async () => {
+      const harness = cliHarness({ transport: scriptedTransport([{ match: "pardok-wp19.xml", body: PARDOK }, { match: ".pdf", status: 500 }]).transport });
+      const log = join(harness.corpus, "..", "openka-failed.jsonl");
+      try {
+        const code = await run(["--corpus", harness.corpus, "--max-retries", "0", "sync", "--source", "berlin", "--source", "bund", "--log-format", "jsonl", "--log-file", log], harness.deps);
+        ok(code !== EXIT_OK);
+        const events = parse(harness.err.join("\n"));
+        const failedJob = events.find((event) => event.event === "failed");
+        deepStrictEqual([failedJob?.level, failedJob?.job], ["ERROR", "bund"]);
+        match(failedJob?.msg ?? "", /^bund: failed: /);
+        deepStrictEqual(parse(harness.files.get(log)?.toString("utf8") ?? ""), events, "the file has every record stderr has");
+        const last = events.at(-1);
+        deepStrictEqual([last?.level, last?.event], ["ERROR", undefined], "the run's own error closes both");
       } finally {
         harness.cleanup();
       }
@@ -2057,7 +2108,7 @@ describe("ka-factory", () => {
       for (const [command, tail] of [["list", "."], ["verify", " — nothing to verify."]] as const) {
         const harness = cliHarness();
         strictEqual(await runFactory(["goldens", command, "--dir", empty], harness.deps), EXIT_ERROR, command);
-        strictEqual(harness.stderr().trim(), `Error: No goldens in ${empty}${tail}`, command);
+        strictEqual(harness.stderr().trim(), `ERROR [ka-factory.goldens] No goldens in ${empty}${tail}`, command);
         strictEqual(harness.stdout(), "", command);
         harness.cleanup();
       }
@@ -2285,7 +2336,7 @@ describe("a closed output pipe", () => {
       fileURLToPath(new URL("../../../cli-ka-factory/dist/src/cli/index.js", import.meta.url)),
     ]) {
       const text = readFileSync(bin, "utf8");
-      const installed = text.indexOf("handleOutputErrors()");
+      const installed = text.indexOf("handleOutputErrors(");
       ok(installed > 0, `${bin} does not install handleOutputErrors`);
       ok(installed < text.search(/await run(?:Factory)?\(/), `${bin} runs before it installs the handler`);
     }
@@ -2307,7 +2358,7 @@ describe("sync warnings", () => {
       await run(["--corpus", harness.corpus, "sync", "--source", "mecklenburg-vorpommern", "--limit", "1"], harness.deps);
       match(
         harness.stderr(),
-        /^warning: mecklenburg-vorpommern: Parldok answered in a form this adapter does not know \(not a Parldok success envelope\) — fell back to Parlamentsspiegel \(Landtag Mecklenburg-Vorpommern\), so these records came from the aggregator rather than from the parliament itself$/m,
+        /^WARN  \[ka\.sync\] mecklenburg-vorpommern: Parldok answered in a form this adapter does not know \(not a Parldok success envelope\) — fell back to Parlamentsspiegel \(Landtag Mecklenburg-Vorpommern\), so these records came from the aggregator rather than from the parliament itself$/m,
       );
     } finally {
       harness.cleanup();

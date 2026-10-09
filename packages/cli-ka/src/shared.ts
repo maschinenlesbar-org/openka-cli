@@ -31,7 +31,8 @@ import type { EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import { escapeControlChars, sanitizeForTerminal } from "./text.js";
 import { describeRequestFloor, floorKeptNote } from "@maschinenlesbar.org/openka-lib-source";
 import { CredentialStore } from "@maschinenlesbar.org/openka-lib-store";
-import type { CliDeps } from "./io.js";
+import { logOf, type CliDeps } from "./io.js";
+import { DEFAULT_LOG_FORMAT, logFormatProblem } from "./log.js";
 import {
   BLOBS_ENV,
   CORPUS_DEFAULT_TEXT,
@@ -146,6 +147,7 @@ export interface GlobalOptions {
   maxRedirects?: number;
   compact?: boolean;
   quiet?: boolean;
+  logFormat?: string;
 }
 
 /** Translate global CLI options into engine options. */
@@ -166,6 +168,12 @@ export interface ActionContext {
   opts: Record<string, unknown>;
   /** Every argument commander saw for the command, declared or not. */
   args: readonly string[];
+  /**
+   * The area the command's log records go under: its top-level name (`sync`,
+   * `export`, `sources`), so `ka.export` says who spoke. Cross-cutting records keep
+   * their own: `cli`, `http`, `store`.
+   */
+  area: string;
   /** The corpus, opened lazily so `--help` never creates a directory. */
   store(): Store;
   /**
@@ -203,6 +211,7 @@ export function action(
       global,
       opts: command.opts(),
       args: command.args,
+      area: topLevelName(command),
       corpusRoot: () => root,
       store: () => (store ??= deps.createStore(root, storeOptions)),
       existingStore: () => {
@@ -222,9 +231,18 @@ export function action(
     try {
       await fn(ctx, positionals);
     } finally {
-      if (store instanceof FileStore && options.noteIgnored !== false) noteIgnoredFiles(deps, store);
+      // `ctx.deps`, not `deps`: a command may have given the run a logger of its own
+      // (`ka sync --log-file`), and the note belongs in it too.
+      if (store instanceof FileStore && options.noteIgnored !== false) noteIgnoredFiles(ctx.deps, store);
     }
   };
+}
+
+/** The name of the top-level command `command` is, or is under: `sources` for `ka sources count`. */
+function topLevelName(command: Command): string {
+  let top = command;
+  while (top.parent?.parent !== null && top.parent?.parent !== undefined) top = top.parent;
+  return top.name();
 }
 
 /**
@@ -237,8 +255,9 @@ export function action(
 function noteIgnoredFiles(deps: CliDeps, store: FileStore): void {
   const ignored = store.ignoredFiles();
   if (ignored.length === 0) return;
-  deps.io.err(
-    `Note: ignored ${ignored.length} macOS AppleDouble/.DS_Store file(s) in the corpus; ` +
+  logOf(deps).info(
+    "store",
+    `ignored ${ignored.length} macOS AppleDouble/.DS_Store file(s) in the corpus; ` +
       `\`ka doctor --fix\` or \`dot_clean ${sanitizeForTerminal(store.root)}\` removes them.`,
   );
 }
@@ -279,9 +298,9 @@ export function noteRequestFloors(
     if (seen.has(source.key) || source.minHostIntervalMs === undefined || source.minHostIntervalMs <= DEFAULT_MIN_HOST_INTERVAL_MS) continue;
     seen.add(source.key);
     const kept = requested === undefined ? undefined : floorKeptNote(source, requested);
-    if (kept !== undefined) ctx.deps.io.err(`Note: ${kept}.`);
+    if (kept !== undefined) logOf(ctx.deps).info("http", `${kept}.`);
     else if (ctx.global.quiet !== true && (requested === undefined || requested < source.minHostIntervalMs)) {
-      ctx.deps.io.err(`Note: ${source.key}: ${describeRequestFloor(source)}.`);
+      logOf(ctx.deps).info("http", `${source.key}: ${describeRequestFloor(source)}.`);
     }
   }
 }
@@ -310,7 +329,7 @@ export function emit(ctx: ActionContext, text: string, outPath: string | undefin
     const reason = err instanceof Error ? err.message : String(err);
     throw new OpenKaError(`could not write ${outPath}: ${reason}`, { cause: err });
   }
-  ctx.deps.io.err(`Wrote ${data.length} bytes to ${outPath}`);
+  logOf(ctx.deps).info(ctx.area, `Wrote ${data.length} bytes to ${outPath}`);
 }
 
 function isDirectory(path: string): boolean {
@@ -367,8 +386,9 @@ export function addCorpusFilters(command: Command): Command {
  */
 export function noteUndated(ctx: ActionContext, undated: number): void {
   if (undated === 0) return;
-  ctx.deps.io.err(
-    `Note: ${undated} record(s) matched the other filters but have no question date, so --year/--from/--to ` +
+  logOf(ctx.deps).info(
+    ctx.area,
+    `${undated} record(s) matched the other filters but have no question date, so --year/--from/--to ` +
       "left them out (combined papers are dated only by their answer; `ka review` lists the hole).",
   );
 }
@@ -465,5 +485,11 @@ export function addGlobalOptions(program: Command): Command {
     )
     .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, MAX_REDIRECTS))
     .option("--compact", "compact JSON output")
-    .option("--quiet", "suppress progress output on stderr");
+    .option("--quiet", "suppress progress output on stderr")
+    .option(
+      "--log-format <format>",
+      "how errors, warnings, notes and progress are written to stderr: text (log4j style: time, level, [topic], message) or " +
+        `jsonl (one JSON object per line: ts, level, topic, msg; \`ka sync\` adds its event fields); default ${DEFAULT_LOG_FORMAT}`,
+      problemParser(logFormatProblem),
+    );
 }

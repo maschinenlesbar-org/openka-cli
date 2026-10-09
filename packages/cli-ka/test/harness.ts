@@ -19,6 +19,7 @@ export interface CliHarness {
   files: Map<string, Buffer>;
   /** Everything written to stdout, joined. */
   stdout(): string;
+  /** Everything written to stderr, joined, each record's timestamp taken off (`untimed`). */
   stderr(): string;
   cleanup(): void;
   corpus: string;
@@ -88,13 +89,22 @@ export function cliHarness(
     files,
     corpus,
     stdout: () => out.join("\n"),
-    stderr: () => err.join("\n"),
+    stderr: () => untimed(err.join("\n")),
     cleanup: () => {
       rmSync(corpus, { recursive: true, force: true });
       rmSync(config, { recursive: true, force: true });
     },
     config,
   };
+}
+
+/**
+ * stderr with each text record's timestamp taken off: `ERROR [ka.cli] …`. The format
+ * itself — timestamp, level, topic — is the log tests' (`log.test.ts`); the other tests
+ * check what was said, at which level and under which topic.
+ */
+export function untimed(text: string): string {
+  return text.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z /gm, "");
 }
 
 /** A local disk with room to spare: what every test that is not about volumes runs on. */

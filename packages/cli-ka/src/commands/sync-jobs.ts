@@ -22,8 +22,9 @@ import { adapterSourceKeys, sourceKeyProblem } from "@maschinenlesbar.org/openka
 import { queueProgressKey, type FileStore, type JobEnd, type QueueProgress, type RunResult } from "@maschinenlesbar.org/openka-lib-store";
 import { InvalidArgumentError } from "commander";
 import type { CliIO } from "../io.js";
+import { formatLogRecord, type LogLevel, type Logger } from "../log.js";
 import type { ActionContext } from "../shared.js";
-import { formatCount, pad, sanitizeForTerminal } from "../text.js";
+import { formatCount, pad } from "../text.js";
 
 /** One job as the command runs it. */
 export interface CliJob {
@@ -131,9 +132,11 @@ function readPlan(path: string): JobSelection {
 }
 
 /**
- * The job logs of a run: one line per event, each stamped with the CLI's clock and the
- * job's label, appended — a log keeps every run of its job. A log that cannot be
- * written is said once on stderr and then left alone; the sync goes on.
+ * The job logs of a run: one text log record per event, appended — a log keeps every
+ * run of its job. The record is the one stderr would show, `<ts> <LEVEL> [ka.sync]
+ * <job>: <message>`, so one grep reads both; the job's label leads the message, as the
+ * file of a plan may be shared by several jobs. A log that cannot be written is said
+ * once on stderr and then left alone; the sync goes on.
  */
 export class JobLogs {
   private readonly paths = new Map<string, string>();
@@ -141,20 +144,20 @@ export class JobLogs {
 
   constructor(
     private readonly io: CliIO,
-    private readonly now: () => Date,
+    private readonly log: Logger,
     jobs: readonly CliJob[],
   ) {
     for (const job of jobs) if (job.log !== undefined) this.paths.set(job.label, job.log);
   }
 
-  line(label: string, text: string): void {
+  line(label: string, level: LogLevel, text: string): void {
     const path = this.paths.get(label);
     if (path === undefined || this.broken.has(path) || this.io.appendFile === undefined) return;
     try {
-      this.io.appendFile(path, `${this.now().toISOString()} ${label} ${sanitizeForTerminal(text)}\n`);
+      this.io.appendFile(path, formatLogRecord(this.log.record(level, "sync", `${label}: ${text}`), "text") + "\n");
     } catch (err) {
       this.broken.add(path);
-      this.io.err(`warning: cannot write the log ${sanitizeForTerminal(path)}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
+      this.log.warn("sync", `cannot write the log ${path}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
     }
   }
 
@@ -162,18 +165,20 @@ export class JobLogs {
   outcome(outcome: SourceOutcome): void {
     const label = outcome.job;
     if (outcome.status === "skipped") {
-      this.line(label, outcome.reason === "interrupted" ? "not started: the run was interrupted" : "not started: an earlier job failed");
+      if (outcome.reason === "interrupted") this.line(label, "INFO", "not started: the run was interrupted");
+      else this.line(label, "WARN", "not started: an earlier job failed");
       return;
     }
     if (outcome.status === "failed") {
-      this.line(label, `failed: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`);
+      this.line(label, "ERROR", `failed: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`);
       return;
     }
     const report = outcome.report;
-    for (const warning of report.warnings) this.line(label, `warning: ${warning}`);
-    for (const error of report.errors) this.line(label, `error: ${error}`);
+    for (const warning of report.warnings) this.line(label, "WARN", warning);
+    for (const error of report.errors) this.line(label, "ERROR", error);
     this.line(
       label,
+      "INFO",
       `${statusOf(outcome)}: ${report.discovered} discovered, ${report.stored} stored, ${report.unchanged} unchanged, ${report.failed} failed` +
         (report.lowSpace === undefined ? "" : ` — ${report.lowSpace}`),
     );

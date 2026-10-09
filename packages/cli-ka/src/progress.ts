@@ -6,15 +6,19 @@
 //
 //   berlin: 1220/2471 · 0 failed · 4.1/min · ~5h 05m left
 //
-// On a terminal it is redrawn in place, one line for every source running. Anywhere
-// else — a log file, a pipe — it is a plain line, at most every `EVERY_REFS`
-// Anfragen or `EVERY_MS` per source, so a log stays readable and grep-able.
+// On a terminal it is redrawn in place, one line for every source running, and is not
+// a log record: it is the one thing on stderr that is redrawn rather than added to.
+// Anywhere else — a log file, a pipe, cron — it is an INFO record of `ka.sync`
+// (`log.ts`), at most every `EVERY_REFS` Anfragen or `EVERY_MS` per source, so a log
+// stays readable and grep-able. A failed Anfrage is a WARN record either way; on a
+// terminal it is printed above the redrawn line, which is drawn again below it.
 //
 // It goes to stderr, so `--json` (which shapes stdout) leaves it on; `--quiet` is
 // the switch that silences it. Time comes from `CliDeps.now`, the CLI's one clock.
 
 import type { ProgressEvent, SyncTiming } from "@maschinenlesbar.org/openka-lib-pipeline";
-import type { CliIO } from "./io.js";
+import { logOf, type CliIO } from "./io.js";
+import type { Logger } from "./log.js";
 import { truncate } from "./text.js";
 
 /** A plain progress line at most every this many Anfragen per source… */
@@ -47,10 +51,16 @@ export class SyncProgress {
   /** Whether a redrawn status line is on the terminal and must be cleared before other output. */
   private drawn = false;
 
+  private readonly log: Logger;
+
   constructor(
     private readonly io: CliIO,
     private readonly now: () => Date,
-  ) {}
+    /** Where the records go; unset, text records through `io.err`. */
+    log?: Logger,
+  ) {
+    this.log = log ?? logOf({ io, now });
+  }
 
   /** Register a source before it starts, so a terminal line shows it while it discovers. */
   start(source: string): void {
@@ -64,7 +74,7 @@ export class SyncProgress {
     state.startedAt = this.now().getTime();
     state.samples = [[state.startedAt, 0]];
     if (this.terminal()) this.redraw();
-    else if (total > 0) this.io.err(`${source}: ${total} Anfragen discovered`);
+    else if (total > 0) this.log.info("sync", `${source}: ${total} Anfragen discovered`);
   }
 
   update(source: string, event: ProgressEvent): void {
@@ -77,7 +87,7 @@ export class SyncProgress {
     while (state.samples.length > 2 && at - (state.samples[1] as [number, number])[0] > RECENT_MS) state.samples.shift();
     if (event.action === "failed") {
       state.failed++;
-      this.line(`  ! ${source} ${truncate(event.id, 40)}: ${truncate(event.detail ?? "failed", 100)}`);
+      this.above(() => this.log.warn("sync", `${source}: ${truncate(event.id, 40)} failed: ${truncate(event.detail ?? "failed", 100)}`));
     }
     if (this.terminal()) {
       this.redraw();
@@ -89,7 +99,7 @@ export class SyncProgress {
       (last === undefined ? event.index >= EVERY_REFS : event.index - last.done >= EVERY_REFS || at - last.at >= EVERY_MS);
     if (due) {
       state.lastPrinted = { done: event.index, at };
-      this.io.err(this.describe(source, state));
+      this.log.info("sync", this.describe(source, state));
     }
   }
 
@@ -101,15 +111,18 @@ export class SyncProgress {
     if (this.terminal()) {
       // Leave the final count on screen, then redraw what is still running below it.
       this.clear();
-      if (state.total !== undefined && state.total > 0) this.io.err(this.describe(source, state));
+      if (state.total !== undefined && state.total > 0) this.log.info("sync", this.describe(source, state));
       this.redraw();
     }
   }
 
-  /** Print a line that must stay, clearing a redrawn status line first. */
-  line(text: string): void {
+  /**
+   * Write what must stay — a log record — clearing a redrawn status line first and
+   * drawing it again below. Off a terminal there is nothing to clear.
+   */
+  above(write: () => void): void {
     this.clear();
-    this.io.err(text);
+    write();
     this.redraw();
   }
 

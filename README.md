@@ -92,6 +92,12 @@ when run again. See [Usage.md](https://github.com/maschinenlesbar-org/openka-cli
 rate over the last ten minutes, how long it has left, and whether it has stalled or
 its process is gone; `--stalled-after 10m` turns that into an exit code for cron.
 
+**stderr is a log.** stdout carries the data; every error, warning, note and — off a
+terminal — every progress line on stderr is a record with a timestamp, a level and a
+topic: `2026-10-09T14:03:12.481Z WARN  [ka.sync] berlin: …`. `--log-format jsonl` writes
+one JSON object per line instead (`ts`, `level`, `topic`, `msg`; `ka sync`'s events add
+their fields), and `ka sync --log-file <path>` appends them to a file.
+
 **Not past a full disk.** `ka sync` keeps 1 GB free on each volume it writes to
 (`--min-free 20G` for more, `--min-free 0` to turn it off). It refuses to start below
 that floor, and also when the documents still to fetch would not fit. Their size is

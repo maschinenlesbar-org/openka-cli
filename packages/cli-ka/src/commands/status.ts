@@ -6,7 +6,8 @@ import type { Command } from "commander";
 import { InvalidArgumentError } from "commander";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FileStore, durationProblem, parseDurationSeconds, readRunReport, type JobReport, type RunReport } from "@maschinenlesbar.org/openka-lib-store";
-import type { CliDeps, CliIO } from "../io.js";
+import { logOf, type CliDeps, type CliIO } from "../io.js";
+import type { Logger } from "../log.js";
 import { duration } from "../progress.js";
 import { action, printJson } from "../shared.js";
 import { formatCount, sanitizeForTerminal } from "../text.js";
@@ -41,7 +42,7 @@ export function registerStatus(program: Command, deps: CliDeps): void {
           const now = ctx.deps.now();
           const report = readRunReport(store, now);
           if (ctx.opts["json"] === true) printJson(ctx, report);
-          else printStatus(ctx.deps.io, report, now);
+          else printStatus(ctx.deps.io, logOf(ctx.deps), report, now);
           const stalled = stalledAfter === undefined ? undefined : stallOf(report, stalledAfter);
           if (stalled !== undefined) throw new OpenKaError(stalled);
           if (ctx.opts["watch"] !== true || report.state !== "running") return;
@@ -59,7 +60,7 @@ function stallOf(report: RunReport, seconds: number): string | undefined {
   return undefined;
 }
 
-function printStatus(io: CliIO, report: RunReport, now: Date): void {
+function printStatus(io: CliIO, log: Logger, report: RunReport, now: Date): void {
   const run = report.run;
   const since = (at: string): string => duration(now.getTime() - Date.parse(at));
   if (report.state === "busy") {
@@ -78,7 +79,7 @@ function printStatus(io: CliIO, report: RunReport, now: Date): void {
     io.out(`stale lock: ${sanitizeForTerminal(report.holder ?? "unknown")} is gone; the next writer takes it over`);
   }
   for (const job of report.jobs) io.out(`  ${jobLine(job, now)}`);
-  for (const note of report.notes) io.err(`note: ${sanitizeForTerminal(note)}`);
+  for (const note of report.notes) log.info("status", note);
 }
 
 function jobLine(job: JobReport, now: Date): string {

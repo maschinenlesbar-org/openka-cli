@@ -17,6 +17,37 @@ are authoritative; this is the narrative version.
 | `--max-redirects <n>` | redirects to follow (0–10); `0` surfaces a 3xx as an error |
 | `--compact` | compact JSON output |
 | `--quiet` | suppress progress on stderr (`ka sync`'s progress line) |
+| `--log-format <format>` | how errors, warnings, notes and progress are written to stderr: `text` (default; log4j style, `2026-10-09T14:03:12.481Z WARN  [ka.sync] …`) or `jsonl` (one JSON object per line, starting with `ts`, `level`, `topic`, `msg`). Before or after the command (`ka sync --log-format jsonl` works). stdout is not affected |
+
+### The log on stderr
+
+stdout carries the data; everything else a command says goes to stderr as a **log
+record**: a timestamp (UTC, milliseconds), a level (`ERROR`, `WARN`, `INFO`) and a topic,
+the program and the area the record comes from. The default text form:
+
+```text
+2026-10-09T14:03:12.481Z INFO  [ka.http] sachsen-anhalt: at most one request per 4 s per host — …
+2026-10-09T14:03:13.020Z WARN  [ka.store] the corpus /Volumes/stick/openka is on a network filesystem (smbfs) …
+2026-10-09T14:03:14.902Z ERROR [ka.cli] unknown option '--sorce'
+```
+
+`--log-format jsonl` writes the same records one JSON object per line —
+`{"ts":"…","level":"ERROR","topic":"ka.cli","msg":"unknown option '--sorce'"}` — and
+`ka sync`'s events add their fields after `msg` (below). The areas of `ka`: `cli` (usage
+errors, commander's messages, unexpected errors), `http` (an upstream's error answer or
+a dropped connection, a source's request floor), `store` (the corpus: missing, locked,
+the volume it is on, catalog gaps, macOS files), `sync` (progress off a terminal, the
+events, warnings and errors of a run), and every other command under its own name —
+`search`, `export`, `review`, `verify`, `reextract`, `rm`, `status`, `sources`, `stats`,
+`config`, `doctor`, `open`, `get`, `feed`. An error that ends a run is logged as an
+`ERROR` record: under `cli` for a usage error, `store` for a corpus problem, `http` for
+an upstream's, and otherwise under the command. `ka-factory` writes the same records under
+its own name: `ka-factory.cli`, `ka-factory.goldens`, `ka-factory.health`,
+`ka-factory.drift`, `ka-factory.lint`, `ka-factory.answers`, `ka-factory.embed`.
+
+Left as they are: the progress line `ka sync` redraws in place on a terminal (it is
+redrawn, not added to), the prompt of `ka config set`, and `--help`/`--version`, which
+go to stdout.
 
 ## `ka sync`
 
@@ -60,7 +91,7 @@ the `Content-Length` of a HEAD request to up to 20 of the documents, spread over
 list — asked under the same robots.txt rules and pacing as a sync. Discovery itself is
 not free: Berlin's is a 50+ MB feed. With `--json` the plan is an object (an array for
 several sources). When the download would not fit beside `--min-free`, or a sync would
-refuse the volume, a `warning:` line on stderr says so in place of the `space:` line.
+refuse the volume, a `WARN` record of `ka.store` on stderr says so in place of the `space:` line.
 
 **Where the corpus may live.** Before it writes anything — the lock file is the first
 write — `ka sync` checks the volume of the corpus and, when it is named apart, of
@@ -162,10 +193,12 @@ plan behind another run). The command line's window flags do not go with `--plan
 output flags apply to every job.
 
 A job's `log` (a path relative to the plan file; `{source}`, `{period}`, `{since}`,
-`{until}` and `{limit}` are filled in) is appended to with one line per event, each
-stamped with the time and the job's name: `started`, the Anfragen discovered, every
-Anfrage stored, unchanged or failed, every warning and error in full, and how the job
-ended. The run ends with a summary of the plan, one row per job:
+`{until}` and `{limit}` are filled in) is appended to with one text log record per
+event, whatever `--log-format` is — `2026-10-09T14:03:12.481Z INFO  [ka.sync] bund@period=21:
+2471 Anfragen discovered`, the job's name leading the message: `started`, the Anfragen
+discovered, every Anfrage stored, unchanged or failed (a `WARN`), every warning (`WARN`)
+and error (`ERROR`) in full, and how the job ended. The run ends with a summary of the
+plan, one row per job:
 
 ```
 JOB                            STATUS       DISCOVERED    STORED UNCHANGED    FAILED
@@ -197,36 +230,52 @@ keep the feed's new validator, so running it again continues. `--force` bypasses
 the feed's `ETag` and the per-record check.
 
 **Progress goes to stderr while it runs.** After discovery, `berlin: 2471 Anfragen
-discovered`, then `berlin: 1220/2471 · 0 failed · 4.1/min · ~5h 05m left`, and a
-`! <reference>: <reason>` line for every Anfrage that failed. On a terminal the line is
-redrawn in place; written to a file or a pipe it is a plain line every 25 Anfragen or
-30 seconds, so a log shows how far the run got. `--json` shapes stdout only and keeps
-it; `--quiet` silences it.
+discovered`, then `berlin: 1220/2471 · 0 failed · 4.1/min · ~5h 05m left`, and a `WARN`
+record `berlin: <reference> failed: <reason>` for every Anfrage that failed. On a terminal
+the line is redrawn in place (a failed Anfrage is printed above it, and the line drawn
+again below); written to a file, a pipe or cron's mail it is an `INFO` record of
+`ka.sync` every 25 Anfragen or 30 seconds, so a log shows how far the run got:
 
-**An event log in JSON Lines.** `--log-format jsonl` writes one JSON object per event on
-stderr instead of the progress line; `--log-file <path>` appends the same events to a
-file and keeps the progress line. Every line carries `ts`, `event`, and for a job's
-events `job` and `source`, so the events of several sources share one stream:
+```text
+2026-10-09T14:03:12.481Z INFO  [ka.sync] berlin: 2471 Anfragen discovered
+2026-10-09T14:05:40.102Z WARN  [ka.sync] berlin: 19/24990 failed: HTTP 503 …
+2026-10-09T14:06:02.917Z INFO  [ka.sync] berlin: 25/2471 · 1 failed · 8.8/min · ~4h 38m left
+```
+
+`--json` shapes stdout only and keeps it; `--quiet` silences it.
+
+**An event log in JSON Lines.** With `--log-format jsonl` (the program's option, before or
+after `sync`) every event is a log record of `ka.sync` on stderr, in place of the progress
+line; `--log-file <path>` appends the same records to a file whatever `--log-format` is,
+and keeps the progress line on stderr. A record starts with `ts`, `level`, `topic` and
+`msg`, a sentence for people; then `event`, and for a job's events `job` and `source`, so
+the events of several sources share one stream:
 
 ```jsonl
-{"ts":"2026-10-06T18:00:01Z","event":"start","job":"berlin","source":"berlin"}
-{"ts":"2026-10-06T18:00:01Z","event":"discovered","job":"berlin","source":"berlin","count":2471}
-{"ts":"2026-10-06T18:00:03Z","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24986","status":"stored","index":1,"total":2471,"ms":812,"bytes":141233,"abstained":["qa"]}
-{"ts":"2026-10-06T18:00:04Z","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24987","status":"stored","index":2,"total":2471,"ms":4100,"bytes":0,"gaps":[{"url":"https://…","gap":"404","reason":"now answers 404"}]}
-{"ts":"2026-10-06T18:00:05Z","event":"record","job":"berlin","source":"berlin","id":"19/24990","status":"failed","index":3,"total":2471,"ms":2050,"error":"HTTP 503 …"}
-{"ts":"2026-10-06T18:41:12Z","event":"warning","job":"berlin","source":"berlin","message":"…"}
-{"ts":"2026-10-06T18:41:12Z","event":"done","job":"berlin","source":"berlin","discovered":2471,"stored":2470,"failed":1,…,"timing":{…}}
-{"ts":"2026-10-06T18:41:12Z","event":"report","reports":[…]}
+{"ts":"2026-10-06T18:00:01.020Z","level":"INFO","topic":"ka.sync","msg":"berlin: started","event":"start","job":"berlin","source":"berlin"}
+{"ts":"2026-10-06T18:00:01.912Z","level":"INFO","topic":"ka.sync","msg":"berlin: 2471 Anfragen discovered","event":"discovered","job":"berlin","source":"berlin","count":2471}
+{"ts":"2026-10-06T18:00:03.310Z","level":"INFO","topic":"ka.sync","msg":"berlin-19-24986 stored","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24986","status":"stored","index":1,"total":2471,"ms":812,"bytes":141233,"abstained":["qa"]}
+{"ts":"2026-10-06T18:00:04.007Z","level":"INFO","topic":"ka.sync","msg":"berlin-19-24987 stored","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24987","status":"stored","index":2,"total":2471,"ms":4100,"bytes":0,"gaps":[{"url":"https://…","gap":"404","reason":"now answers 404"}]}
+{"ts":"2026-10-06T18:00:05.250Z","level":"WARN","topic":"ka.sync","msg":"19/24990 failed: HTTP 503 …","event":"record","job":"berlin","source":"berlin","id":"19/24990","status":"failed","index":3,"total":2471,"ms":2050,"error":"HTTP 503 …"}
+{"ts":"2026-10-06T18:41:12.401Z","level":"WARN","topic":"ka.sync","msg":"berlin: …","event":"warning","job":"berlin","source":"berlin","message":"…"}
+{"ts":"2026-10-06T18:41:12.402Z","level":"INFO","topic":"ka.sync","msg":"berlin: done — 2470 stored, 0 unchanged, 1 failed","event":"done","job":"berlin","source":"berlin","discovered":2471,"stored":2470,"failed":1,…,"timing":{…}}
+{"ts":"2026-10-06T18:41:12.403Z","level":"INFO","topic":"ka.sync","msg":"report of 1 job(s)","event":"report","reports":[…]}
 ```
 
 A `record`'s `status` is `stored`, `unchanged` or `failed`; `abstained` names the fields a
 stored record abstains on, `gaps` the documents that were not fetched with their URL and
 why (`404`, `robots`, `not-pdf`, `glued`, `too-large`), and `error` why one failed. A job
 ends with `done` (the report's counts and `timing`; its warnings come just before as
-`warning` events), `failed` or `skipped`; the run with `report`, which is what `--json`
-prints. With `--log-format jsonl` every other line the sync would print on stderr becomes
-a `note` event, so the stream is JSON throughout — only the `Error:` line of a failed run
-stays text. `--json` and the summary on stdout are unchanged.
+`warning` events), `failed` (an `ERROR`) or `skipped` (a `WARN` when an earlier job
+failed, an `INFO` when the run was interrupted); the run with `report`, which is what
+`--json` prints. The levels: `INFO` for `start`, `discovered`, a stored or unchanged
+`record`, `done` and `report`; `WARN` for `warning` and a failed `record`; `ERROR` for a
+failed job. Every other diagnostic of the run — a source's request floor, a volume
+warning, the error a failed run ends with — is a record of its own area (`ka.http`,
+`ka.store`, `ka.cli`, …) without an `event`, in the same stream and in the `--log-file`
+too, so both are JSON throughout. Until 2026-10-09 the events had no `level`, `topic` or `msg`,
+their `ts` had no milliseconds, and the other lines were wrapped into `note` events.
+`--json` and the summary on stdout are unchanged.
 
 **The pace is the recent one, and the line says where the time goes.** The rate and
 the time left are taken over the last ten minutes, so a run whose upstream slows down
@@ -628,7 +677,7 @@ and also: who holds the corpus lock (a `stale` one, left by a run on this host t
 gone, is taken over by the next writer); whether the catalog and the record files agree
 (`ka reindex` repairs that); whether a `--blobs` drive is reachable; and how many macOS
 `._*` and `.DS_Store` files lie anywhere in the corpus. Problems go to stderr as
-`problem:` lines and exit 3; warnings (a network filesystem, platform files, a stale
+`ERROR` records of `ka.doctor` and exit 3; warnings (a network filesystem, platform files, a stale
 lock, orphaned documents) do not change the exit code. `--orphaned-documents` also counts
 the archived documents no record refers to; it reads every record, so it is not done by
 default, and `ka rm --orphaned-documents` removes them. A record an earlier build filed

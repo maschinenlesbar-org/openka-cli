@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { PACKAGE_VERSION } from "@maschinenlesbar.org/openka-lib-repro";
 import { isoInstant } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { defaultDeps, type CliDeps } from "@maschinenlesbar.org/openka-cli-ka";
+import { defaultDeps, logOf, type CliDeps } from "@maschinenlesbar.org/openka-cli-ka";
 import {
   action,
   addGlobalOptions,
@@ -130,8 +130,9 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         });
         ctx.deps.io.out(`Froze ${id} as a golden in ${golden.dir}`);
         if (record.extraction.abstained_fields.length > 0) {
-          ctx.deps.io.err(
-            `Note: this record has ${record.extraction.abstained_fields.length} abstained field(s). ` +
+          logOf(ctx.deps).info(
+            "goldens",
+            `this record has ${record.extraction.abstained_fields.length} abstained field(s). ` +
               "Freezing it pins the abstentions too, which is useful as a regression guard — but check " +
               "against the PDF before treating it as ground truth.",
           );
@@ -162,7 +163,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
               `${golden.record.qa.length} pair(s)  ${truncate(golden.meta.note ?? golden.record.title, 60)}`,
           );
         }
-        ctx.deps.io.err(`${found.length} golden(s) in ${dir}.`);
+        logOf(ctx.deps).info("goldens", `${found.length} golden(s) in ${dir}.`);
       }),
     );
 
@@ -225,7 +226,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
         if (save !== undefined && save !== false) {
           const path = typeof save === "string" ? resolve(save) : baselinePath(ctx.corpusRoot());
           saveBaseline(path, snapshot);
-          ctx.deps.io.err(`Baseline written to ${path}.`);
+          logOf(ctx.deps).info("health", `Baseline written to ${path}.`);
         }
       }),
     );
@@ -249,7 +250,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
           printJson(ctx, { baseline: baseline?.taken_at ?? null, findings });
         } else {
           if (baseline === undefined) {
-            ctx.deps.io.err(`No baseline at ${path}; run \`ka-factory health --save-baseline\` first.`);
+            logOf(ctx.deps).warn("drift", `No baseline at ${path}; run \`ka-factory health --save-baseline\` first.`);
           }
           if (findings.length === 0) {
             ctx.deps.io.out("No drift against the baseline.");
@@ -301,7 +302,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
             ? {}
             : {
                 onProgress: (event) => {
-                  if (event.outcome === "answer") ctx.deps.io.err(`  + ${event.number}`);
+                  if (event.outcome === "answer") logOf(ctx.deps).info("answers", `answer ${event.number}`);
                 },
               }),
         });
@@ -341,7 +342,8 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
           `Wrote ${Object.keys(set.vectors).length} vector(s) of ${set.dimensions} dimensions (${set.model}).`,
         );
         if (set.model === HASHED_TFIDF) {
-          ctx.deps.io.err(
+          logOf(ctx.deps).info(
+            "embed",
             "These are hashed TF-IDF projections, not language-model embeddings: they find shared " +
               "distinctive vocabulary, not shared meaning. Import real vectors with --from when you need more.",
           );

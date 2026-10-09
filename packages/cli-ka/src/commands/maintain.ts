@@ -12,7 +12,7 @@ import { DEFAULT_REVIEW_LIMIT, LIMIT_MIN, reviewGroups, reviewQueue } from "@mas
 import { SOURCE_REGISTRY, createSource, sourceEntry, sourceKeyProblem } from "@maschinenlesbar.org/openka-lib-registry";
 import { HostPacer } from "@maschinenlesbar.org/openka-lib-http";
 import { PERIOD_RANGE, knownGaps, onlyKnownGaps } from "@maschinenlesbar.org/openka-lib-models";
-import type { CliDeps } from "../io.js";
+import { logOf, type CliDeps } from "../io.js";
 import { describeRequestFloor } from "@maschinenlesbar.org/openka-lib-source";
 import { action, apiKeyLookup, noteRequestFloors, parseBoundedInt, parseNonEmpty, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions, type ActionContext } from "../shared.js";
 import { formatCount, pad, truncate } from "../text.js";
@@ -78,8 +78,9 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           );
           // Without this the tally vouched for an edited asker or title, which
           // re-extraction takes from the record itself (UNCHECKED_FIELDS).
-          ctx.deps.io.err(
-            "Note: verify re-derives the text, the Q/A pairs, the markers and the extraction stamp from the archived " +
+          logOf(ctx.deps).info(
+            "verify",
+            "verify re-derives the text, the Q/A pairs, the markers and the extraction stamp from the archived " +
               "documents. Title, askers, answered_by, dates and the documents' URLs come from the record itself and " +
               "are not checked against anything archived.",
           );
@@ -136,7 +137,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
               );
             }
             if (set.unknown > 0) {
-              io.err(`note: ${set.parliament}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
+              logOf(ctx.deps).info("store", `${set.parliament}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
             }
           }
           noteKnownGaps(ctx, grouped.reduce((sum, set) => sum + set.knownGapsOnly, 0), grouped.filter((set) => set.knownGapsOnly > 0).map((set) => set.parliament));
@@ -149,8 +150,9 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           ctx.deps.io.out(`${mark}: marked human_verified.`);
           // Saying this out loud matters: a human decision is the one thing in the
           // corpus that re-extraction cannot reproduce, and `ka verify` knows it.
-          ctx.deps.io.err(
-            "Note: the record's abstained fields are unchanged — marking it verified records that a " +
+          logOf(ctx.deps).info(
+            "review",
+            "the record's abstained fields are unchanged — marking it verified records that a " +
               "person checked the holes, not that they were filled.",
           );
           return;
@@ -190,7 +192,8 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             ctx.deps.io.out(`    ${field}`);
           }
         }
-        ctx.deps.io.err(
+        logOf(ctx.deps).info(
+          "review",
           `${queue.entries.length} of ${queue.total} record(s) with abstentions. ` +
             "Check one against its source with `ka open <id>`, then `ka review --mark-verified <id>`.",
         );
@@ -207,7 +210,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         const count = reindexAll(ctx.existingStore(), {
           onUnreadable: (id, err) => {
             unreadable.push(id);
-            ctx.deps.io.err(`skipped ${id}: ${err.message}`);
+            logOf(ctx.deps).warn("reindex", `skipped ${id}: ${err.message}`);
           },
         });
         ctx.deps.io.out(`Reindexed ${count} record(s) in ${ctx.corpusRoot()}.`);
@@ -239,7 +242,8 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           );
           if (row.last_error !== undefined) ctx.deps.io.out(`    error: ${truncate(row.last_error, 120)}`);
         }
-        ctx.deps.io.err(
+        logOf(ctx.deps).info(
+          "sources",
           "Sources marked `via_aggregator` have no dedicated adapter; they are reachable through " +
             "`--source parlamentsspiegel`, which yields metadata and PDF links only.",
         );
@@ -262,7 +266,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         noteRequestFloors(ctx, sourcesToCount);
         const pacer = new HostPacer();
         if (ctx.global.quiet !== true && ctx.opts["json"] !== true) {
-          ctx.deps.io.err(`Asking ${sourcesToCount.length} upstream(s) for their count…`);
+          logOf(ctx.deps).info("sources", `Asking ${sourcesToCount.length} upstream(s) for their count…`);
         }
         const rows = await countSources({
           sources: sourcesToCount,
@@ -294,7 +298,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           const sum = (pick: (row: (typeof counted)[number]) => number): number => counted.reduce((total, row) => total + pick(row), 0);
           io.out(line("total", num(sum((row) => row.upstream ?? 0)), num(sum((row) => row.in_corpus)), num(sum((row) => row.missing ?? 0)), ""));
         }
-        for (const row of rows.filter((row) => row.note !== undefined)) io.err(`note: ${row.source}: ${truncate(row.note ?? "", 200)}`);
+        for (const row of rows.filter((row) => row.note !== undefined)) logOf(ctx.deps).info("sources", `${row.source}: ${truncate(row.note ?? "", 200)}`);
         if (rows.every((row) => row.upstream === undefined)) throw new OpenKaError("no upstream could be counted");
       }),
     );
@@ -340,8 +344,9 @@ function collectSourceKey(value: string, previous: string[] = []): string[] {
 function noteKnownGaps(ctx: ActionContext, count: number, parliaments: readonly string[]): void {
   if (count === 0) return;
   const which = parliaments.map((parliament) => `${parliament}: ${knownGaps(parliament).map((gap) => gap.field).join(", ")}`).join("; ");
-  ctx.deps.io.err(
-    `Note: ${formatCount(count)} record(s) left out: their only holes are fields the parliament never provides (${which}). ` +
+  logOf(ctx.deps).info(
+    "review",
+    `${formatCount(count)} record(s) left out: their only holes are fields the parliament never provides (${which}). ` +
       "--include-known-gaps lists them too.",
   );
 }

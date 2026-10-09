@@ -51,19 +51,19 @@ describe("a validation error raised inside an action", () => {
     throw new OpenKaValidationError("Invalid corpus: Expected a non-empty value.", { reason: "Expected a non-empty value." });
   };
 
-  it("exits 2 from ka, printed as Error: <message>", async () => {
+  it("exits 2 from ka, logged as an ERROR record of ka.cli", async () => {
     const harness = cliHarness();
     harness.deps.openStore = refusing;
     strictEqual(await run(["--corpus", harness.corpus, "stats"], harness.deps), EXIT_USAGE);
-    strictEqual(harness.stderr(), "Error: Invalid corpus: Expected a non-empty value.");
+    strictEqual(harness.stderr(), "ERROR [ka.cli] Invalid corpus: Expected a non-empty value.");
     harness.cleanup();
   });
 
-  it("exits 2 from ka-factory, printed the same way", async () => {
+  it("exits 2 from ka-factory, logged the same way under its own name", async () => {
     const harness = cliHarness();
     harness.deps.createStore = refusing;
     strictEqual(await runFactory(["--corpus", harness.corpus, "health"], harness.deps), EXIT_USAGE);
-    strictEqual(harness.stderr(), "Error: Invalid corpus: Expected a non-empty value.");
+    strictEqual(harness.stderr(), "ERROR [ka-factory.cli] Invalid corpus: Expected a non-empty value.");
     harness.cleanup();
   });
 });
@@ -603,7 +603,7 @@ describe("the default drift-baseline location (finding 26)", () => {
       },
     });
     strictEqual(result.cli.code, 0, result.cli.err);
-    strictEqual(result.cli.err, `Baseline written to ${join(cliCorpus, BASELINE_FILE)}.`);
+    strictEqual(result.cli.err, `INFO  [ka-factory.health] Baseline written to ${join(cliCorpus, BASELINE_FILE)}.`);
     deepStrictEqual(result.lib, { ok: true, value: { relative: `/${BASELINE_FILE}`, bytes: cliBytes }, requests: [] });
     strictEqual((cliReadBack as { taken_at: string }).taken_at, NOW);
   });
@@ -796,7 +796,7 @@ describe("a corpus that is not there (finding 7)", () => {
         lib: ({ corpus }) => search(FileStore.open(join(corpus, "typo")), ""),
       });
       strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
-      strictEqual(result.cli.err, `Error: No corpus at ${cliRoot}: nothing has been synced there.${HINT}`);
+      strictEqual(result.cli.err, `ERROR [ka.store] No corpus at ${cliRoot}: nothing has been synced there.${HINT}`);
       deepStrictEqual(result.cli.requests, []);
       ok(!result.lib.ok);
       strictEqual(result.lib.error.name, "MissingCorpusError");
@@ -816,7 +816,7 @@ describe("a corpus that is not there (finding 7)", () => {
       lib: ({ corpus }) => corpusStats(FileStore.open(join(corpus, "afile"))),
     });
     strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
-    strictEqual(result.cli.err, `Error: ${cliRoot} is not a directory, so it cannot be a corpus.`);
+    strictEqual(result.cli.err, `ERROR [ka.store] ${cliRoot} is not a directory, so it cannot be a corpus.`);
     ok(!result.lib.ok);
     strictEqual(result.lib.error.name, "StoreError");
     ok(result.lib.error.message.endsWith("afile is not a directory, so it cannot be a corpus."), result.lib.error.message);
@@ -847,7 +847,7 @@ describe("a named drift baseline that is not there (finding 22)", () => {
     });
     const message = (path: string): string => `No baseline at ${path}. Write one with \`ka-factory health --save-baseline\`.`;
     strictEqual(result.cli.code, 1, result.cli.err);
-    strictEqual(result.cli.err, `Error: ${message(cliPath)}`);
+    strictEqual(result.cli.err, `ERROR [ka-factory.drift] ${message(cliPath)}`);
     ok(!result.lib.ok);
     strictEqual(result.lib.error.name, "OpenKaError");
     ok(result.lib.error.message.endsWith("/helth-baseline.json. Write one with `ka-factory health --save-baseline`."), result.lib.error.message);
@@ -896,7 +896,7 @@ describe("a lint that would scan nothing (finding 23)", () => {
         },
       });
       strictEqual(result.cli.code, 1, result.cli.err);
-      strictEqual(result.cli.err, `Error: ${nothing(cliRoot)}`);
+      strictEqual(result.cli.err, `ERROR [ka-factory.lint] ${nothing(cliRoot)}`);
       ok(!result.lib.ok);
       deepStrictEqual(result.lib.error, { name: "OpenKaError", message: nothing(libRoot) });
     });
@@ -945,7 +945,7 @@ describe("the goldens gate (finding 25)", () => {
       });
       const nothing = (path: string): string => `No goldens in ${path} — nothing to verify.`;
       strictEqual(result.cli.code, 1, `${label}: ${result.cli.err}`);
-      strictEqual(result.cli.err, `Error: ${nothing(cliDir)}`);
+      strictEqual(result.cli.err, `ERROR [ka-factory.goldens] ${nothing(cliDir)}`);
       deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: nothing(libDir) }, requests: [] });
     }
   });
@@ -986,7 +986,7 @@ describe("the goldens gate (finding 25)", () => {
       },
     });
     strictEqual(result.cli.code, 1, result.cli.err);
-    strictEqual(result.cli.err, `Error: ${regressed}`);
+    strictEqual(result.cli.err, `ERROR [ka-factory.goldens] ${regressed}`);
     deepStrictEqual(JSON.parse(JSON.stringify(libReport)), JSON.parse(result.cli.out));
     deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: regressed }, requests: [] });
   });
@@ -1139,7 +1139,7 @@ describe("where the corpus is (finding 19)", () => {
       ] as const) {
         const result = await parity({ env, argv: [...argv], lib: () => resolveCorpusRoot({ root: padded, env: {} }) });
         strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
-        ok(result.cli.err.startsWith(`Error: No corpus at ${expected}`), result.cli.err);
+        ok(result.cli.err.startsWith(`ERROR [ka.store] No corpus at ${expected}`), result.cli.err);
         deepStrictEqual(result.lib, { ok: true, value: expected, requests: [] });
       }
     } finally {
@@ -1193,7 +1193,9 @@ describe("OCR engine setup (finding 10)", () => {
       ok(!result.lib.ok, `${command.name}: the library built a perceiver`);
       strictEqual(result.lib.error.name, "OpenKaError");
       strictEqual(result.cli.code, 1, `${command.name}: ${result.cli.err}`);
-      strictEqual(result.cli.err, `Error: ${result.lib.error.message}`, command.name);
+      // Logged under the command that refused it: ka.sync, ka.verify, ka-factory.goldens, …
+      match(result.cli.err, /^ERROR \[ka(-factory)?\.[a-z]+\] /, command.name);
+      strictEqual(result.cli.err.replace(/^ERROR \[[a-z.-]+\] /, ""), result.lib.error.message, command.name);
       deepStrictEqual([result.cli.requests, result.lib.requests], [[], []], command.name);
     }
   };
@@ -1247,7 +1249,7 @@ describe("verifying a corpus (finding 13)", () => {
       deepStrictEqual(JSON.parse(result.cli.out), JSON.parse(JSON.stringify(report)));
       ok(!result.lib.ok);
       deepStrictEqual(result.lib.error.name, "StoreError");
-      strictEqual(result.cli.err, `Error: ${result.lib.error.message}`);
+      strictEqual(result.cli.err, `ERROR [ka.store] ${result.lib.error.message}`);
       ok(/unreadable$/.test(result.lib.error.message), result.lib.error.message);
     });
   }
@@ -1269,7 +1271,7 @@ describe("verifying a corpus (finding 13)", () => {
       },
     });
     strictEqual(result.cli.code, 1, result.cli.err);
-    strictEqual(result.cli.err, `Error: No records in ${resolve(cliRoot)}`);
+    strictEqual(result.cli.err, `ERROR [ka.verify] No records in ${resolve(cliRoot)}`);
     deepStrictEqual(result.lib, { ok: false, error: { name: "OpenKaError", message: `No records in ${libRoot}` }, requests: [] });
   });
 });
@@ -1298,7 +1300,7 @@ describe("a record's archived document (finding 15)", () => {
     strictEqual(result.cli.code, 0, result.cli.err);
     ok(result.lib.ok);
     strictEqual(relative(cliCorpus, result.cli.out), relative(libCorpus, result.lib.value as string));
-    strictEqual(result.cli.err, "combined_pdf · https://example.invalid/19-12345.pdf");
+    strictEqual(result.cli.err, "INFO  [ka.open] combined_pdf · https://example.invalid/19-12345.pdf");
   });
 
   const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1319,8 +1321,8 @@ describe("a record's archived document (finding 15)", () => {
       });
       const [cliBlob, libBlob] = blobs as [string, string];
       strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
-      ok(result.cli.err.startsWith("Error: "));
-      match(result.cli.err.slice("Error: ".length), expected(cliBlob));
+      ok(result.cli.err.startsWith("ERROR [ka.store] "), result.cli.err);
+      match(result.cli.err.slice("ERROR [ka.store] ".length), expected(cliBlob));
       ok(!result.lib.ok);
       strictEqual(result.lib.error.name, "StoreError");
       match(result.lib.error.message, expected(libBlob));
@@ -1347,7 +1349,7 @@ describe("a record's archived document (finding 15)", () => {
     strictEqual(result.cli.code, 1, result.cli.err);
     ok(!result.lib.ok);
     strictEqual(result.lib.error.name, "OpenKaError");
-    strictEqual(result.cli.err, `Error: ${result.lib.error.message}`);
+    strictEqual(result.cli.err, `ERROR [ka.open] ${result.lib.error.message}`);
     match(result.lib.error.message, /^Record berlin-19-12345 has no archived document with role answer_pdf\./);
   });
 });
@@ -1384,7 +1386,7 @@ describe("semantic search's total (finding 16)", () => {
       lib: ({ store }) => searchLike(store, "berlin-19-1", { limit: 2 }).total,
     });
     strictEqual(result.cli.code, 0, result.cli.err);
-    strictEqual(result.cli.err, "2 of 3 similar record(s).");
+    strictEqual(result.cli.err, "INFO  [ka.search] 2 of 3 similar record(s).");
     deepStrictEqual(result.lib, { ok: true, value: 3, requests: [] });
   });
 });

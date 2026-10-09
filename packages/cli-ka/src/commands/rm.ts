@@ -7,7 +7,8 @@ import type { Command } from "commander";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { selectRecords } from "@maschinenlesbar.org/openka-lib-search";
 import { removeOrphanedBlobs, removeRecords, type RemoveReport } from "@maschinenlesbar.org/openka-lib-store";
-import type { CliDeps, CliIO } from "../io.js";
+import { logOf, type CliDeps, type CliIO } from "../io.js";
+import type { Logger } from "../log.js";
 import { action, addCorpusFilters, corpusFiltersFrom, noteUndated, parseNonEmpty, parseRecordId, printJson, type ActionContext } from "../shared.js";
 import { formatBytes, formatCount, sanitizeForTerminal } from "../text.js";
 
@@ -47,7 +48,7 @@ export function registerRm(program: Command, deps: CliDeps): void {
         });
       }
       if (ctx.opts["json"] === true) printJson(ctx, report);
-      else printReport(ctx.deps.io, report);
+      else printReport(ctx.deps.io, logOf(ctx.deps), report);
     }),
   );
 }
@@ -69,14 +70,14 @@ function selectIds(ctx: ActionContext, ids: string[]): string[] {
   return selected.records.map((record) => record.id);
 }
 
-function printReport(io: CliIO, report: RemoveReport): void {
+function printReport(io: CliIO, log: Logger, report: RemoveReport): void {
   const verb = report.dry_run ? "would remove" : report.moved_to === undefined ? "removed" : "moved";
   for (const id of report.removed) io.out(`${verb} ${id}`);
   if (report.human_verified.length > 0) {
-    io.err(`warning: ${report.human_verified.length} of them had been checked by a person (human_verified): ${report.human_verified.join(", ")}`);
+    log.warn("rm", `${report.human_verified.length} of them had been checked by a person (human_verified): ${report.human_verified.join(", ")}`);
   }
   if (report.unreadable.length > 0) {
-    io.err(`warning: ${report.unreadable.length} could not be read; their files ${report.dry_run ? "would go" : "went"}, and the index ${report.dry_run ? "would be" : "was"} rebuilt: ${report.unreadable.join(", ")}`);
+    log.warn("rm", `${report.unreadable.length} could not be read; their files ${report.dry_run ? "would go" : "went"}, and the index ${report.dry_run ? "would be" : "was"} rebuilt: ${report.unreadable.join(", ")}`);
   }
   const parts: string[] = [];
   if (report.removed.length > 0) parts.push(`${formatCount(report.removed.length)} record(s)`);

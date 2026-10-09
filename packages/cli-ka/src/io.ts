@@ -9,13 +9,14 @@ import { FileStore, systemVolumes, type FileStoreOptions, type VolumeProbe } fro
 import { OpenKaError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
+import { createLogger, logFormatFromArgv, type Logger } from "./log.js";
 
 export interface CliIO {
   out(text: string): void;
   err(text: string): void;
   /**
    * Whether stderr is a terminal, where `ka sync` redraws its progress line in
-   * place; anywhere else (a log file, a pipe) it prints plain lines.
+   * place; anywhere else (a log file, a pipe) it writes log records.
    */
   errIsTerminal?: boolean;
   /** Write to stderr without a newline — only for redrawing a progress line on a terminal. */
@@ -62,6 +63,17 @@ export interface CliDeps {
   volumes?: VolumeProbe;
   /** Wait: only `ka status --watch`, between two looks. Unset, a timer. */
   sleep?(ms: number): Promise<void>;
+  /**
+   * Where diagnostics go: one record per line on stderr, in the `--log-format`
+   * (`log.ts`), stamped by `now`. `run()` sets it from argv; deps without it log text
+   * through `io.err`.
+   */
+  log?: Logger;
+}
+
+/** The deps' logger, or one that writes text records of `ka` through `io.err`. */
+export function logOf(deps: Pick<CliDeps, "io" | "now" | "log">): Logger {
+  return deps.log ?? createLogger({ format: "text", write: (line) => deps.io.err(line), now: () => deps.now() });
 }
 
 /** The signals `ka sync` stops early on. */
@@ -111,8 +123,8 @@ export interface OutputStreams {
  * closes the pipe while `ka` is still writing, and the next write fails with
  * EPIPE (ENOTCONN when stdout is a socket whose peer has gone, as when a Node parent
  * spawns `ka` with piped stdio on macOS). That is ordinary use, so the process exits 0
- * at once, quietly. Any other stdout error prints one `Output error: <message>` line
- * and exits 1. On stderr an EPIPE or ENOTCONN is ignored, so a failed run keeps its own exit code (2 for a usage error,
+ * at once, quietly. Any other stdout error logs one `Output error: <message>` ERROR
+ * record of `<program>.cli` (in the `--log-format` of the process's argv) and exits 1. On stderr an EPIPE or ENOTCONN is ignored, so a failed run keeps its own exit code (2 for a usage error,
  * 3 for a corpus problem) when stderr's reader is gone; any other stderr error
  * exits 1 silently, since there is nowhere left to report it. Both bins install
  * this once, before `run()`.
@@ -120,10 +132,11 @@ export interface OutputStreams {
 export function handleOutputErrors(
   streams: OutputStreams = process,
   exit: (code: number) => void = (code) => process.exit(code),
+  log: Logger = createLogger({ format: logFormatFromArgv(process.argv.slice(2)), write: (line) => process.stderr.write(line + "\n") }),
 ): void {
   streams.stdout.on("error", (err: NodeJS.ErrnoException) => {
     if (readerGone(err)) return exit(0);
-    process.stderr.write(`Output error: ${err.message}\n`);
+    log.error("cli", `Output error: ${err.message}`);
     exit(1);
   });
   streams.stderr.on("error", (err: NodeJS.ErrnoException) => {

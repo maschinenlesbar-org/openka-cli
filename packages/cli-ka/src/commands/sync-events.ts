@@ -1,78 +1,85 @@
-// `ka sync`'s event log in JSON Lines (issue #10): one object per event, one line per
-// object, written as it happens — for `tail -f | jq`, and to tell after an
-// interrupted run what became of each Anfrage and why. The progress line and the
-// `--json` report stay as they were; this is beside them.
+// `ka sync`'s event log (issue #10): one log record per event, written as it happens —
+// for `tail -f | jq`, and to tell after an interrupted run what became of each Anfrage
+// and why. Each event is a record of `ka.sync` (`log.ts`) whose fields follow `msg`:
 //
-//   {"ts":"…","event":"start","job":"berlin","source":"berlin"}
-//   {"ts":"…","event":"discovered","job":"berlin","source":"berlin","count":2471}
-//   {"ts":"…","event":"record","job":"berlin","source":"berlin","id":"berlin-19-24986","status":"stored","index":1,"total":2471,"ms":812,"bytes":141233,"abstained":["qa"]}
-//   {"ts":"…","event":"record",…,"status":"failed","error":"HTTP 503 …"}
-//   {"ts":"…","event":"warning","job":"berlin","source":"berlin","message":"…"}
-//   {"ts":"…","event":"done","job":"berlin","source":"berlin","stored":2471,…}
-//   {"ts":"…","event":"report","reports":[…]}            ← what --json prints
+//   {"ts":"…","level":"INFO","topic":"ka.sync","msg":"berlin: started","event":"start","job":"berlin","source":"berlin"}
+//   {"ts":"…","level":"INFO","topic":"ka.sync","msg":"berlin: 2471 Anfragen discovered","event":"discovered",…,"count":2471}
+//   {"ts":"…","level":"INFO","topic":"ka.sync","msg":"berlin-19-24986 stored","event":"record",…,"id":"berlin-19-24986","status":"stored","index":1,"total":2471,"ms":812,"bytes":141233,"abstained":["qa"]}
+//   {"ts":"…","level":"WARN","topic":"ka.sync","msg":"19/24987 failed: HTTP 503 …","event":"record",…,"status":"failed","error":"HTTP 503 …"}
+//   {"ts":"…","level":"WARN","topic":"ka.sync","msg":"berlin: …","event":"warning",…,"message":"…"}
+//   {"ts":"…","level":"INFO","topic":"ka.sync","msg":"berlin: done — 2471 stored, 0 failed","event":"done",…,"stored":2471,…}
+//   {"ts":"…","level":"ERROR","topic":"ka.sync","msg":"bund: failed: …","event":"failed",…,"error":"…"}
+//   {"ts":"…","level":"INFO","topic":"ka.sync","msg":"report of 1 job(s)","event":"report","reports":[…]}   ← what --json prints
 //
-// A record's `gaps` name the documents that were not fetched and why (404, robots,
-// too large, …), with their URLs.
+// With `--log-format jsonl` they go to stderr, in place of the progress line, among the
+// run's other records; `--log-file` appends them to a file as JSON Lines whatever the
+// format, with every other record of the run beside them. A record's `gaps` name the
+// documents that were not fetched and why (404, robots, too large, …), with their URLs.
 
-import { isoInstant, type ProgressEvent, type SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
+import type { ProgressEvent, SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { CliIO } from "../io.js";
-import { escapeControlChars } from "../text.js";
-
-/** Where the events go. */
-export type EventSink = (line: string) => void;
+import { formatLogRecord, type LogLevel, type LogRecord, type Logger } from "../log.js";
+import { statusOf } from "./sync-jobs.js";
 
 export class SyncEvents {
-  private readonly sinks: { name: string; write: EventSink }[] = [];
-  private readonly broken = new Set<string>();
+  private file: string | undefined;
+  private broken = false;
 
   constructor(
     private readonly io: CliIO,
-    private readonly now: () => Date,
+    /** The run's logger: stderr, in the `--log-format`. */
+    private readonly log: Logger,
+    /** Whether the events go to stderr (`--log-format jsonl`); a log file gets them either way. */
+    private readonly toStderr: boolean,
   ) {}
 
-  /** Write events to stderr, in place of the progress line (`--log-format jsonl`). */
-  toStderr(err: (text: string) => void): void {
-    this.sinks.push({ name: "stderr", write: err });
-  }
-
-  /** Append events to a file (`--log-file`), as a job log is appended to. */
+  /**
+   * Append every record of the run to a file (`--log-file`), as a job log is appended
+   * to: the events, and — tapped from the run's logger — every other record written from
+   * here on, down to the error `run()` ends a failed run with.
+   */
   toFile(path: string): void {
-    const append = this.io.appendFile;
-    if (append === undefined) throw new UsageError("--log-file cannot be written here.");
-    this.sinks.push({ name: path, write: (line) => append(path, line + "\n") });
+    if (this.io.appendFile === undefined) throw new UsageError("--log-file cannot be written here.");
+    this.file = path;
+    this.log.tap((record) => this.append(record));
   }
 
   get active(): boolean {
-    return this.sinks.length > 0;
+    return this.toStderr || this.file !== undefined;
   }
 
-  emit(event: string, fields: Record<string, unknown>): void {
-    if (this.sinks.length === 0) return;
-    // JSON.stringify leaves DEL and C1 raw; upstream text in a reason must not act on a terminal.
-    const line = escapeControlChars(JSON.stringify({ ts: isoInstant(this.now()), event, ...fields }));
-    for (const sink of this.sinks) {
-      if (this.broken.has(sink.name)) continue;
-      try {
-        sink.write(line);
-      } catch (err) {
-        // A log that cannot be written is said once; the sync goes on without it.
-        this.broken.add(sink.name);
-        this.io.err(`warning: cannot write the event log ${sink.name}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
-      }
+  private append(record: LogRecord): void {
+    const append = this.io.appendFile;
+    if (this.file === undefined || this.broken || append === undefined) return;
+    try {
+      append(this.file, formatLogRecord(record, "jsonl") + "\n");
+    } catch (err) {
+      // A log that cannot be written is said once; the sync goes on without it.
+      this.broken = true;
+      this.log.warn("sync", `cannot write the event log ${this.file}: ${err instanceof Error ? err.message : String(err)}; the sync goes on without it.`);
     }
   }
 
+  emit(level: LogLevel, event: string, msg: string, fields: Record<string, unknown>): void {
+    if (!this.active) return;
+    const record = this.log.record(level, "sync", msg, { event, ...fields });
+    // Written to stderr, the logger's tap appends it to the file; otherwise it goes there alone.
+    if (this.toStderr) this.log.write(record);
+    else this.append(record);
+  }
+
   start(job: string, source: string): void {
-    this.emit("start", { job, source });
+    this.emit("INFO", "start", `${job}: started`, { job, source });
   }
 
   discovered(job: string, source: string, count: number): void {
-    this.emit("discovered", { job, source, count });
+    this.emit("INFO", "discovered", `${job}: ${count} Anfragen discovered`, { job, source, count });
   }
 
   record(job: string, source: string, event: ProgressEvent): void {
-    this.emit("record", {
+    const failed = event.action === "failed";
+    this.emit(failed ? "WARN" : "INFO", "record", failed ? `${event.id} failed: ${event.detail ?? "failed"}` : `${event.id} ${event.action}`, {
       job,
       source,
       id: event.id,
@@ -91,15 +98,30 @@ export class SyncEvents {
   done(outcome: SourceOutcome): void {
     const ids = { job: outcome.job, source: outcome.source };
     if (outcome.status === "failed") {
-      this.emit("failed", { ...ids, error: outcome.error instanceof Error ? outcome.error.message : String(outcome.error) });
+      const error = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+      this.emit("ERROR", "failed", `${outcome.job}: failed: ${error}`, { ...ids, error });
       return;
     }
     if (outcome.status === "skipped") {
-      this.emit("skipped", { ...ids, reason: outcome.reason });
+      // Not started because the user stopped the run is what was asked for; because an
+      // earlier job failed, it is a job of the plan left undone.
+      const interrupted = outcome.reason === "interrupted";
+      const why = interrupted ? "the run was interrupted" : "an earlier job failed";
+      this.emit(interrupted ? "INFO" : "WARN", "skipped", `${outcome.job}: not started: ${why}`, { ...ids, reason: outcome.reason });
       return;
     }
     const { warnings, errors, source: _source, ...counts } = outcome.report;
-    for (const message of warnings) this.emit("warning", { ...ids, message });
-    this.emit("done", { ...ids, ...counts, errors: errors.length });
+    for (const message of warnings) this.emit("WARN", "warning", `${outcome.job}: ${message}`, { ...ids, message });
+    this.emit(
+      "INFO",
+      "done",
+      `${outcome.job}: ${statusOf(outcome)} — ${counts.stored} stored, ${counts.unchanged} unchanged, ${counts.failed} failed`,
+      { ...ids, ...counts, errors: errors.length },
+    );
+  }
+
+  /** The run's last event: what `--json` prints, so one log covers the whole run. */
+  report(reports: readonly unknown[]): void {
+    this.emit("INFO", "report", `report of ${reports.length} job(s)`, { reports });
   }
 }

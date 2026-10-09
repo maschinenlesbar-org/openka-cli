@@ -7,7 +7,8 @@ import { OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka
 import { selectRecords } from "@maschinenlesbar.org/openka-lib-search";
 import { reextractRecords, type ReextractReport } from "@maschinenlesbar.org/openka-lib-verify";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
-import type { CliDeps, CliIO } from "../io.js";
+import { logOf, type CliDeps, type CliIO } from "../io.js";
+import type { Logger } from "../log.js";
 import { action, addCorpusFilters, choiceOption, corpusFiltersFrom, noteUndated, parseRecordId, printJson, type ActionContext } from "../shared.js";
 import { formatCount } from "../text.js";
 
@@ -30,6 +31,7 @@ export function registerReextract(program: Command, deps: CliDeps): void {
       const mode = (ctx.opts["ocr"] as OcrMode | undefined) ?? "off";
       const perceiver = mode === "off" ? undefined : await createPerceiver(mode);
       const io = ctx.deps.io;
+      const log = logOf(ctx.deps);
       const report = await reextractRecords({
         store: ctx.existingStore(),
         env: ctx.deps.env,
@@ -39,10 +41,10 @@ export function registerReextract(program: Command, deps: CliDeps): void {
         ...(ctx.opts["dryRun"] === true ? { dryRun: true } : {}),
         ...(ctx.global.quiet === true || ids.length <= PROGRESS_EVERY
           ? {}
-          : { onProgress: (done: number, total: number) => (done % PROGRESS_EVERY === 0 || done === total ? io.err(`reextract: ${formatCount(done)}/${formatCount(total)}`) : undefined) }),
+          : { onProgress: (done: number, total: number) => (done % PROGRESS_EVERY === 0 || done === total ? log.info("reextract", `${formatCount(done)}/${formatCount(total)}`) : undefined) }),
       });
       if (ctx.opts["json"] === true) printJson(ctx, report);
-      else printReport(io, report);
+      else printReport(io, log, report);
       const unchecked = report.counts.unchecked;
       if (report.counts.unreadable > 0) {
         throw new StoreError(`${report.counts.unreadable} record(s) could not be read and were left as they are`);
@@ -77,7 +79,7 @@ function list(items: readonly string[]): string {
   return items.length <= 12 ? items.join(", ") : `${items.slice(0, 12).join(", ")} and ${items.length - 12} more`;
 }
 
-function printReport(io: CliIO, report: ReextractReport): void {
+function printReport(io: CliIO, log: Logger, report: ReextractReport): void {
   for (const result of report.results) {
     if (result.movedTo !== undefined) {
       io.out(
@@ -101,7 +103,7 @@ function printReport(io: CliIO, report: ReextractReport): void {
       if (result.abstained.length > 0) io.out(`  newly abstained: ${result.abstained.join(", ")}`);
       if (result.droppedMark === true) io.out("  the human_verified mark was dropped — check it again (`ka review --mark-verified`)");
     } else if (result.outcome === "unreadable" || result.outcome === "unchecked") {
-      io.err(`skipped ${result.id}: ${result.reason ?? result.outcome}`);
+      log.warn("reextract", `skipped ${result.id}: ${result.reason ?? result.outcome}`);
     }
   }
   const c = report.counts;

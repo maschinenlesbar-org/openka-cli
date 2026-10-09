@@ -35,10 +35,15 @@ It depends on `cli-ka` for the shared I/O seam and option parsers, and on
 `connector-niedersachsen` for the sweep. Both are allowed: the factory may depend on
 the line, never the other way round.
 
+Its stderr is `ka`'s log (`cli-ka`'s `log.ts`) under its own name: every diagnostic is a
+record `<ts> <LEVEL> [ka-factory.<area>] <message>` — areas `cli`, `lint`, `goldens`,
+`health`, `drift`, `answers`, `embed` — or, with the global `--log-format jsonl`, one JSON
+object per line (`ts`, `level`, `topic`, `msg`).
+
 ## What is in here
 
 - **`src/cli/program.ts`** — `ka-factory` — the build-time tooling.
-- **`src/cli/run.ts`** — argv in, exit code out — the factory's equivalent of `src/cli/run.ts`.
+- **`src/cli/run.ts`** — argv in, exit code out — the factory's equivalent of `cli-ka`'s `run.ts`, and its log.
 - **`src/lib/answer-index.ts`** — The Niedersachsen answer sweep — a build-time job that recovers a link no interface exposes.
 - **`src/lib/embed.ts`** — Frozen embeddings, built in the factory, consumed by the line.
 - **`src/lib/goldens.ts`** — Golden fixtures: a verified input→record pair, frozen on disk.
