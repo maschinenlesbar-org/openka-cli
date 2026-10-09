@@ -1375,6 +1375,38 @@ describe("ka", () => {
       pipe.end(`${KEY}\n`);
       strictEqual(await readSecretFrom(pipe, stderr, "unused: "), KEY);
     });
+
+    /** What the prompt returns for keystrokes arriving in `reads` (one data event each). */
+    async function typed(...reads: string[]): Promise<string> {
+      const tty = Object.assign(new EventEmitter(), {
+        isTTY: true,
+        setRawMode: () => tty,
+        resume: () => tty,
+        pause: () => tty,
+      });
+      const result = readSecretFrom(tty as unknown as NodeJS.ReadStream, { write: () => true }, "key: ");
+      for (const read of reads) tty.emit("data", Buffer.from(read));
+      return result;
+    }
+
+    it("drops escape sequences at the prompt and keeps what was typed (C1)", async () => {
+      strictEqual(await typed("abc\u001b[A\u001b[Ddef\r"), "abcdef", "arrow keys");
+      strictEqual(await typed("abcdefgh\u001b[Dijklmnop\r"), "abcdefghijklmnop", "the left arrow of the report");
+      strictEqual(await typed("\u001bOAabc\r"), "abc", "SS3");
+      strictEqual(await typed("\u001b[200~OSOe.key\u001b[201~\r"), "OSOe.key", "bracketed paste");
+      strictEqual(await typed("\u001b[1;5Cabc\r"), "abc", "a CSI with parameters");
+      strictEqual(await typed("abc\u001b", "[Adef\r"), "abcdef", "a sequence split across reads");
+      strictEqual(await typed("abcd\u007f\r"), "abc", "Backspace");
+      strictEqual(await typed("key\r\n"), "key", "CR LF is one line break");
+      // A tab is kept, so ka config set refuses it like the same value from a pipe.
+      strictEqual(await typed("abc\tdef\r"), "abc\tdef");
+    });
+
+    it("refuses a paste with more after its first line break at the prompt (C1)", async () => {
+      for (const read of ["firstLINE12345678\nsecondline\n", "key\rsecondline\r", "key\r\nmore"]) {
+        await rejects(typed(read), /The value holds a line break; nothing was stored\./, JSON.stringify(read));
+      }
+    });
   });
 
   describe("after an upgrade (issue #13)", () => {
