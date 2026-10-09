@@ -20,6 +20,7 @@ import {
   syncSources,
   syncLimitProblem,
   syncPeriodProblem,
+  syncRefsProblem,
   jobLabel,
   jobSpecProblem,
   parseJobSpec,
@@ -1780,6 +1781,15 @@ describe("sync jobs", () => {
       throws(() => parseJobSpec(text, { sourceProblem: known }), (err: unknown) => err instanceof OpenKaValidationError && reason.test(err.message), text);
       match(jobSpecProblem(text, { sourceProblem: known }) ?? "", reason, text);
     }
+  });
+
+  it("refuses a reference with a control character, in a job spec and as a library window", () => {
+    for (const ref of ["19/1\n2026-10-09T00:00:00.000Z ERROR [ka.sync] FORGED", "19/1\r", "19/\u001b[31m1", "19/1\u202e", "19/1\u0085"]) {
+      const text = `bund@ref=${ref}`;
+      throws(() => parseJobSpec(text, { sourceProblem: known }), (err: unknown) => err instanceof OpenKaValidationError && /control character/.test(err.message), JSON.stringify(text));
+      match(syncRefsProblem([ref]) ?? "", /control character/, JSON.stringify(ref));
+    }
+    strictEqual(syncRefsProblem(["19/1", "19/ 2"]), undefined, "a space inside is a reference's business");
   });
 
   it("fills in what a job leaves out from the shared window, and checks the result as one", () => {

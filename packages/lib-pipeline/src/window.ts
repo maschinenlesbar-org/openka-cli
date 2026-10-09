@@ -44,12 +44,15 @@ export function isSelective(window: SyncWindow): boolean {
   return window.refs !== undefined || window.retryFailed === true || window.onlyNew === true;
 }
 
-/** The references to sync: at least one, none blank, none twice. */
+/** The references to sync: at least one, none blank, none with a control character, none twice. */
 export const syncRefsProblem: Problem<readonly string[]> = (refs) => {
   if (refs.length === 0) return "Name at least one reference.";
   const seen = new Set<string>();
   for (const ref of refs) {
     if (ref.trim() === "") return "A reference is blank.";
+    // A reference is quoted in log records and job labels; a line break or an escape in
+    // it would split or forge one, and no real reference holds a control character.
+    if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(ref)) return "A reference holds a control character.";
     // A job's label lists its refs between commas (`jobLabel`); no reference has one.
     if (ref.includes(",")) return `"${ref.trim()}" has a comma; name each reference on its own.`;
     if (seen.has(ref.trim())) return `"${ref.trim()}" is named twice.`;

@@ -159,7 +159,8 @@ still runs over the window, and an Anfrage left out costs nothing:
 
 - `--ref <reference>` (repeatable): only these, or ones they were filed under before
   (an unanswered Sachsen-Anhalt question named `08/4011` finds `KA 8/4011`). A
-  reference the window does not hold is a warning naming it.
+  reference the window does not hold is a warning naming it. A reference with a control
+  character (a line break, an escape) is a usage error, also in a plan's `ref=`.
 - `--retry-failed`: only the Anfragen whose last attempt failed. A sync records each
   failure per source, and a later run that stores the Anfrage, or finds it unchanged,
   clears it. A failure outside the window is named in a warning. With 0.7.0 or earlier,

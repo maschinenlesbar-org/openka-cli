@@ -70,7 +70,7 @@ export function parseJobSpec(text: string, options: { sourceProblem?: Problem<st
     window[key] = value;
   };
   for (const part of body.split(",")) {
-    const ref = /^ref=(.*)$/.exec(part);
+    const ref = /^ref=([\s\S]*)$/.exec(part);
     const range = /^(.*)\.\.(.*)$/.exec(part);
     const assignment = /^(since|until|period|limit)=(.*)$/.exec(part);
     if (ref !== null) {
