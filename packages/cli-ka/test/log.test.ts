@@ -146,6 +146,44 @@ describe("ka's stderr", () => {
     }
   });
 
+  it("writes commander's help after an error one record per line, its suggestion part of the error (#2)", async () => {
+    for (const format of ["text", "jsonl"]) {
+      const harness = cliHarness();
+      try {
+        strictEqual(await run(["--log-format", format, "search", "--nope"], harness.deps), EXIT_USAGE);
+        const msgs = format === "jsonl" ? records(harness.err).map((entry) => String(entry["msg"])) : harness.err.map((line) => line.slice(line.indexOf("] ") + 2));
+        ok(harness.err.length > 2, `${format}: the help is several records`);
+        ok(msgs.every((msg) => !msg.includes("\\n") && !msg.includes("\n") && msg.trim() !== ""), msgs.join("\n"));
+        ok(msgs.some((msg) => /^Usage: ka search/.test(msg)), msgs.join("\n"));
+
+        harness.err.length = 0;
+        strictEqual(await run(["--log-format", format, "sycn"], harness.deps), EXIT_USAGE);
+        const first = format === "jsonl" ? String(records(harness.err)[0]?.["msg"]) : String(harness.err[0]);
+        match(first, /unknown command 'sycn' \(Did you mean sync\?\)/);
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+
+  it("logs an ERROR for a run without its command, before the help (#2)", async () => {
+    for (const [runner, argv, path] of [
+      [run, [], "ka"],
+      [run, ["config"], "ka config"],
+      [runFactory, [], "ka-factory"],
+    ] as const) {
+      const harness = cliHarness();
+      try {
+        strictEqual(await runner([...argv], harness.deps), EXIT_USAGE, path);
+        const program = path.split(" ")[0];
+        strictEqual(harness.err[0], `${TS} ERROR [${program}.cli] missing command: \`${path} <subcommand>\``);
+        ok(harness.err.slice(1).every((line) => line.startsWith(`${TS} INFO  [${program}.cli] `) && !line.includes("\\n")), harness.err.join("\n"));
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+
   it("is one JSON object per line with --log-format jsonl, before or after the command", async () => {
     for (const argv of [["--log-format", "jsonl", "search", "--nope"], ["search", "--nope", "--log-format=jsonl"]]) {
       const harness = cliHarness();

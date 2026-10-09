@@ -40,7 +40,9 @@ the volume it is on, catalog gaps, macOS files), `sync` (progress off a terminal
 events, warnings and errors of a run), and every other command under its own name —
 `search`, `export`, `review`, `verify`, `reextract`, `rm`, `status`, `sources`, `stats`,
 `config`, `doctor`, `open`, `get`, `feed`. An error that ends a run is logged as an
-`ERROR` record: under `cli` for a usage error, `store` for a corpus problem, `http` for
+`ERROR` record (commander's help after a usage error follows as one `INFO` record per
+line, and a command run without its subcommand, bare `ka` or `ka config`, logs
+"missing command: …" first): under `cli` for a usage error, `store` for a corpus problem, `http` for
 an upstream's, and otherwise under the command. `ka-factory` writes the same records under
 its own name: `ka-factory.cli`, `ka-factory.goldens`, `ka-factory.health`,
 `ka-factory.drift`, `ka-factory.lint`, `ka-factory.answers`, `ka-factory.embed`.

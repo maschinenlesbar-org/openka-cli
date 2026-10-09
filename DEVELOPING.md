@@ -225,7 +225,11 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   `ERROR`s, warnings `WARN`, notes, counts and "Wrote …" `INFO`.
 - **`run()` builds the logger from argv before commander parses it**
   (`logFormatFromArgv`, `withLogger`), so commander's own "error: …" is an `ERROR`
-  record of `cli` and the help it shows after one an `INFO`, in the chosen format. The
+  record of `cli` (a "(Did you mean …?)" after it part of that record) and the help it
+  shows after one an `INFO` record per line, in the chosen format (`writeCommanderErr`).
+  A command group run without its subcommand (bare `ka`, `ka config`, bare `ka-factory`)
+  logs an `ERROR` "missing command: `ka config <subcommand>`" before that help, so every
+  failed run has an `ERROR` record. The
   option is the program's, and commander takes a program option after the subcommand
   too, so `ka sync --log-format jsonl` still works (it was a sync option until
   2026-10-09).
