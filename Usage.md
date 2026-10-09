@@ -788,6 +788,7 @@ ka-factory goldens verify                         # the regression gate
 ka-factory health --save-baseline                 # into the corpus: health-baseline.json
 # health needs a synced corpus: a missing one is ERROR [ka-factory.store], exit 3
 ka-factory drift                                  # classified, with a repair suggestion
+# drift, like health, needs a synced corpus: a missing one is ERROR [ka-factory.store], exit 3
 ka-factory answers niedersachsen --period 19 --from 7900 --to 8115 --merge
 ka-factory embed                                  # frozen vectors for `ka search --like`
 ka-factory embed --from vectors.jsonl --model bge-m3 --model-sha256 <hex>

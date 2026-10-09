@@ -239,12 +239,14 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     .option("--json", "print findings as JSON")
     .action(
       action(deps, async (ctx) => {
+        // Opened first: a corpus that is not there is a StoreError (exit 3), not a first run.
+        const store = ctx.existingStore();
         const named = ctx.opts["baseline"] as string | undefined;
         const path = named === undefined ? baselinePath(ctx.corpusRoot()) : resolve(named);
         // A missing default baseline is a first run; a missing named one is an
         // error. Which is which is the library's call.
         const baseline = named === undefined ? loadCorpusBaseline(ctx.corpusRoot()) : loadBaseline(path);
-        const snapshot = measureHealth(ctx.store(), isoInstant(ctx.deps.now()));
+        const snapshot = measureHealth(store, isoInstant(ctx.deps.now()));
         const findings = detectDrift(snapshot, baseline);
         if (ctx.opts["json"] === true) {
           printJson(ctx, { baseline: baseline?.taken_at ?? null, findings });

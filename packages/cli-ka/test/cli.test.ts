@@ -2328,6 +2328,19 @@ describe("ka-factory", () => {
     }
   });
 
+  it("exits 3 with an ERROR for drift on a corpus that is not there, and creates no directory", async () => {
+    const harness = cliHarness();
+    try {
+      const corpus = join(harness.corpus, "not-synced");
+      strictEqual(await runFactory(["--corpus", corpus, "drift"], harness.deps), EXIT_STORE);
+      match(harness.stderr(), /^ERROR \[ka-factory\.store\] No corpus at .*not-synced: nothing has been synced there\./m);
+      strictEqual(harness.stdout(), "");
+      ok(!existsSync(corpus), "nothing was created");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("verifies the committed goldens", async () => {
     const harness = cliHarness();
     strictEqual(await runFactory(["goldens", "verify"], harness.deps), EXIT_OK);
