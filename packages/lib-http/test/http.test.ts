@@ -166,6 +166,21 @@ describe("fetch engine", () => {
     strictEqual(await callsFor(undefined), 4);
   });
 
+  it("says a string that is not an absolute URL is not a URL, rather than that no base URL is configured", async () => {
+    const engine = testEngine(async () => {
+      throw new Error("no request should be made");
+    });
+    for (const bad of ["ht tp://bad host", "/dokument.pdf", "dokument.pdf"]) {
+      const error = await engine.get(bad).catch((err: unknown) => err);
+      ok(error instanceof NetworkError, bad);
+      match(error.message, /^Invalid URL \(not absolute, and no base URL is configured\): /, bad);
+      ok(error.message.includes(bad), bad);
+      strictEqual(error.failure, "bad_url", bad);
+    }
+    // With a base URL a relative path is still resolved against it.
+    strictEqual(new FetchEngine({ baseUrl: "https://example.invalid/api/", transport: async () => ({ status: 200, headers: {}, body: Buffer.alloc(0) }) }).url("/x"), "https://example.invalid/api/x");
+  });
+
   it("marks the transport's own size and deadline failures so the engine can tell", async () => {
     const server = http.createServer((_request, response) => {
       response.writeHead(200);

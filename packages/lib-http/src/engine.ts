@@ -314,7 +314,12 @@ export class FetchEngine {
       assertHttpScheme(pathOrUrl);
       url = pathOrUrl;
     } else {
-      if (this.baseUrl === undefined) throw new NetworkError(`No base URL configured for path ${pathOrUrl}`);
+      // No base URL to resolve a relative path against: what was passed is not a URL (a
+      // document link the feed got wrong), not a missing setting. Same failure as a
+      // URL the transport refuses, so it is not retried.
+      if (this.baseUrl === undefined) {
+        throw new NetworkError(`Invalid URL (not absolute, and no base URL is configured): ${pathOrUrl}`, { failure: "bad_url" });
+      }
       url = `${this.baseUrl}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
     }
     const query = buildQuery(params);
