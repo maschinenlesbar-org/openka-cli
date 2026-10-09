@@ -1264,6 +1264,36 @@ describe("ka", () => {
       }
     });
 
+    it("names the credentials file when the config location cannot be written, for set and for the last unset (C4)", async (t) => {
+      if (process.platform === "win32" || process.getuid?.() === 0) return t.skip("needs POSIX permissions and a non-root user");
+      const harness = cliHarness();
+      const dir = join(harness.config, "openka");
+      try {
+        harness.deps.io.readSecret = async () => KEY;
+        // The config home cannot be written: mkdir of openka/ fails.
+        chmodSync(harness.config, 0o500);
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_STORE, harness.stderr());
+        match(harness.stderr(), /Could not write the credentials file .*credentials: EACCES/);
+        doesNotMatch(harness.stderr(), /Unexpected error/);
+        chmodSync(harness.config, 0o700);
+
+        // The last name removed from a file in a directory that cannot be written: rm fails.
+        harness.err.length = 0;
+        const store = new CredentialStore(join(dir, "credentials"));
+        store.set("bund.api-key", KEY);
+        chmodSync(dir, 0o500);
+        strictEqual(await run(["--corpus", harness.corpus, "config", "unset", "bund.api-key"], harness.deps), EXIT_STORE, harness.stderr());
+        match(harness.stderr(), /Could not write the credentials file .*credentials: EACCES/);
+        doesNotMatch(harness.stderr(), /Unexpected error/);
+        chmodSync(dir, 0o700);
+        strictEqual(store.get("bund.api-key"), KEY, "nothing was lost");
+      } finally {
+        chmodSync(harness.config, 0o700);
+        if (existsSync(dir)) chmodSync(dir, 0o700);
+        harness.cleanup();
+      }
+    });
+
     it("reads a secret without echo on a terminal, and whole from a pipe", async () => {
       const written: string[] = [];
       const stderr = { write: (text: string) => (written.push(text), true) };
