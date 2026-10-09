@@ -33,10 +33,34 @@ export function sanitizeForTerminal(text: string): string {
   return stripBidiControls(stripControlCharacters(text, { keepWhitespace: false }));
 }
 
-/** Truncate to `width` display columns, appending an ellipsis when cut. */
+/** Truncate to `width` display columns, appending an ellipsis when cut — never inside a character. */
 export function truncate(text: string, width: number): string {
   const clean = sanitizeForTerminal(text).replace(/\s+/g, " ").trim();
-  return clean.length <= width ? clean : clean.slice(0, Math.max(0, width - 1)) + "…";
+  return clean.length <= width ? clean : cutText(clean, Math.max(0, width - 1)) + "…";
+}
+
+/**
+ * `text` cut to at most `max` UTF-16 units, never inside a surrogate pair: when the cut
+ * would land after a high surrogate it is made one unit earlier, so a message that holds
+ * the cut text is well-formed (a lone `\ud83d` makes jq reject a whole JSON stream).
+ * Text no longer than `max` is returned as it is; the caller marks a cut.
+ */
+export function cutText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const end = max > 0 && isHighSurrogate(text.charCodeAt(max - 1)) ? max - 1 : max;
+  return text.slice(0, end);
+}
+
+function isHighSurrogate(c: number): boolean {
+  return c >= 0xd800 && c <= 0xdbff;
+}
+
+/**
+ * `text` with every lone surrogate (half of a character) replaced by U+FFFD, like
+ * `String.prototype.toWellFormed` (ES2024, so not in this package's `lib`).
+ */
+export function toWellFormed(text: string): string {
+  return text.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd");
 }
 
 /** Pad to `width` columns for simple column output. */

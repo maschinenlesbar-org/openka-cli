@@ -204,7 +204,11 @@ line break. `formatLogRecord` then makes the record one line whatever reached it
 (`escapeForRecord`): CR and LF as `\r` and `\n`, every other C0 control but TAB, DEL and
 C1 as `\u00XX`, U+2028, U+2029 and the bidi controls as `\uXXXX`, over the message in
 text and over the whole JSON object — the event fields included — in jsonl. A plan's job
-log is the text form, so it is one record per line too.
+log is the text form, so it is one record per line too. A record is also well-formed:
+`formatLogRecord` replaces half a character (a lone surrogate) with U+FFFD, in the
+message and in every string field, and `truncate` (text.ts, through `cutText`) cuts
+before a character, never inside one — a lone `\ud83d` in jsonl makes jq reject the
+whole stream.
 
 - **Code logs through `logOf(deps)`** (`level(area, msg, fields?)`), never with
   `io.err` directly. A command's own notes go under its name — `ActionContext.area` is

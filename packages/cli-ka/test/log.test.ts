@@ -15,6 +15,7 @@ import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, run } from "../src/run.js";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
 import { createLogger, escapeForRecord, formatLogRecord, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
+import { cutText, truncate } from "../src/text.js";
 import { JobLogs } from "../src/commands/sync-jobs.js";
 import { cliHarness } from "./harness.js";
 
@@ -75,6 +76,26 @@ describe("the log record", () => {
         strictEqual(parsed["id"], forged, "the field keeps its value, escaped");
       }
     }
+  });
+
+  it("is well-formed: half a character becomes U+FFFD, in the message and in the fields (#13)", () => {
+    const half = "berlin-19-1 \ud83d";
+    strictEqual(formatLogRecord({ ...record, msg: half }, "text"), `${TS} WARN  [ka.sync] berlin-19-1 \ufffd`);
+    const line = formatLogRecord({ ...record, msg: half, fields: { id: half, reports: [{ errors: [half] }] } }, "jsonl");
+    ok(!/\\ud83d/.test(line), line);
+    deepStrictEqual(JSON.parse(line), { ...record, msg: "berlin-19-1 \ufffd", id: "berlin-19-1 \ufffd", reports: [{ errors: ["berlin-19-1 \ufffd"] }] });
+  });
+
+  it("cuts a long text before a character, never inside one (truncate, cutText)", () => {
+    // An emoji straddling the cut: one of the two splits a surrogate pair at any width.
+    for (const text of ["\u{1f600}".repeat(1200), "a" + "\u{1f600}".repeat(1200)]) {
+      for (const width of [40, 41, 2000, 2001]) {
+        const cut = truncate(text, width);
+        ok(cut.length <= width && !/[\ud800-\udbff](?![\udc00-\udfff])/.test(cut), `${width}: ${JSON.stringify(cut.slice(-3))}`);
+      }
+    }
+    strictEqual(cutText("ab\u{1f600}", 3), "ab");
+    strictEqual(cutText("ab\u{1f600}", 4), "ab\u{1f600}");
   });
 
   it("names the program first in every topic: ka by default, ka-factory for the factory", () => {

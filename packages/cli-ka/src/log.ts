@@ -15,7 +15,7 @@
 //
 // Both bins share this module: `ka-factory` builds its logger with its own program name.
 
-import { sanitizeForTerminal } from "./text.js";
+import { sanitizeForTerminal, toWellFormed } from "./text.js";
 
 /** The log formats `--log-format` takes. */
 export const LOG_FORMATS = ["text", "jsonl"] as const;
@@ -85,11 +85,15 @@ export function escapeForRecord(text: string): string {
  * text form too.
  */
 export function formatLogRecord(record: LogRecord, format: LogFormat): string {
+  // Well-formed first: half a character would be `\ud83d` in jsonl, which jq rejects,
+  // stopping the whole stream.
+  const msg = toWellFormed(record.msg);
   if (format === "jsonl") {
     const fields = Object.entries(record.fields ?? {}).filter(([key]) => !RECORD_KEYS.has(key));
-    return escapeForRecord(JSON.stringify({ ts: record.ts, level: record.level, topic: record.topic, msg: record.msg, ...Object.fromEntries(fields) }));
+    const wellFormed = (_key: string, value: unknown): unknown => (typeof value === "string" ? toWellFormed(value) : value);
+    return escapeForRecord(JSON.stringify({ ts: record.ts, level: record.level, topic: record.topic, msg, ...Object.fromEntries(fields) }, wellFormed));
   }
-  return `${record.ts} ${record.level.padEnd(5)} [${record.topic}] ${escapeForRecord(record.msg)}`;
+  return `${record.ts} ${record.level.padEnd(5)} [${record.topic}] ${escapeForRecord(msg)}`;
 }
 
 export interface Logger {
