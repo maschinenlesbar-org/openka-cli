@@ -217,10 +217,11 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   `io.err` directly. A command's own notes go under its name — `ActionContext.area` is
   the top-level command (`sync`, `export`, `sources`); cross-cutting records keep
   theirs: `cli` (usage errors, commander's messages, unexpected errors), `http` (an
-  upstream's error answer, a dropped connection, a source's request floor), `store`
+  upstream's error answer, a dropped connection, a source's request floor), `api` (an
+  answer that could not be read: bad JSON, the wrong shape), `store`
   (missing or locked corpus, the volume, catalog gaps, macOS files). An error that ends
   a run is logged by `run()`: `UsageError` under `cli`, `StoreError` under `store`,
-  `OpenKaApiError`/`NetworkError` under `http`, anything else under the command that
+  `OpenKaApiError`/`NetworkError` under `http`, `ParseError` under `api`, anything else under the command that
   ran (a `preAction` hook, `trackCommandArea`). `problem:` lines of `ka doctor` are
   `ERROR`s, warnings `WARN`, notes, counts and "Wrote …" `INFO`.
 - **`run()` builds the logger from argv before commander parses it**

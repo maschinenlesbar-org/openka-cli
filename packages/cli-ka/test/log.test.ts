@@ -11,7 +11,8 @@ import { FileStore, indexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
 import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import type { SourceOutcome } from "@maschinenlesbar.org/openka-lib-pipeline";
-import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, run } from "../src/run.js";
+import { EXIT_ERROR, EXIT_OK, EXIT_USAGE, errorArea, run } from "../src/run.js";
+import { OpenKaApiError, ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { handleOutputErrors, logOf, type CliIO } from "../src/io.js";
 import { MAX_RECORD_MESSAGE, createLogger, escapeForRecord, formatLogRecord, installWarningLog, logFormatFromArgv, logFormatProblem, type LogRecord } from "../src/log.js";
 import { SyncEvents } from "../src/commands/sync-events.js";
@@ -433,5 +434,16 @@ describe("the sync's own records", () => {
     strictEqual(files.get("/label.log")?.split("\n").length, 2, String(files.get("/label.log")));
     strictEqual(err.length, 1, err.join("\n"));
     ok(err.every((line) => line.startsWith(`${TS} WARN  [ka.sync] cannot write the log /dev/null/x\\n`)), err.join("\n"));
+  });
+});
+
+describe("the area an ending error is logged under", () => {
+  it("puts a malformed answer under api, not under the command that ran", () => {
+    strictEqual(errorArea(new ParseError("DIP returned a body that is not JSON (/x)"), "sync"), "api");
+    strictEqual(errorArea(new ParseError("XML fragment contains no element"), undefined), "api");
+  });
+
+  it("leaves an error answer under http", () => {
+    strictEqual(errorArea(new OpenKaApiError({ status: 500, url: "http://x/", method: "GET", body: "" }), "sync"), "http");
   });
 });
