@@ -638,8 +638,9 @@ Credentials live apart from the corpus, in `$XDG_CONFIG_HOME/openka/credentials`
 `~/.config/openka/credentials`): one JSON object, mode 0600 in a directory of mode 0700,
 replaced atomically. `ka config set` reads the value from a prompt that does not echo
 it, or from stdin when that is not a terminal. It refuses the value as an argument,
-which would put it into shell history and `ps`, and it does not repeat it in the error.
-A credentials file inside the corpus is refused, so neither `ka export` nor a copy of
+which would put it into shell history and `ps`, and it does not repeat it in the error;
+nor does any `ka config` command repeat a name it does not know (a key typed in its
+place), only the names it does. A credentials file inside the corpus is refused, so neither `ka export` nor a copy of
 the corpus can carry it along.
 
 A source that needs a key (`bund`) takes it from `--api-key`, else from its environment

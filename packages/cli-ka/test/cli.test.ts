@@ -1207,7 +1207,7 @@ describe("ka", () => {
         for (const argv of [["config", "set", "berlin.api-key"], ["config", "get", "bund.password"]]) {
           strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
         }
-        match(harness.stderr(), /Not a credential: expected one of bund\.api-key\./);
+        match(harness.stderr(), /Not a credential name this program knows: expected one of bund\.api-key\./);
         harness.deps.io.readSecret = async () => "two words";
         strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_USAGE);
         match(harness.stderr(), /a key is one token\. Nothing was stored\./);
@@ -1259,6 +1259,34 @@ describe("ka", () => {
         strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_USAGE);
         match(harness.stderr(), /would be inside the corpus .*; set XDG_CONFIG_HOME to a directory outside it\./);
         ok(!existsSync(join(harness.corpus, "config")));
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it("never echoes a key typed in place of the name, in any config command (C2)", async () => {
+      const harness = cliHarness();
+      try {
+        harness.deps.io.readSecret = async () => KEY;
+        const typed = "abcSECRET-personal-key-123";
+        for (const argv of [
+          ["config", "set", typed],
+          ["config", "get", typed],
+          ["config", "get", typed, "--reveal"],
+          ["config", "unset", typed],
+          ["config", "get", "bund.api-key", typed],
+          ["config", "unset", "bund.api-key", typed],
+          ["config", "list", typed],
+          ["--log-format", "jsonl", "config", "set", typed],
+        ]) {
+          harness.err.length = 0;
+          strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_USAGE, argv.join(" "));
+          ok(!harness.stderr().includes("SECRET"), `${argv.join(" ")}:\n${harness.stderr()}`);
+          match(harness.stderr(), /ERROR.*ka\.cli/, argv.join(" "));
+        }
+        harness.err.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, "config", "get", typed], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /Not a credential name this program knows: expected one of bund\.api-key\./);
       } finally {
         harness.cleanup();
       }
