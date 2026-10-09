@@ -61,7 +61,7 @@ describe("a validation error raised inside an action", () => {
 
   it("exits 2 from ka-factory, logged the same way under its own name", async () => {
     const harness = cliHarness();
-    harness.deps.createStore = refusing;
+    harness.deps.openStore = refusing;
     strictEqual(await runFactory(["--corpus", harness.corpus, "health"], harness.deps), EXIT_USAGE);
     strictEqual(harness.stderr(), "ERROR [ka-factory.cli] Invalid corpus: Expected a non-empty value.");
     harness.cleanup();

@@ -209,7 +209,7 @@ export function buildFactoryProgram(deps: CliDeps = defaultDeps): Command {
     )
     .action(
       action(deps, async (ctx) => {
-        const snapshot = measureHealth(ctx.store(), isoInstant(ctx.deps.now()));
+        const snapshot = measureHealth(ctx.existingStore(), isoInstant(ctx.deps.now()));
         if (ctx.opts["json"] === true) printJson(ctx, snapshot);
         else {
           ctx.deps.io.out(`${snapshot.records} record(s) in ${ctx.corpusRoot()}`);
