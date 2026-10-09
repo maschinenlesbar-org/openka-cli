@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
+  "extractor_version": "pkg:0.10.0+extract:92e420073a5d",
   "human_verified": false,
   "id": "berlin-19-22581",
   "note": "Sub-questions answered together ('Zu 8. a und b:', 'Zu 9. a bis c:') give each its answer, and '9.Transparenz' run into its text is a heading (issue #26)",

@@ -16,7 +16,7 @@
     "abstained_fields": [
       "dates.answered"
     ],
-    "extractor_version": "pkg:0.9.0+extract:92e420073a5d",
+    "extractor_version": "pkg:0.10.0+extract:92e420073a5d",
     "input_sha256": "bf74b9820782f8b96f1cb658ddd4da0d70d575ed6903377e8892d20981893132",
     "model_artifacts": [],
     "parse_complete": false,
