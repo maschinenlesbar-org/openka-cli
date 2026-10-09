@@ -1322,6 +1322,33 @@ describe("ka", () => {
       }
     });
 
+    it("stops reading a secret from stdin at 64 KiB and refuses it, an endless input included (C3)", async () => {
+      const { Readable } = await import("node:stream");
+      const stderr = { write: () => true };
+      await rejects(readSecretFrom(Readable.from([Buffer.alloc(70 * 1024, "a")]), stderr, "key: "), /longer than 64 KiB; nothing was stored/);
+      let chunks = 0;
+      async function* zero(): AsyncGenerator<Buffer> {
+        for (;;) {
+          chunks++;
+          yield Buffer.alloc(16 * 1024);
+        }
+      }
+      await rejects(readSecretFrom(Readable.from(zero()), stderr, "key: "), /longer than 64 KiB/);
+      ok(chunks < 10, `read ${chunks} chunks`);
+      const exact = "a".repeat(64 * 1024);
+      strictEqual(await readSecretFrom(Readable.from([exact + "\n"]), stderr, "key: "), exact);
+      // ka config set refuses it as a usage error, and stores nothing.
+      const harness = cliHarness();
+      try {
+        harness.deps.io.readSecret = (prompt) => readSecretFrom(Readable.from([Buffer.alloc(70 * 1024, "a")]), stderr, prompt);
+        strictEqual(await run(["--corpus", harness.corpus, "config", "set", "bund.api-key"], harness.deps), EXIT_USAGE);
+        match(harness.stderr(), /^ERROR \[ka\.cli\] The value is longer than 64 KiB; nothing was stored\.$/m);
+        ok(!existsSync(join(harness.config, "openka", "credentials")));
+      } finally {
+        harness.cleanup();
+      }
+    });
+
     it("reads a secret without echo on a terminal, and whole from a pipe", async () => {
       const written: string[] = [];
       const stderr = { write: (text: string) => (written.push(text), true) };
