@@ -25,10 +25,10 @@
     "CONCEPT.md"
   ],
   "scripts": {
-    "prepack": "tsc -b ../../tsconfig.json && node ../../tools/prepack.mjs",
+    "prepack": "tsc -b ../../tsconfig.json && node ../../tools/pack/prepack.mjs",
     "version": "node ../../tools/version.mjs",
     "test": "node --test $(node -p \"+process.versions.node.split('.')[0] >= 24 ? '--test-timeout=5000' : ''\") dist/test/*.test.js",
-    "postpack": "node ../../tools/postpack.mjs"
+    "postpack": "node ../../tools/pack/postpack.mjs"
   },
   "dependencies": {
     "@maschinenlesbar.org/openka-cli-ka": "0.0.1",
@@ -113,7 +113,8 @@
   "author": "Sebastian Schürmann <sebs@2xs.org>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git"
+    "url": "git+https://github.com/maschinenlesbar-org/openka-cli.git",
+    "directory": "apps/cli"
   },
   "bugs": {
     "url": "https://github.com/maschinenlesbar-org/openka-cli/issues"

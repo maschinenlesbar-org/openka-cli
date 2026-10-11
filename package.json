@@ -1,27 +1,29 @@
 {
   "name": "openka-workspace",
-  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Workspace for @maschinenlesbar.org/openka-cli — every package lives under packages/.",
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "clean": "node -e \"const {rmSync,readdirSync}=require('fs');rmSync('dist',{recursive:true,force:true});for(const p of readdirSync('packages'))rmSync('packages/'+p+'/dist',{recursive:true,force:true})\"",
+    "clean": "node -e \"const {rmSync,readdirSync}=require('fs');rmSync('dist',{recursive:true,force:true});for(const d of ['apps','packages'])for(const p of readdirSync(d))rmSync(d+'/'+p+'/dist',{recursive:true,force:true})\"",
     "build": "tsc -b tsconfig.json tsconfig.test.json",
     "stamp": "npm run build && node tools/stamp.mjs",
     "typecheck": "tsc -b tsconfig.json tsconfig.test.json",
     "pretest": "npm run build",
     "test": "npm test --workspaces --if-present",
     "lint:line": "node packages/cli-ka-factory/dist/src/cli/index.js lint",
-    "docs": "node tools/docs/node_modules/typedoc/bin/typedoc packages/openka-cli/src/index.ts --out out",
+    "docs": "node tools/docs/node_modules/typedoc/bin/typedoc apps/cli/src/index.ts --out out",
     "start": "node packages/cli-ka/dist/src/index.js",
-    "coverage": "node --test $(node -p \"+process.versions.node.split('.')[0] >= 24 ? '--test-timeout=5000' : ''\") --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/test/**\" packages/*/dist/test/*.test.js",
+    "coverage": "node --test $(node -p \"+process.versions.node.split('.')[0] >= 24 ? '--test-timeout=5000' : ''\") --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/test/**\" apps/*/dist/test/*.test.js packages/*/dist/test/*.test.js",
     "pack": "npm pack --workspace @maschinenlesbar.org/openka-cli",
     "goldens": "node packages/cli-ka-factory/dist/src/cli/index.js goldens verify",
     "publish:npm": "npm publish --workspace @maschinenlesbar.org/openka-cli --access public",
-    "version:published": "node -p \"require('./packages/openka-cli/package.json').version\""
+    "version:published": "node -p \"require('./apps/cli/package.json').version\"",
+    "bump": "node tools/bump.mjs",
+    "preversion": "echo \"The root has no version. Bump the app: npm run bump -- <patch|minor|major>\" >&2 && exit 1"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

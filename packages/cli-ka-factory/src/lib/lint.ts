@@ -4,8 +4,9 @@
 // CONCEPT.md §8 names this as the hardest rule to enforce. The check is blunt on
 // purpose: the line — every workspace package except the factory — may not import
 // an LLM client, may not reach a model provider's host, and may not import anything
-// from the factory. There is no longer a file outside `packages/` to special-case:
-// the published entry point is `packages/openka-cli` like everything else. Since the split into
+// from the factory. There is no file outside the workspace packages to special-case: the
+// published entry point is the workspace package `apps/cli`, and it is on the line like every
+// package in `packages/`. Since the split into
 // workspaces the last of those is also a package boundary: nothing on the line
 // declares `openka-cli-ka-factory` as a dependency, so a violation fails to resolve
 // long before it fails the lint. The lint stays because a boundary that is only
@@ -25,29 +26,32 @@ export const FACTORY_PACKAGE = "cli-ka-factory";
 
 /**
  * Every package whose sources must stay deterministic — that is, all of them except
- * the factory. Discovered rather than listed: a new connector is on the line from
- * the moment it exists, without anyone remembering to add it here.
+ * the factory: the apps in `apps/` (the published package) and the packages in
+ * `packages/`. Discovered rather than listed: a new connector or app is on the line
+ * from the moment it exists, without anyone remembering to add it here.
  */
 export function lineRoots(projectRoot: string): string[] {
-  const packages = join(projectRoot, "packages");
-  let names: string[];
-  try {
-    names = readdirSync(packages).sort();
-  } catch {
-    // No `packages/` means this is not the workspace: there is no line here to
-    // lint, and `lintLine` says so rather than passing a scan of nothing.
-    return [];
-  }
-  return names
-    .filter((name) => name !== FACTORY_PACKAGE)
-    .map((name) => `packages/${name}/src`)
-    .filter((dir) => {
-      try {
-        return statSync(join(projectRoot, dir)).isDirectory();
-      } catch {
-        return false;
-      }
-    });
+  const listed = (folder: string): string[] => {
+    try {
+      return readdirSync(join(projectRoot, folder)).sort();
+    } catch {
+      return [];
+    }
+  };
+  const packages = listed("packages");
+  // No `packages/` means this is not the workspace: there is no line here to
+  // lint, and `lintLine` says so rather than passing a scan of nothing.
+  if (packages.length === 0) return [];
+  return [
+    ...listed("apps").map((name) => `apps/${name}/src`),
+    ...packages.filter((name) => name !== FACTORY_PACKAGE).map((name) => `packages/${name}/src`),
+  ].filter((dir) => {
+    try {
+      return statSync(join(projectRoot, dir)).isDirectory();
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

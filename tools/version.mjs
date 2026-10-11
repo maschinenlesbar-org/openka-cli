@@ -57,7 +57,7 @@ export function restampFixtures(root, from, to) {
 
 function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
-  const manifest = join(root, "packages", "openka-cli", "package.json");
+  const manifest = join(root, "apps", "cli", "package.json");
   const target = join(root, "packages", "lib-repro", "src", "version.ts");
 
   const { version } = JSON.parse(readFileSync(manifest, "utf8"));

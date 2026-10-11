@@ -122,7 +122,7 @@
       "path": "packages/lib-verify"
     },
     {
-      "path": "packages/openka-cli"
+      "path": "apps/cli"
     }
   ]
 }

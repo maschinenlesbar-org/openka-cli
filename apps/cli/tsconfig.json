@@ -1,0 +1,87 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/cli-ka"
+    },
+    {
+      "path": "../../packages/cli-ka-factory"
+    },
+    {
+      "path": "../../packages/connector-berlin"
+    },
+    {
+      "path": "../../packages/connector-bund"
+    },
+    {
+      "path": "../../packages/connector-niedersachsen"
+    },
+    {
+      "path": "../../packages/connector-nordrhein-westfalen"
+    },
+    {
+      "path": "../../packages/connector-saarland"
+    },
+    {
+      "path": "../../packages/connector-sachsen"
+    },
+    {
+      "path": "../../packages/connector-thueringen"
+    },
+    {
+      "path": "../../packages/lib-errors"
+    },
+    {
+      "path": "../../packages/lib-extract"
+    },
+    {
+      "path": "../../packages/lib-http"
+    },
+    {
+      "path": "../../packages/lib-models"
+    },
+    {
+      "path": "../../packages/lib-pardok"
+    },
+    {
+      "path": "../../packages/lib-parlamentsspiegel"
+    },
+    {
+      "path": "../../packages/lib-pdf"
+    },
+    {
+      "path": "../../packages/lib-perceive"
+    },
+    {
+      "path": "../../packages/lib-pipeline"
+    },
+    {
+      "path": "../../packages/lib-registry"
+    },
+    {
+      "path": "../../packages/lib-render"
+    },
+    {
+      "path": "../../packages/lib-repro"
+    },
+    {
+      "path": "../../packages/lib-search"
+    },
+    {
+      "path": "../../packages/lib-source"
+    },
+    {
+      "path": "../../packages/lib-store"
+    },
+    {
+      "path": "../../packages/lib-verify"
+    }
+  ]
+}

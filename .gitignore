@@ -13,11 +13,13 @@ plan.md
 # default path stays ignored so a baseline left over from before is not committed.
 fixtures/health-baseline.json
 
-# Generated into the published package by tools/prepack.mjs (package-readme.parked.md is
-# the package README, parked while the repository README stands in for it)
-packages/openka-cli/LICENSE
-packages/openka-cli/package-readme.parked.md
-packages/openka-cli/LICENSING.md
-packages/openka-cli/CONTRIBUTING.md
-packages/openka-cli/DATA_LICENSE.md
-packages/openka-cli/CONCEPT.md
+# Copied into an app by tools/pack/prepack.mjs for the length of a pack, and removed again
+# by tools/pack/postpack.mjs (the bundled packages land in the app's node_modules/).
+apps/*/.prepack-generated.json
+apps/*/package-readme.parked.md
+apps/*/README.md
+apps/*/LICENSE
+apps/*/LICENSING.md
+apps/*/CONTRIBUTING.md
+apps/*/DATA_LICENSE.md
+apps/*/CONCEPT.md

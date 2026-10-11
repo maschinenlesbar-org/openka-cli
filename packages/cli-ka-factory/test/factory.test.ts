@@ -65,9 +65,9 @@ describe("the no-LLM-on-the-line guardrail", () => {
 
   it("scans every package on the line", () => {
     const files = lineFiles(PROJECT_ROOT);
-    // The published entry point is a package now, so there is nothing outside
-    // `packages/` for this to special-case.
-    ok(files.some((file) => file.startsWith("packages/openka-cli/src/")));
+    // The published entry point is the workspace app apps/cli, on the line like every
+    // package: moving it out of `packages/` must not take it out of the scan.
+    ok(files.some((file) => file.startsWith("apps/cli/src/")));
     ok(!files.some((file) => /^src\//.test(file)));
     for (const pkg of ["lib-pdf", "lib-extract", "lib-source", "cli-ka", "connector-bund"]) {
       ok(files.some((file) => file.startsWith(`packages/${pkg}/src/`)), `${pkg} is not being scanned`);
@@ -397,13 +397,13 @@ describe("the CI workflows", () => {
   });
 
   it("reads the version from the published package", () => {
-    // The root carries a version too, and they can drift; the one that ships is
-    // the only one a tag should be checked against.
+    // The version lives in the published package (apps/cli); the root has none, and a
+    // tag is checked against the one that ships.
     const text = ["release.yml", "publish.yml"]
       .map((name) => readFileSync(join(PROJECT_ROOT, ".github", "workflows", name), "utf8"))
       .join("\n");
     ok(!/require\('\.\/package\.json'\)/.test(text), "a workflow still reads the root package.json version");
-    ok(/packages\/openka-cli\/package\.json/.test(text));
+    ok(/apps\/cli\/package\.json/.test(text));
   });
 });
 
@@ -428,7 +428,7 @@ describe("the supported Node versions", () => {
       JSON.parse(readFileSync(join(PROJECT_ROOT, ...parts, "package.json"), "utf8")) as { engines?: { node?: string } };
     const workspace = read().engines?.node;
     ok(workspace?.startsWith(`>=${enginesFloor(PROJECT_ROOT)}`));
-    strictEqual(read("packages", "openka-cli").engines?.node, workspace);
+    strictEqual(read("apps", "cli").engines?.node, workspace);
   });
 });
 
@@ -439,6 +439,18 @@ describe("the workspace root", () => {
   it("is private, so npm refuses to publish it", () => {
     const root = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")) as { private?: unknown };
     strictEqual(root.private, true);
+  });
+
+  // The version lives in apps/cli/package.json, the package that ships. A version on the
+  // root could drift from it, and a plain `npm version` there once bumped and tagged the
+  // root instead: the root has none, and its `preversion` refuses (npm run bump instead).
+  it("has no version and refuses a plain npm version", () => {
+    const root = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")) as {
+      version?: unknown;
+      scripts?: Record<string, string>;
+    };
+    strictEqual(root.version, undefined);
+    match(root.scripts?.["preversion"] ?? "", /exit 1/);
   });
 });
 

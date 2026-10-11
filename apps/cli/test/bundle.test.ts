@@ -3,7 +3,7 @@
 // bundled workspace packages depend on `commander`, but `commander` itself was not
 // bundled, and a global install created its folder without filling it. The tarball is
 // self-contained now: every third-party runtime dependency of any workspace package is
-// in `bundleDependencies`, and `tools/prepack.mjs` copies it in (and refuses to pack
+// in `bundleDependencies`, and `tools/pack/prepack.mjs` copies it in (and refuses to pack
 // when one is missing). This keeps the manifest honest without running `npm pack`.
 
 import { deepStrictEqual } from "node:assert/strict";
@@ -11,9 +11,9 @@ import { describe, it } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// The compiled test runs from packages/openka-cli/dist/test/.
+// The compiled test runs from apps/cli/dist/test/; the workspace packages are in packages/.
 const pkgDir = fileURLToPath(new URL("../../", import.meta.url));
-const packagesDir = fileURLToPath(new URL("../../../", import.meta.url));
+const packagesDir = fileURLToPath(new URL("../../../../packages/", import.meta.url));
 
 interface Manifest {
   private?: boolean;

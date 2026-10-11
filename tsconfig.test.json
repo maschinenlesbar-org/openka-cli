@@ -92,7 +92,7 @@
       "path": "packages/lib-verify/tsconfig.test.json"
     },
     {
-      "path": "packages/openka-cli/tsconfig.test.json"
+      "path": "apps/cli/tsconfig.test.json"
     }
   ]
 }

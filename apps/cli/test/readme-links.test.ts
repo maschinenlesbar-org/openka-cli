@@ -1,9 +1,10 @@
 // Conformance check P21 (follow-up round 2026-10-06): the README npm shows ships in the
 // tarball, so every relative link in it must point to a file the package ships; any other
 // document is linked by its absolute GitHub URL. For this package that README is the
-// repository's: `tools/prepack.mjs` swaps it in for the length of the pack and copies the
-// repository documents it carries (LICENSE, LICENSING.md, …) next to it, so a link's path
-// relative to the repository root is its path in the tarball. Dependency-free: reads
+// repository's: `tools/pack/prepack.mjs` swaps it in for the length of the pack and copies the
+// repository documents it carries (LICENSE and every plain file name in `files`:
+// LICENSING.md, …) next to it, so a link's path relative to the repository root is its path
+// in the tarball. Dependency-free: reads
 // package.json `files` rather than running `npm pack`.
 
 import { deepStrictEqual, ok } from "node:assert/strict";
@@ -11,12 +12,12 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// The compiled test runs from packages/openka-cli/dist/test/.
+// The compiled test runs from apps/cli/dist/test/.
 const pkgDir = fileURLToPath(new URL("../../", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const pkg = JSON.parse(readFileSync(pkgDir + "package.json", "utf8")) as { files?: string[] };
 const readme = readFileSync(repoRoot + "README.md", "utf8");
-const prepack = readFileSync(repoRoot + "tools/prepack.mjs", "utf8");
+const prepack = readFileSync(repoRoot + "tools/pack/prepack.mjs", "utf8");
 
 /** Relative link targets of the README, anchors and titles stripped. */
 function relativeTargets(markdown: string): string[] {
@@ -64,10 +65,12 @@ describe("the README npm shows (P21)", () => {
   });
 
   it("is the repository README, and prepack copies every shipped document it links", () => {
-    ok(/cpSync\(join\(root, "README\.md"\), readme\)/.test(prepack), "prepack no longer swaps in the repository README");
+    ok(/cpSync\(join\(root, "README\.md"\), join\(target, "README\.md"\)\)/.test(prepack), "prepack no longer swaps in the repository README");
+    // prepack copies the plain file names in `files` from the repository root.
+    ok(/manifest\.files/.test(prepack), "prepack no longer takes its documents from files");
     for (const target of relativeTargets(readme)) {
       if (/^(README|LICEN[CS]E)/i.test(target) || target.startsWith("dist/")) continue;
-      ok(prepack.includes(`"${target}"`), `${target} is in files but prepack does not copy it into the package`);
+      ok(!target.includes("/") && (pkg.files ?? []).includes(target), `${target} is not a plain document in files, so prepack does not copy it into the package`);
     }
     // A README without relative links would pass the first check vacuously.
     ok(relativeTargets(readme).includes("DATA_LICENSE.md"));

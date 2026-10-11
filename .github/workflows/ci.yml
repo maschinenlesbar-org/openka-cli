@@ -75,6 +75,11 @@ jobs:
       - name: Packed tarball installs globally
         run: |
           npm run pack
+          # prepack's copies in the app's node_modules would shadow the workspace links.
+          if [ -e apps/cli/node_modules ] || [ -e apps/cli/.prepack-generated.json ]; then
+            echo "::error::the pack left prepack's copies behind in apps/cli"
+            exit 1
+          fi
           prefix="$RUNNER_TEMP/global"
           npm install --global --offline --prefix "$prefix" ./maschinenlesbar.org-openka-cli-*.tgz
           "$prefix/bin/ka" --version

@@ -16,7 +16,7 @@ import { PACKAGE_VERSION } from "../src/index.js";
 describe("PACKAGE_VERSION", () => {
   it("is the version of the package that is published", () => {
     const manifest = JSON.parse(
-      readFileSync(new URL("../../../openka-cli/package.json", import.meta.url), "utf8"),
+      readFileSync(new URL("../../../../apps/cli/package.json", import.meta.url), "utf8"),
     ) as { name: string; version: string };
     strictEqual(manifest.name, "@maschinenlesbar.org/openka-cli");
     strictEqual(PACKAGE_VERSION, manifest.version);

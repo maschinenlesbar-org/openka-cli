@@ -1,0 +1,42 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": [
+    "test/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.json"
+    },
+    {
+      "path": "../../packages/cli-ka-factory"
+    },
+    {
+      "path": "../../packages/connector-berlin"
+    },
+    {
+      "path": "../../packages/lib-models"
+    },
+    {
+      "path": "../../packages/lib-pardok"
+    },
+    {
+      "path": "../../packages/lib-pipeline"
+    },
+    {
+      "path": "../../packages/lib-repro"
+    },
+    {
+      "path": "../../packages/lib-source"
+    },
+    {
+      "path": "../../packages/lib-testing"
+    },
+    {
+      "path": "../../packages/lib-verify"
+    }
+  ]
+}
