@@ -20,31 +20,36 @@ It holds almost no code:
 ## Packing has one wrinkle, and it is worth knowing about
 
 Being a workspace package like every other keeps the repository layout free of
-exceptions — and costs one thing. npm bundles `bundleDependencies` from the
-*package's own* `node_modules`, and in a workspace the dependencies are symlinked
-into the **root** `node_modules` instead. Packing from here therefore produces a
-tarball with none of them and bins that cannot resolve a single import. The failure
-is silent: `npm pack` succeeds and the tarball is simply 20 kB instead of 300.
+exceptions — and costs one thing. The 39 packages this one is built from are private
+and never published, so they have to travel inside this tarball, and npm's own way to
+do that — `bundleDependencies` — ships only names that are also `dependencies`. npm
+lists a package's `dependencies` on its registry page, and 39 dependencies nobody can
+install is what that page used to show.
 
 `tools/pack/prepack.mjs` handles it (the same file in every maschinenlesbar.org CLI
-repository). It copies each workspace dependency's manifest and built `dist` into this
-package's `node_modules`, walks the dependency graph **transitively** — bundling only the
-direct ones leaves half the graph missing — and copies in the repository-level documents
-the tarball carries — `LICENSE` and every plain file name in `files` — because npm cannot
-reach outside a package directory when it builds one. Everything
-it writes is generated and gitignored; the originals stay the single source of truth.
+repository). It copies each workspace package's manifest and built `dist` into this
+package's **`dist/node_modules/`**, where the bins and the library entry find them:
+Node and TypeScript resolve a bare import by walking up to the nearest `node_modules`.
+npm sees only files there, so the manifest's `dependencies` name `commander` alone. The
+packages come from this package's TypeScript project references (`tsconfig.json`), and
+their own dependencies, **transitively** — copying only the direct ones leaves half the
+graph missing. prepack refuses a manifest that names a workspace package in
+`dependencies` or `bundleDependencies`, or whose `files` doesn't ship `dist/node_modules`.
+It also copies in the repository-level documents the tarball carries — `LICENSE` and
+every plain file name in `files` — because npm cannot reach outside a package directory
+when it builds one. Everything it writes is generated and gitignored; the originals stay
+the single source of truth.
 
-**Third-party dependencies are bundled too** — today that is `commander` alone.
-`prepack` copies the runtime closure of every bundled package from the root
-`node_modules`, and refuses to pack when one is missing from `bundleDependencies` — as it
-does for a workspace package missing from it.
-Left unbundled, `npm install -g` created `node_modules/commander` as an empty
-directory, counted it as installed, and every `ka` command crashed with
-`ERR_MODULE_NOT_FOUND`; a local install hoisted a real copy and hid the bug
-(issue #1). `test/bundle.test.ts` checks the manifest, and CI installs the packed tarball
-globally, offline, and runs both bins.
-`tools/pack/postpack.mjs` removes it all again as soon as the tarball exists, as
-recorded in `.prepack-generated.json`.
+**Third-party dependencies are bundled** — today that is `commander` alone. `prepack`
+copies the runtime closure of every shipped package from the root `node_modules` into
+this package's `node_modules`, and refuses to pack when one is missing from
+`bundleDependencies`. Left unbundled, `npm install -g` created `node_modules/commander` as
+an empty directory, counted it as installed, and every `ka` command crashed with
+`ERR_MODULE_NOT_FOUND`; a local install hoisted a real copy and hid the bug (issue #1).
+`test/bundle.test.ts` checks the manifest, and CI installs the packed tarball globally,
+offline, and runs both bins. `tools/pack/postpack.mjs` removes it all again as soon as
+the tarball exists, as recorded in `.prepack-generated.json` — left behind, the copies
+would shadow the workspace links for anything running in this folder.
 
 Three more things happen on the way, each because the registry reads the tarball
 differently from a maintainer reading this directory:
@@ -61,8 +66,8 @@ differently from a maintainer reading this directory:
 - **No source maps.** `tsconfig.base.json` emits none, because they would point at
   `src/*.ts`, which the tarball does not carry. Any an older build left in a `dist/`
   stay out anyway: `files` excludes this package's own and `prepack` skips the
-  bundled ones.
-- **Bundled manifests name their licence.** A workspace package never ships alone,
+  copied ones.
+- **Shipped manifests name their licence.** A workspace package never ships alone,
   so its `package.json` has no `license`, `author` or `repository`. A consumer's
   licence scanner reads every bundled manifest on its own, so `prepack` stamps those
   fields onto each copy from this package's manifest.
@@ -84,6 +89,9 @@ npm install -g --offline --prefix /tmp/g /path/to/maschinenlesbar.org-openka-cli
 ```
 
 ## Depends on
+
+The workspace packages below are this package's TypeScript project references (they ship
+in `dist/node_modules`, not as npm dependencies); `commander` is its one npm dependency.
 
 - `cli-ka` — the `ka` command tree and its I/O seam
 - `cli-ka-factory` — the factory tooling

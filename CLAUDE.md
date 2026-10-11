@@ -47,9 +47,11 @@ kinds of package under `packages/`:
 **The layout has no exceptions**: everything with source is a workspace package — the
 published one in `apps/`, the rest in `packages/` (the layout of every maschinenlesbar.org
 CLI repository) — and the repository root is a workspace manifest (no version), a build
-graph and the documents. Every package in `packages/` is `private` and is bundled into the
-tarball by `tools/pack/prepack.mjs` — read `apps/cli/README.md` before changing anything
-about packing. Release with `npm run bump -- <patch|minor|major>`, never `npm version`.
+graph and the documents. Every package in `packages/` is `private` and ships inside the
+tarball as files under `apps/cli/dist/node_modules/` (`tools/pack/prepack.mjs`), so the
+published manifest names none of them — `apps/cli/package.json` must not list one in
+`dependencies` (prepack refuses); they come from its `tsconfig.json` references. Read
+`apps/cli/README.md` before changing anything about packing. Release with `npm run bump -- <patch|minor|major>`, never `npm version`.
 Each package builds to its own `dist/src` and `dist/test`.
 
 **Each package has two TypeScript projects**: `tsconfig.json` for `src/`, which other

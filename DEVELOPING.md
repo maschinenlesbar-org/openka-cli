@@ -120,11 +120,13 @@ the repository publishes, `packages/` for the libraries it is built from.
 **Every package has a README** — what it does, its public surface, what it depends on
 and why, the tests it runs and the fixtures it holds. That folder is meant to be
 enough on its own; this file is the map between them. Each package builds to its own
-`dist/src` and `dist/test`, and keeps its own tests and fixtures beside its code. Everything in `packages/` is `private`; `apps/cli` bundles them into a single published
-tarball with both bins. That bundling needs `tools/pack/prepack.mjs` — npm bundles
-`bundleDependencies` from a package's *own* `node_modules`, and in a workspace they
-are symlinked into the root's instead, so packing without it yields a tarball with
-no dependencies and bins that resolve nothing. `apps/cli/README.md` explains the rest.
+`dist/src` and `dist/test`, and keeps its own tests and fixtures beside its code. Everything in `packages/` is `private`; `apps/cli` ships them in a single published
+tarball with both bins. `tools/pack/prepack.mjs` copies them into
+`apps/cli/dist/node_modules/` for the pack, where the bins' imports find them, and the
+tarball carries them as plain files — so the published manifest's `dependencies` name
+`commander` alone, never a package nobody can install from npm. `apps/cli/package.json`
+therefore doesn't list them; prepack takes them from `apps/cli/tsconfig.json`'s project
+references and their own dependencies. `apps/cli/README.md` explains the rest.
 
 **Why `lib-verify` is not part of `lib-repro`.** Verification re-runs extraction over
 archived bytes, so it needs `lib-extract` and `lib-store` — while `lib-extract`

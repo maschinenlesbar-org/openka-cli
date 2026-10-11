@@ -76,7 +76,7 @@ jobs:
         run: |
           npm run pack
           # prepack's copies in the app's node_modules would shadow the workspace links.
-          if [ -e apps/cli/node_modules ] || [ -e apps/cli/.prepack-generated.json ]; then
+          if [ -e apps/cli/node_modules ] || [ -e apps/cli/dist/node_modules ] || [ -e apps/cli/.prepack-generated.json ]; then
             echo "::error::the pack left prepack's copies behind in apps/cli"
             exit 1
           fi

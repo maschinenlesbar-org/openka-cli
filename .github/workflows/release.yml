@@ -88,7 +88,9 @@ jobs:
       # the tag.)
       # Both are scoped to the apps/cli workspace, the package that ships (the dev one adds
       # the root's devDependencies, the build toolchain). The SBOM's main component is the
-      # private workspace root, whose one dependency is the released package.
+      # private workspace root, whose one dependency is the released package; that package
+      # depends on commander (bundled). The 39 workspace packages ship inside it as files
+      # (dist/node_modules), so they are part of the released package, not dependencies.
       - name: Generate SBOMs (CycloneDX)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
