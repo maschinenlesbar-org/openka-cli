@@ -164,7 +164,8 @@ module ProjectSite
       end
     end
 
-    # Rewrites repository-relative Markdown links (outside code blocks): the README and
+    # Rewrites repository-relative Markdown links, and links to this repository's own files
+    # on GitHub (`…/blob/<ref>/<path>`), outside code blocks: the README and
     # the documents (and their translations) go to this site's pages in the same
     # language, images to raw.githubusercontent.com, everything else to the file on
     # GitHub at SITE_REF.

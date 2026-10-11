@@ -4,8 +4,9 @@
 //
 // Where the program and the published manifest live is a per-repo fact, so it comes
 // from _config.yml (`program:`, `manifest:`) and defaults to the single-package
-// layout. A workspace keeps both inside packages/, and the root manifest there is a
-// private workspace file that names no published package at all.
+// layout (dist/src/cli/program.js, package.json). An npm workspace keeps both in the
+// app's folder (apps/cli/), and its root manifest is a private workspace file that
+// names no published package at all.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
