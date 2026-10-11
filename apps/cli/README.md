@@ -2,8 +2,9 @@
 
 > The published package: the library entry point and the two bins.
 
-This is the one package that ships. Everything else in the workspace is `private`
-and is bundled into this tarball at pack time.
+This is the one package that ships, in `apps/cli` — the folder for what the repository
+publishes. Everything in `packages/` is `private` and is bundled into this tarball at
+pack time.
 
 It holds almost no code:
 
@@ -25,22 +26,25 @@ into the **root** `node_modules` instead. Packing from here therefore produces a
 tarball with none of them and bins that cannot resolve a single import. The failure
 is silent: `npm pack` succeeds and the tarball is simply 20 kB instead of 300.
 
-`tools/prepack.mjs` handles it. It copies each workspace dependency's manifest and
-built `dist` into this package's `node_modules`, walks the dependency graph
-**transitively** — bundling only the direct ones leaves half the graph missing — and
-copies in the repository-level documents the tarball carries, `LICENSE` among them,
-because npm cannot reach outside a package directory when it builds one. Everything
+`tools/pack/prepack.mjs` handles it (the same file in every maschinenlesbar.org CLI
+repository). It copies each workspace dependency's manifest and built `dist` into this
+package's `node_modules`, walks the dependency graph **transitively** — bundling only the
+direct ones leaves half the graph missing — and copies in the repository-level documents
+the tarball carries — `LICENSE` and every plain file name in `files` — because npm cannot
+reach outside a package directory when it builds one. Everything
 it writes is generated and gitignored; the originals stay the single source of truth.
 
 **Third-party dependencies are bundled too** — today that is `commander` alone.
 `prepack` copies the runtime closure of every bundled package from the root
-`node_modules`, and refuses to pack when one is missing from `bundleDependencies`.
+`node_modules`, and refuses to pack when one is missing from `bundleDependencies` — as it
+does for a workspace package missing from it.
 Left unbundled, `npm install -g` created `node_modules/commander` as an empty
 directory, counted it as installed, and every `ka` command crashed with
 `ERR_MODULE_NOT_FOUND`; a local install hoisted a real copy and hid the bug
 (issue #1). `test/bundle.test.ts` checks the manifest, and CI installs the packed tarball
 globally, offline, and runs both bins.
-`tools/postpack.mjs` removes it all again as soon as the tarball exists.
+`tools/pack/postpack.mjs` removes it all again as soon as the tarball exists, as
+recorded in `.prepack-generated.json`.
 
 Three more things happen on the way, each because the registry reads the tarball
 differently from a maintainer reading this directory:
@@ -50,8 +54,9 @@ differently from a maintainer reading this directory:
   installs it. For the length of the pack the repository README stands in for it,
   and this one waits as `package-readme.parked.md`. A pack that dies before
   `postpack` leaves it parked; the next `prepack` puts it back first. A relative link
-  in the repository README must therefore name a document the tarball carries (one of
-  prepack's `DOCUMENTS`, listed in `files`); any other goes by its absolute GitHub URL.
+  in the repository README must therefore name a document the tarball carries (a plain
+  file name in `files`, which prepack copies in); any other goes by its absolute GitHub
+  URL.
   `test/readme-links.test.ts` checks it.
 - **No source maps.** `tsconfig.base.json` emits none, because they would point at
   `src/*.ts`, which the tarball does not carry. Any an older build left in a `dist/`

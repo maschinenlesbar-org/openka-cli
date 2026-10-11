@@ -28,7 +28,8 @@ elsewhere.
 
 ## Workspace layout
 
-npm workspaces, one `tsc -b` build graph, three kinds of package under `packages/`:
+npm workspaces, one `tsc -b` build graph: the published package in `apps/cli`, and three
+kinds of package under `packages/`:
 
 - **`lib-*`** — the shared engine, one package per seam: `lib-models`, `lib-repro`,
   `lib-errors`, `lib-text`, `lib-http`, `lib-pdf`, `lib-perceive`, `lib-extract`,
@@ -40,14 +41,16 @@ npm workspaces, one `tsc -b` build graph, three kinds of package under `packages
   Ten Länder have no adapter of their own yet and their package holds only the
   entry that says so — that is the gap `ka sources list` shows.
 - **`cli-*`** — `cli-ka` (the `ka` bin) and `cli-ka-factory` (the `ka-factory` bin).
-- **`openka-cli`** — the one published package: the library entry point, the two bin
+- **`apps/cli`** (`openka-cli`) — the one published package: the library entry point, the two bin
   shims, and the cross-package integration suite.
 
-**The layout has no exceptions**: everything with source is a package under
-`packages/`, and the repository root is a workspace manifest, a build graph and the
-documents. Every package but `openka-cli` is `private` and is bundled into its
-tarball by `tools/prepack.mjs` — read that package's README before changing anything
-about packing. Each package builds to its own `dist/src` and `dist/test`.
+**The layout has no exceptions**: everything with source is a workspace package — the
+published one in `apps/`, the rest in `packages/` (the layout of every maschinenlesbar.org
+CLI repository) — and the repository root is a workspace manifest (no version), a build
+graph and the documents. Every package in `packages/` is `private` and is bundled into the
+tarball by `tools/pack/prepack.mjs` — read `apps/cli/README.md` before changing anything
+about packing. Release with `npm run bump -- <patch|minor|major>`, never `npm version`.
+Each package builds to its own `dist/src` and `dist/test`.
 
 **Each package has two TypeScript projects**: `tsconfig.json` for `src/`, which other
 packages reference, and `tsconfig.test.json` for `test/`, which nothing references.

@@ -27,18 +27,18 @@ functions.
 `openka-workspace` and `"private": true` — npm refuses to publish it, which matters
 because a root pack carries every package's sources, tests and fixture PDFs (it was
 published once by mistake, and unpublished; a test in `cli-ka-factory` keeps the flag
-set). `npm version patch` there moves a version nobody
-ships and leaves the tag pointing at the wrong number. Use
-`npm version --workspace @maschinenlesbar.org/openka-cli patch --no-git-tag-version`
-(then commit "X.Y.Z" and tag `vX.Y.Z` by hand), and check the root `package.json` is
-still `0.1.0` before committing: npm 11.19 without `--no-git-tag-version` also bumped
-the root and committed and tagged it as "0.1.1" during the 0.3.1 release. Pack with
-`npm run pack` so the prepack/postpack pair runs. `release.yml` and `publish.yml`
-read the version from `packages/openka-cli/package.json` for the same reason, and a
-test in `cli-ka-factory` fails if a workflow goes back to reading the root's. The
+set). The root has no version at all: the one that ships is `apps/cli/package.json`'s.
+Release with `npm run bump -- <patch|minor|major>` (`tools/bump.mjs`, the same in every
+CLI repository): it runs `npm version --workspace apps/cli --no-git-tag-version`, commits
+"X.Y.Z" and tags `vX.Y.Z`. A plain `npm version` at the root is refused by the root's
+`preversion` script — npm 11.19 once bumped the root and committed and tagged it as
+"0.1.1" during the 0.3.1 release. Pack with `npm run pack` so the prepack/postpack pair
+runs. `release.yml` and `publish.yml` read the version from `apps/cli/package.json`, and
+tests in `cli-ka-factory` fail if a workflow goes back to reading the root's or the root
+gets a version again. The
 bump also has to reach `PACKAGE_VERSION` in `packages/lib-repro/src/version.ts` — a
 literal, because the line reads no manifest at run time — which is what `ka --version` prints and `extractor_version` stamps. The published package's `version`
-lifecycle script (`tools/version.mjs`) rewrites and stages it during `npm version`,
+lifecycle script (`tools/version.mjs`) rewrites and stages it during the bump,
 and a test in `lib-repro` fails if the two ever disagree.
 
 **A release restamps the golden fixtures.** Every golden record's `extractor_version` is
@@ -48,7 +48,7 @@ package version: left at `pkg:<old>+extract:`, the release fails there. The vers
 must therefore carry `pkg:<old>+extract:` -> `pkg:<new>+extract:` in all of them — the 0.8.0
 commit did, and 0.9.0 forgot and needed a `chore(fixtures)` follow-up. `tools/version.mjs`
 does it in the same run that rewrites `PACKAGE_VERSION` and stages every file it touched
-(`restampFixtures`, tested in `lib-repro`), so `npm version` is enough; the script's output
+(`restampFixtures`, tested in `lib-repro`), so `npm run bump` is enough; the script's output
 names the count. It restamps from the `PACKAGE_VERSION` it replaces, and leaves a record
 pinned with `OPENKA_EXTRACTOR_VERSION` alone. If the digest part changed too, that is
 `npm run stamp` and a re-freeze, as before.
@@ -57,8 +57,8 @@ pinned with `OPENKA_EXTRACTOR_VERSION` alone. If the digest part changed too, th
 in it must point to a document the tarball carries — `LICENSE`, `LICENSING.md`,
 `CONTRIBUTING.md`, `DATA_LICENSE.md`, `CONCEPT.md`; anything else (DEVELOPING.md, a
 package README) is linked by its absolute GitHub URL, or it is dead on npmjs.com.
-`packages/openka-cli/test/readme-links.test.ts` checks every relative link against the
-package's `files` and prepack's document list (P21 of the 2026-10-06 follow-up round).
+`apps/cli/test/readme-links.test.ts` checks every relative link against the package's
+`files`, whose plain file names prepack copies in (P21 of the 2026-10-06 follow-up round).
 
 **The first publish is local; every one after it is `publish.yml`.** npm Trusted
 Publishing can only be configured for a package that already exists, so the first
@@ -82,6 +82,11 @@ The repository is an npm workspace. One `tsc -b` graph, one published package, a
 the line/factory split is a package boundary rather than a convention.
 
 ```
+apps/
+  cli/                   @maschinenlesbar.org/openka-cli — the one package that ships:
+    src/index.ts         the library entry point: the line's public surface
+    src/bin/             the `ka` and `ka-factory` shims
+    test/                the cross-package integration suite
 packages/
   lib-errors/            the error hierarchy
   lib-text/              control-character stripping and text normalisation
@@ -105,18 +110,21 @@ packages/
   connector-berlin/ … connector-thueringen/
   cli-ka/                `ka`
   cli-ka-factory/        THE FACTORY — build-time only, never imported by the line
-src/index.ts             the library entry point: the line's public surface
-test/                    the cross-package integration suite
+tools/pack/              prepack/postpack: bundle the packages into the tarball (shared)
+tools/bump.mjs           version bump + commit + tag (npm run bump; shared)
 ```
+
+The layout is the one every maschinenlesbar.org CLI repository has: `apps/` for what
+the repository publishes, `packages/` for the libraries it is built from.
 
 **Every package has a README** — what it does, its public surface, what it depends on
 and why, the tests it runs and the fixtures it holds. That folder is meant to be
 enough on its own; this file is the map between them. Each package builds to its own
-`dist/src` and `dist/test`, and keeps its own tests and fixtures beside its code. Everything except `openka-cli` is `private`; it bundles them into a single published
-tarball with both bins. That bundling needs `tools/prepack.mjs` — npm bundles
+`dist/src` and `dist/test`, and keeps its own tests and fixtures beside its code. Everything in `packages/` is `private`; `apps/cli` bundles them into a single published
+tarball with both bins. That bundling needs `tools/pack/prepack.mjs` — npm bundles
 `bundleDependencies` from a package's *own* `node_modules`, and in a workspace they
 are symlinked into the root's instead, so packing without it yields a tarball with
-no dependencies and bins that resolve nothing. Its README explains the rest.
+no dependencies and bins that resolve nothing. `apps/cli/README.md` explains the rest.
 
 **Why `lib-verify` is not part of `lib-repro`.** Verification re-runs extraction over
 archived bytes, so it needs `lib-extract` and `lib-store` — while `lib-extract`
@@ -180,7 +188,7 @@ push.
 | [`lib-testing`](packages/lib-testing/README.md) | The seams, pre-wired: an in-memory store, a scripted transport, and fixture access. |
 | [`lib-text`](packages/lib-text/README.md) | One implementation of text hygiene, with three intentions. |
 | [`lib-verify`](packages/lib-verify/README.md) | Proving reproducibility on demand. |
-| [`openka-cli`](packages/openka-cli/README.md) | The published package: the library entry point and the two bins. |
+| [`openka-cli`](apps/cli/README.md) | The published package: the library entry point and the two bins. |
 
 ## The seams
 
@@ -1079,7 +1087,7 @@ Two facts that used to be hard-coded are now named in `_config.yml`, defaulting 
 the old layout so the kit is still copyable to the other repos unchanged:
 
 ```yaml
-manifest: packages/openka-cli/package.json   # the published manifest, not the private root
+manifest: apps/cli/package.json              # the published manifest, not the private root
 program:  packages/cli-ka/dist/src/program.js
 ```
 
