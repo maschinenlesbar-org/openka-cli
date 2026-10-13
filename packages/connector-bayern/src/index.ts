@@ -194,6 +194,16 @@ export class BayernFeedSource implements Source {
     // carries the new Landtag's Drucksachen, and a fixed default filtered all of them
     // out without a word.
     const period = options.period ?? Math.max(...unique.map((item) => item.period));
+    if (!unique.some((item) => item.period === period)) {
+      // Filtering every item out answered "0 discovered", exit 0 — read as "no
+      // Anfragen in that period". The feed holds only the newest weeks, and the
+      // Parlamentsspiegel searches by date, not by period: a window is the way there.
+      const listed = [...new Set(unique.map((item) => item.period))].sort((a, b) => a - b).join(", ");
+      throw new UsageError(
+        `Bayern's Anfragen feed lists only Wahlperiode ${listed}, not Wahlperiode ${period}: it holds the newest weeks. ` +
+          `Give a date window (--since/--until) inside Wahlperiode ${period}; it is searched in the Parlamentsspiegel's Bayern rows.`,
+      );
+    }
     if (options.period === undefined) {
       const others = unique.filter((item) => item.period !== period);
       if (others.length > 0) {

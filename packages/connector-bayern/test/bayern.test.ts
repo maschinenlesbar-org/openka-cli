@@ -250,6 +250,34 @@ describe("what createSource returns", () => {
   });
 });
 
+describe("a Wahlperiode the feed does not list", () => {
+  it("is refused with the way to it, not synced to an empty run", async () => {
+    // `--period 18` filtered every feed item out: exit 0, "0 discovered", an empty
+    // stderr — indistinguishable from "Bayern had no Anfragen in WP 18"
+    // (exploratory 2026-10-13, B01-1). The Parlamentsspiegel cannot search by period,
+    // only by date, so the way to WP 18 is a window.
+    for (const discover of [
+      (options: Parameters<BayernFeedSource["discover"]>[0]) => new BayernFeedSource().discover(options),
+      (options: Parameters<BayernFeedSource["discover"]>[0]) => createSource().discover(options),
+    ]) {
+      const { transport } = landtag();
+      await rejects(discover({ engine: testEngine(transport), state, period: 18 }), (err: Error) => {
+        ok(err instanceof UsageError);
+        match(err.message, /Wahlperiode 18/);
+        match(err.message, /lists only Wahlperiode 19/);
+        match(err.message, /--since\/--until/);
+        return true;
+      });
+    }
+  });
+
+  it("is taken as usual when the feed lists it", async () => {
+    const { transport } = landtag();
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state, period: 19 });
+    strictEqual(result.refs.length, 10);
+  });
+});
+
 describe("a date window", () => {
   // The feed holds only the newest weeks and carries no dates, so a window used to
   // be refused — and Bayern's history was out of reach, though the Parlamentsspiegel
