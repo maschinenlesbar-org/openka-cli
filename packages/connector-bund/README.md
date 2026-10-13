@@ -7,7 +7,9 @@ JSON API with filters and cursor pagination, so this adapter is what the concept
 calls a trivial deterministic mapper.
 
 **It needs an API key** (`ka config set bund.api-key`, `--api-key`, `DIP_API_KEY`). The Bundestag publishes a
-public one and issues personal keys on request. **No key is bundled here.**
+public one and issues personal keys on request. **No key is bundled here.** A key DIP rejects (401/403)
+is named as such in the error, with the fix — the Bundestag rotates its public key, so store the
+current one with `ka config set bund.api-key` — and the key itself is never quoted.
 
 A Kleine Anfrage is a *Vorgang* with two *Vorgangspositionen*: the question and the
 answer. A date window usually splits a pair across its edge, so half-seen pairs are

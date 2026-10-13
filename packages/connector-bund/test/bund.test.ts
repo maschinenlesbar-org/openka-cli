@@ -2,7 +2,7 @@
 
 import { deepStrictEqual, match, ok, rejects, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { BundDipSource, FIRST_VORGANG_DATE, askersOf, drucksacheRef, drucksacheWindow, parseDipAuthor, toRef } from "../src/index.js";
 import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
 
@@ -242,5 +242,28 @@ describe("a cursor that moves without moving on", () => {
     const result = await new BundDipSource().discover({ engine, apiKey: "k", state: { source: "bund", http_cache: {} }, period: 21 });
     strictEqual(walk, 2);
     match(result.warnings.join("\n"), /cursor stopped making progress/);
+  });
+});
+
+describe("a key DIP rejects", () => {
+  it("is named as a rejected key, with the fix, never quoted", async () => {
+    // A rejected key read as a bare "HTTP 401 for GET …" (exploratory 2026-10-13-bund,
+    // B03-1); the Bundestag rotates its public key, so this is the error users meet.
+    for (const status of [401, 403]) {
+      const { transport } = scriptedTransport([{ match: "dip.bundestag.de", status, body: '{"code":401,"message":"Unauthorized"}' }]);
+      const check = (err: unknown): boolean => {
+        ok(err instanceof OpenKaApiError, String(err));
+        strictEqual(err.status, status);
+        match(err.message, new RegExp(`DIP rejected the API key \\(HTTP ${status}\\)`));
+        match(err.message, /ka config set bund\.api-key/);
+        ok(!err.message.includes("secret-key"));
+        return true;
+      };
+      await rejects(
+        () => new BundDipSource().discover({ engine: testEngine(transport), apiKey: "secret-key", state: { source: "bund", http_cache: {} }, period: 21 }),
+        check,
+      );
+      await rejects(() => new BundDipSource().count({ engine: testEngine(transport), apiKey: "secret-key" }), check);
+    }
   });
 });

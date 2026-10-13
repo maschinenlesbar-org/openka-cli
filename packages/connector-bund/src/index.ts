@@ -14,7 +14,7 @@
 // of a pair — those are completed with a targeted per-Vorgang request rather than
 // being published as a record with an invented counterpart.
 
-import { ParseError, UsageError, apiKeyProblem } from "@maschinenlesbar.org/openka-lib-errors";
+import { OpenKaApiError, ParseError, UsageError, apiKeyProblem } from "@maschinenlesbar.org/openka-lib-errors";
 import type { AnsweredBy, Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { periodFromReference } from "@maschinenlesbar.org/openka-lib-extract";
 import type { CountOptions, DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source, UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
@@ -53,6 +53,29 @@ export const LAST_PERIOD_WITHOUT_VORGAENGE = 7;
 export function drucksacheWindow(options: { period?: number; until?: string }): boolean {
   if (options.period !== undefined) return options.period <= LAST_PERIOD_WITHOUT_VORGAENGE;
   return options.until !== undefined && options.until < FIRST_VORGANG_DATE;
+}
+
+/**
+ * A GET to DIP, where a 401 or 403 says what it means. It used to surface as a bare
+ * "HTTP 401 for GET …", while the Bundestag rotates its public key and a rejected key
+ * is the error users actually meet. The error keeps its class, status and URL; only
+ * the message names the key — never quoting it — and the fix.
+ */
+async function dipGet(
+  engine: DiscoverOptions["engine"],
+  url: string,
+  options: Parameters<DiscoverOptions["engine"]["get"]>[1],
+): ReturnType<DiscoverOptions["engine"]["get"]> {
+  try {
+    return await engine.get(url, options);
+  } catch (err) {
+    if (err instanceof OpenKaApiError && (err.status === 401 || err.status === 403)) {
+      err.message =
+        `DIP rejected the API key (HTTP ${err.status}). The Bundestag rotates its public key: store the current one ` +
+        `with \`ka config set bund.api-key\` — a key given with --api-key or ${DIP_API_KEY_ENV} is used before the stored one.`;
+    }
+    throw err;
+  }
 }
 
 /** A missing credential is the operator's to supply, not a degraded source: a usage error. */
@@ -105,7 +128,7 @@ export class BundDipSource implements Source {
   }
 
   private async numFound(apiKey: string, engine: CountOptions["engine"], path: string, params: Record<string, string | number>): Promise<number> {
-    const response = await engine.get(`${DIP_BASE_URL}${path}`, {
+    const response = await dipGet(engine, `${DIP_BASE_URL}${path}`, {
       params,
       headers: { authorization: `ApiKey ${apiKey}`, accept: "application/json" },
     });
@@ -248,7 +271,7 @@ export class BundDipSource implements Source {
     for (let page = 0; page < MAX_PAGES; page++) {
       const query: Record<string, string | number> = { ...params };
       if (cursor !== undefined) query["cursor"] = cursor;
-      const response = await options.engine.get(`${DIP_BASE_URL}${path}`, {
+      const response = await dipGet(options.engine, `${DIP_BASE_URL}${path}`, {
         params: query,
         headers: { authorization: `ApiKey ${options.apiKey}`, accept: "application/json" },
       });
