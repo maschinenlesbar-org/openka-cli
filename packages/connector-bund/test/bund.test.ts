@@ -227,3 +227,20 @@ describe("a walk that reaches the page cap", () => {
     match(result.warnings.join("\n"), /stopped after 200 pages \(200 of 23384 positions\).*--since\/--until/);
   });
 });
+
+describe("a cursor that moves without moving on", () => {
+  it("stops when a page brings nothing new, and says so", async () => {
+    // A new cursor with the same documents on every page cost 200 requests and the run
+    // went on as if complete (exploratory 2026-10-13-bund, B02-3).
+    let walk = 0;
+    const engine = testEngine(async (request) => {
+      if (request.url.includes("f.vorgang=")) return { status: 200, headers: {}, body: Buffer.from('{"numFound":0,"documents":[],"cursor":"*"}') };
+      walk++;
+      const documents = [{ id: "p1", vorgang_id: "v1", vorgangsposition: "Kleine Anfrage" }];
+      return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ numFound: 1, documents, cursor: `c${walk}` })) };
+    });
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: { source: "bund", http_cache: {} }, period: 21 });
+    strictEqual(walk, 2);
+    match(result.warnings.join("\n"), /cursor stopped making progress/);
+  });
+});

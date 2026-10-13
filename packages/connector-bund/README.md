@@ -31,7 +31,9 @@ Drucksachen for those periods too.
 discovery walks at most `MAX_PAGES` (200) pages per query. Wahlperiode 19 alone holds
 23,384 Kleine-Anfrage positions (234 pages), so `--period 19` reaches the cap: the run
 warns that the rest of the window was not discovered and to sync it in parts with
-`--since`/`--until`, rather than stopping there without a word.
+`--since`/`--until`, rather than stopping there without a word. A cursor that changes while its pages bring
+no document not already read stops the walk too, with a warning — it used to run all 200
+pages.
 
 **The answering ministry is only taken when DIP marks it.** A Vorgang can list
 several `ressort` entries, and only the one flagged `federfuehrend` is the answering

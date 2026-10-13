@@ -242,6 +242,9 @@ export class BundDipSource implements Source {
     let cursor: string | undefined;
     let ended = false;
     let numFound: number | undefined;
+    // What a page brings that the walk has not seen: a cursor that changes while the
+    // documents do not used to walk all 200 pages and look complete.
+    const seen = new Set<string>();
     for (let page = 0; page < MAX_PAGES; page++) {
       const query: Record<string, string | number> = { ...params };
       if (cursor !== undefined) query["cursor"] = cursor;
@@ -260,13 +263,28 @@ export class BundDipSource implements Source {
       if (!Array.isArray(body.documents)) throw new ParseError(`DIP answered without a documents list (${path})`);
       const documents = body.documents;
       if (typeof body.numFound === "number") numFound = body.numFound;
-      out.push(...documents);
+      let fresh = 0;
+      for (const document of documents) {
+        const id = typeof document["id"] === "string" || typeof document["id"] === "number" ? String(document["id"]) : undefined;
+        if (id !== undefined && seen.has(id)) continue;
+        if (id !== undefined) seen.add(id);
+        out.push(document);
+        fresh++;
+      }
       // Two positions per Anfrage, so the position budget is twice the ref budget.
       if (limit !== undefined && out.length >= limit * 2) {
         ended = true;
         break;
       }
       if (documents.length === 0 || body.cursor === undefined || body.cursor === cursor) {
+        ended = true;
+        break;
+      }
+      if (fresh === 0) {
+        warnings.push(
+          `DIP's cursor stopped making progress (${path}): page ${page + 1} held only documents already read; ` +
+            "the walk stops here and may be incomplete",
+        );
         ended = true;
         break;
       }
