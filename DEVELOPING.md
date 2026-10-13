@@ -1072,6 +1072,11 @@ web components, Fylgja CSS, English at the root and German under `/de/`. `docs.y
 builds it on a `v*` tag or a manual dispatch and deploys it to Pages with the TypeDoc
 reference mounted under `/api/`.
 
+The build also writes `sitemap.xml`: every page in both languages, and `/api/`. Crawlers
+find it through `robots.txt` at the root of maschinenlesbar.org, which only the
+organisation website can serve; its `site/_data/sites.yml` lists every site's sitemap, so a
+new CLI gets a line there.
+
 ```bash
 cd site && npm ci && bundle install
 npm run build:assets     # Fylgja CSS, banira components, the command reference
