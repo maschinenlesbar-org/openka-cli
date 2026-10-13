@@ -164,16 +164,37 @@ export class BayernFeedSource implements Source {
 
     const candidates = byReference(parseFeed(xml)).filter((item) => item.period === period);
     const refs: DocRef[] = [];
+    // One refused probe is that Drucksache's problem, not the feed's: the engine
+    // throws for anything but a 404, and that throw used to end discovery, so the
+    // run fell back to the Parlamentsspiegel and dropped every Anfrage the feed had
+    // found. Only when no probe is answered at all is the Landtag itself unreadable.
+    let answered = 0;
+    let firstFailure: string | undefined;
     for (const item of candidates) {
       const url = drucksacheUrl(item.period, item.number);
-      const probe = await options.engine.head(url);
-      if (probe.status === 404) continue; // an Anfrage zum Plenum, not this instrument
-      if (probe.status >= 400) {
-        warnings.push(`Drucksache ${item.reference}: the Landtag answered ${probe.status} for its file; skipped`);
+      let status: number;
+      try {
+        status = (await options.engine.head(url)).status;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        firstFailure ??= message;
+        warnings.push(
+          `Drucksache ${item.reference}: its file could not be checked (${message}); skipped — ` +
+            "a later sync takes it while the feed still lists it",
+        );
+        continue;
+      }
+      answered++;
+      if (status === 404) continue; // an Anfrage zum Plenum, not this instrument
+      if (status >= 400) {
+        warnings.push(`Drucksache ${item.reference}: the Landtag answered ${status} for its file; skipped`);
         continue;
       }
       refs.push(toRef(item, url));
       if (options.limit !== undefined && refs.length >= options.limit) break;
+    }
+    if (answered === 0 && firstFailure !== undefined) {
+      return { refs: [], warnings, unreadable: `none of the feed's Drucksachen could be checked at the Landtag (${firstFailure})` };
     }
     return { refs, warnings };
   }

@@ -53,6 +53,11 @@ no dates, unflagged. A head of another shape is not read, and the record abstain
 The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window. That
 is the price of not guessing, and `lib-http`'s `head()` exists for it.
 
+A probe answered with anything but 200 or 404 — a 403, a 500, a timeout after the
+retries — skips that one Drucksache with a warning naming it; the rest of the feed is
+kept. Only when no probe is answered at all is the Landtag unreadable, and the
+Parlamentsspiegel takes over.
+
 ## Public surface
 
 Everything is re-exported from the package root:

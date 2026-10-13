@@ -141,6 +141,41 @@ describe("Bayern source", () => {
   });
 });
 
+describe("a probe the Landtag does not answer with 200 or 404", () => {
+  /** The recorded feed, with the file of 19/13327 answering `status` instead. */
+  function landtagRefusing(status: number): ReturnType<typeof scriptedTransport> {
+    const routes = [{ match: "rssfeed.xhtml", body: FEED }, { match: "19_0013327.pdf", body: "", status }];
+    for (const number of SAMMELDRUCKSACHEN) routes.push({ match: `19_00${number}.pdf`, body: "", status: 404 });
+    routes.push({ match: ".pdf", body: "%PDF-1.7" });
+    return scriptedTransport(routes);
+  }
+
+  it("skips that one Drucksache and keeps every other", async () => {
+    // One refused HEAD among ~400 used to throw out of discovery, and the run fell
+    // back to the Parlamentsspiegel — dropping every Anfrage the feed had found,
+    // unnamed (exploratory 2026-10-13, B03-1).
+    for (const status of [403, 405, 410, 500]) {
+      const { transport, requests } = landtagRefusing(status);
+      const result = await createSource().discover({ engine: testEngine(transport, { maxRetries: 0 }), state });
+      const refs = result.refs.map((ref) => ref.reference);
+      strictEqual(refs.length, 9, `status ${status}`);
+      ok(!refs.includes("19/13327"));
+      ok(result.warnings.some((warning) => warning.includes("19/13327") && warning.includes(String(status))));
+      ok(!requests.some((request) => request.url.includes("parlamentsspiegel")));
+    }
+  });
+
+  it("is a feed that cannot be read when no probe is answered at all", async () => {
+    const { transport } = scriptedTransport([
+      { match: "rssfeed.xhtml", body: FEED },
+      { match: ".pdf", body: "", status: 503 },
+    ]);
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport, { maxRetries: 0 }), state });
+    deepStrictEqual(result.refs, []);
+    match(result.unreadable ?? "", /could be checked/);
+  });
+});
+
 describe("what createSource returns", () => {
   it("is the Landtag's own feed, with the aggregator only behind it", async () => {
     const { transport, requests } = landtag();
