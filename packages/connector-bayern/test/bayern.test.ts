@@ -330,3 +330,38 @@ describe("a date window", () => {
     deepStrictEqual(result.refs, []);
   });
 });
+
+describe("a feed that has moved past the last sync", () => {
+  // The feed holds about eight weeks. A corpus synced less often loses what scrolled
+  // through in between, and nothing said so: exit 0, `warnings: []`
+  // (exploratory 2026-10-13, B05-1). The source now remembers the newest entry it saw.
+  const OLDEST = "2026-06-24";
+
+  it("warns, naming the window that closes the gap", async () => {
+    const { transport } = landtag();
+    const result = await new BayernFeedSource().discover({
+      engine: testEngine(transport),
+      state: { ...state, feed_newest: "2026-05-01T08:00:00.000Z" },
+    });
+    const gap = result.warnings.find((warning) => warning.includes("--since 2026-05-01"));
+    ok(gap !== undefined, result.warnings.join("\n"));
+    ok(gap.includes(`--until ${OLDEST}`), gap);
+  });
+
+  it("says nothing when the feed still reaches back to what the last sync saw", async () => {
+    const { transport } = landtag();
+    const result = await new BayernFeedSource().discover({
+      engine: testEngine(transport),
+      state: { ...state, feed_newest: "2026-07-01T08:00:00.000Z" },
+    });
+    ok(!result.warnings.some((warning) => warning.includes("--since")), result.warnings.join("\n"));
+  });
+
+  it("remembers the newest entry it saw, but not from a run cut short by --limit", async () => {
+    const { transport } = landtag();
+    const full = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
+    strictEqual(full.state?.feed_newest, "2026-09-21T09:20:44.000Z");
+    const limited = await new BayernFeedSource().discover({ engine: testEngine(landtag().transport), state, limit: 2 });
+    strictEqual(limited.state?.feed_newest, undefined);
+  });
+});

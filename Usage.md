@@ -774,7 +774,8 @@ Parlamentsspiegel cannot count by period, so such a row gets a note (named alone
 `--source`, it is a usage error). The `total` row adds up the parliaments counted.
 Bayern's own feed holds only the newest weeks; what its row counts beyond them is reached
 with a windowed sync (`ka sync --source bayern --since … --until …`), which searches the
-same Parlamentsspiegel rows.
+same Parlamentsspiegel rows. The feed is only as good as the sync cadence: when it has
+moved past the last Bayern sync, the run warns and names the window to sync.
 
 `ka reindex` rebuilds the catalog and the search index without reading the old ones,
 so it repairs a corrupt catalog. The new index is built in memory and written over the

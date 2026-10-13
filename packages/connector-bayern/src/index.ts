@@ -191,6 +191,22 @@ export class BayernFeedSource implements Source {
       };
     }
     const unique = byReference(parsed);
+    // How far the feed reaches back, against what the last complete read saw: the
+    // feed holds about eight weeks, and what scrolls through between two syncs is
+    // never listed again. `pubDate` is when an entry appeared — exactly the measure.
+    const instants = parsed
+      .map((item) => (item.published === undefined ? Number.NaN : Date.parse(item.published)))
+      .filter((instant) => !Number.isNaN(instant));
+    const oldest = instants.length === 0 ? undefined : new Date(Math.min(...instants)).toISOString();
+    const newest = instants.length === 0 ? undefined : new Date(Math.max(...instants)).toISOString();
+    const seen = options.state.feed_newest;
+    if (seen !== undefined && oldest !== undefined && oldest > seen) {
+      warnings.push(
+        `the feed now starts at ${oldest.slice(0, 10)}, after the newest entry the last sync saw (${seen.slice(0, 10)}): ` +
+          "Drucksachen listed in between were never seen here — sync them with " +
+          `--since ${seen.slice(0, 10)} --until ${oldest.slice(0, 10)}, which is searched in the Parlamentsspiegel`,
+      );
+    }
     // The newest period the feed lists, not a constant: after an election the feed
     // carries the new Landtag's Drucksachen, and a fixed default filtered all of them
     // out without a word.
@@ -257,7 +273,10 @@ export class BayernFeedSource implements Source {
     if (answered === 0 && firstFailure !== undefined) {
       return { refs: [], warnings, unreadable: `none of the feed's Drucksachen could be checked at the Landtag (${firstFailure})` };
     }
-    return { refs, warnings };
+    // Remembered only from a complete read: a run cut short by --limit did not take
+    // everything the feed listed.
+    if (newest === undefined || options.limit !== undefined) return { refs, warnings };
+    return { refs, warnings, state: { ...options.state, feed_newest: seen !== undefined && seen > newest ? seen : newest } };
   }
 }
 

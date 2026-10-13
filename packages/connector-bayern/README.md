@@ -50,6 +50,11 @@ Parlamentsspiegel's Bayern rows (`qyHerk=BAY`, `qyZeitAb`/`qyZeitBis`), which li
 earlier Wahlperioden too and link the same static Drucksachen. `BayernFeedSource` on its
 own still refuses a window.
 
+**A gap between two syncs is named.** What scrolls out of the feed between two syncs is
+never listed again. The source keeps the newest entry a complete read of the feed saw
+(`feed_newest` in its source state); when a later feed starts after it, the run warns
+and names the `--since`/`--until` window that closes the gap.
+
 **No dates and no askers are claimed from the feed.** `pubDate` is when the entry
 appeared, not when the Anfrage was submitted or answered; the paper's head carries the
 askers, the question's date ("vom …") and the paper's date, and `lib-extract`'s

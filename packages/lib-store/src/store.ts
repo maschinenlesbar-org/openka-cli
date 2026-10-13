@@ -66,6 +66,13 @@ export interface SourceState {
    * when a later run stores it or finds it unchanged.
    */
   failed?: FailedRef[];
+  /**
+   * For a source whose discovery is a feed of the newest entries only (Bayern): the
+   * newest entry its last complete read of the feed listed, as an ISO instant. The
+   * next read warns when the feed's oldest entry is newer — what scrolled through in
+   * between was never seen.
+   */
+  feed_newest?: string;
 }
 
 /** An Anfrage a sync failed on: its reference as discovered, the error, and when. */
