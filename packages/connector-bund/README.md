@@ -24,7 +24,9 @@ question's date, so the pair of an answer whose question lies before the window 
 out — unless the corpus holds that question (`DiscoverOptions.store.hasRecord`): then the
 pair is kept, and the stored record gets its answer. A daily or weekly sync used to leave
 every question unanswered at its first sync unanswered for good. A run cut short by
-`--limit` takes no such updates.
+`--limit` takes no such updates. Without a store to ask (a library caller passing none) such answers are
+not completed at all, and one the budget did not reach is left out quietly — it is not a
+Vorgang without a question.
 
 **Before 1976 there are no Vorgänge.** DIP's procedure records start with the 8th
 Wahlperiode (the Bundestag first sat on `FIRST_VORGANG_DATE`, 1976-12-14); the 2,747

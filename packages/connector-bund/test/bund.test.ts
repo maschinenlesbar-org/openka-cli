@@ -370,3 +370,23 @@ describe("an answer to a question an earlier window stored", () => {
     deepStrictEqual(result.refs.map((ref) => ref.reference), ["21/1003"]);
   });
 });
+
+describe("answers the completion did not reach", () => {
+  it("are not reported as Vorgänge without a question", async () => {
+    // Past the budget, each answer whose question lies before the window was reported as
+    // `Vorgang N: no "Kleine Anfrage" position found; skipped` — read as broken DIP data;
+    // the Vorgang has its question, in an earlier window (exploratory 2026-10-13-bund, B01-2).
+    const { engine } = dip({ n: 2400, perDay: 40, lag: 14 });
+    const store = { loadArtifact: () => undefined, hasRecord: () => false };
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, store, since: "2026-06-15", until: "2026-07-14" });
+    ok(result.warnings.some((warning) => warning.includes("stopped completing")), "the budget is reached here");
+    deepStrictEqual(result.warnings.filter((warning) => warning.includes('no "Kleine Anfrage" position')), []);
+  });
+
+  it("are not asked for when no stored question could take them", async () => {
+    const { engine, completions } = dip({ n: 10, lag: 14 });
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, since: "2026-06-11", until: "2026-06-30" });
+    deepStrictEqual(result.refs, []);
+    strictEqual(completions().length, 0);
+  });
+});

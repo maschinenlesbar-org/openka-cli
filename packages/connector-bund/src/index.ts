@@ -220,7 +220,11 @@ export class BundDipSource implements Source {
     const byId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
     const questionOnly = [...groups].filter(([, bucket]) => has(bucket, "Kleine Anfrage") && !has(bucket, "Antwort")).map(([id]) => id).sort(byId);
     const answerOnly = [...groups].filter(([, bucket]) => !has(bucket, "Kleine Anfrage")).map(([id]) => id).sort(byId);
-    const pending = [...questionOnly, ...answerOnly];
+    // An answer whose question lies outside the window is only worth completing when
+    // the corpus could hold that question (an update, below); without a store to ask
+    // there is nothing to keep it for.
+    const canUpdate = options.store?.hasRecord !== undefined;
+    const pending = canUpdate ? [...questionOnly, ...answerOnly] : questionOnly;
     let queries = 0;
     for (let start = 0; start < pending.length; start += COMPLETION_BATCH) {
       if (queries >= MAX_COMPLETION_QUERIES) {
@@ -253,6 +257,9 @@ export class BundDipSource implements Source {
     // kept whatever the window says; one the corpus does not hold stays outside it.
     const updates: DocRef[] = [];
     for (const [vorgang, bucket] of groups) {
+      // An answer the completion did not reach belongs to a question of another window;
+      // it was reported as a Vorgang without a question, which read as broken DIP data.
+      if (!has(bucket, "Kleine Anfrage") && answerOnly.includes(vorgang)) continue;
       const ref = toRef(vorgang, bucket, warnings);
       if (ref === undefined) continue;
       const heldElsewhere =
