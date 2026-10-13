@@ -17,7 +17,9 @@ completed rather than silently filed as unanswered: one query asks for 50 Vorgä
 once (DIP ORs a repeated `f.vorgang`), the window's own questions first, at most 20
 queries a run (1,000 Vorgänge) — beyond that a warning says how many questions were stored
 without looking for their answer. A month of 2026 holds ~270 Kleine-Anfrage Vorgänge,
-most of them split by the window's edges.
+most of them split by the window's edges. A query that reaches to today — a period, or a
+window without `--until` — already lists every later answer, so a question alone in it has
+no answer yet and is not completed.
 
 **An answer to a question an earlier window stored updates it.** The window filters on the
 question's date, so the pair of an answer whose question lies before the window is left

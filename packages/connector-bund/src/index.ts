@@ -201,7 +201,8 @@ export class BundDipSource implements Source {
     if (options.until !== undefined) params["f.datum.end"] = options.until;
     if (options.period !== undefined) params["f.wahlperiode"] = options.period;
 
-    const positions = await this.page(options, "/api/v1/vorgangsposition", params, warnings, options.limit);
+    const walk = { ended: false };
+    const positions = await this.page(options, "/api/v1/vorgangsposition", params, warnings, options.limit, walk);
     const groups = new Map<string, Record<string, unknown>[]>();
     for (const position of positions) {
       const vorgang = String(position["vorgang_id"] ?? "");
@@ -224,7 +225,13 @@ export class BundDipSource implements Source {
     // the corpus could hold that question (an update, below); without a store to ask
     // there is nothing to keep it for.
     const canUpdate = options.store?.hasRecord !== undefined;
-    const pending = canUpdate ? [...questionOnly, ...answerOnly] : questionOnly;
+    // A question alone in a query that reaches to today (no --until, the walk not cut
+    // short by --limit) has no answer yet: every later answer would be in the query.
+    // Completing it spent requests on nothing and raised the budget warning on runs
+    // that missed nothing.
+    const answersListed = options.until === undefined && options.limit === undefined && walk.ended;
+    const questionsToComplete = answersListed ? [] : questionOnly;
+    const pending = canUpdate ? [...questionsToComplete, ...answerOnly] : questionsToComplete;
     let queries = 0;
     for (let start = 0; start < pending.length; start += COMPLETION_BATCH) {
       if (queries >= MAX_COMPLETION_QUERIES) {
@@ -295,6 +302,7 @@ export class BundDipSource implements Source {
     params: Record<string, string | number | readonly string[]>,
     warnings: string[],
     limit?: number,
+    walk?: { ended: boolean },
   ): Promise<Record<string, unknown>[]> {
     const out: Record<string, unknown>[] = [];
     let cursor: string | undefined;
@@ -303,6 +311,7 @@ export class BundDipSource implements Source {
     // What a page brings that the walk has not seen: a cursor that changes while the
     // documents do not used to walk all 200 pages and look complete.
     const seen = new Set<string>();
+    let stalled = false;
     for (let page = 0; page < MAX_PAGES; page++) {
       const query: Record<string, string | number | readonly string[]> = { ...params };
       if (cursor !== undefined) query["cursor"] = cursor;
@@ -344,10 +353,13 @@ export class BundDipSource implements Source {
             "the walk stops here and may be incomplete",
         );
         ended = true;
+        stalled = true;
         break;
       }
       cursor = body.cursor;
     }
+    // Reached its end: neither cut by the cap nor stopped by a stalled cursor.
+    if (walk !== undefined) walk.ended = ended && !stalled;
     if (!ended) {
       warnings.push(
         `discovery stopped after ${MAX_PAGES} pages (${out.length} of ${numFound ?? "?"} positions) and DIP has more: ` +

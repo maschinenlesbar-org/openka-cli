@@ -390,3 +390,20 @@ describe("answers the completion did not reach", () => {
     strictEqual(completions().length, 0);
   });
 });
+
+describe("questions DIP has no answer to yet", () => {
+  it("are not completed when the query already reaches to today", async () => {
+    // A period sync with 60 of 100 questions unanswered spent 50 completions (100
+    // requests) on them and warned "stopped completing … re-run", missing nothing
+    // (exploratory 2026-10-13-bund, B01-4). Without --until the query lists every later
+    // answer, so a question alone in it has none yet.
+    for (const window of [{ period: 21 }, { since: "2026-06-01" }]) {
+      const { engine, completions } = dip({ n: 100, unanswered: 60 });
+      const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, ...window });
+      strictEqual(result.refs.length, 100, JSON.stringify(window));
+      strictEqual(result.refs.filter((ref) => ref.dates.answered === undefined).length, 60);
+      strictEqual(completions().length, 0, JSON.stringify(window));
+      ok(!result.warnings.some((warning) => warning.includes("stopped completing")));
+    }
+  });
+});
