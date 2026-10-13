@@ -78,8 +78,11 @@ export interface FeedItem {
   published?: string;
 }
 
+// Tags are matched with their attributes and in any case: `<item xml:lang="de">` is
+// as much RSS as `<item>`, and a pattern that wants the bare tag drops every item
+// of such a feed without a word.
 const FIELD = (block: string, tag: string): string | undefined => {
-  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(block);
+  const match = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}\\s*>`, "i").exec(block);
   return match === null ? undefined : decodeEntities((match[1] ?? "").trim());
 };
 
@@ -91,7 +94,7 @@ const FIELD = (block: string, tag: string): string | undefined => {
  */
 export function parseFeed(xml: string): FeedItem[] {
   const items: FeedItem[] = [];
-  for (const match of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+  for (const match of xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item\s*>/gi)) {
     const block = match[1] ?? "";
     const title = FIELD(block, "title") ?? "";
     const reference = /(\d+)\s*\/\s*(\d+)/.exec(title);
@@ -167,8 +170,22 @@ export class BayernFeedSource implements Source {
     if (!/<item\b/i.test(xml)) {
       return { refs: [], warnings, unreadable: "the Anfragen feed listed no item" };
     }
+    if (!/<\/rss\s*>\s*$/i.test(xml)) {
+      return { refs: [], warnings, unreadable: "the Anfragen feed ended before </rss> — it came truncated" };
+    }
 
-    const candidates = byReference(parseFeed(xml)).filter((item) => item.period === period);
+    const parsed = parseFeed(xml);
+    if (parsed.length === 0) {
+      // Items there, and not one reference read: the feed's format moved under the
+      // parser. That is not "nothing new", and the fallback can still answer.
+      const count = xml.match(/<item\b/gi)?.length ?? 0;
+      return {
+        refs: [],
+        warnings,
+        unreadable: `the Anfragen feed's ${count} item(s) carried no Drucksachennummer this adapter can read — its format may have changed`,
+      };
+    }
+    const candidates = byReference(parsed).filter((item) => item.period === period);
     const refs: DocRef[] = [];
     // One refused probe is that Drucksache's problem, not the feed's: the engine
     // throws for anything but a 404, and that throw used to end discovery, so the

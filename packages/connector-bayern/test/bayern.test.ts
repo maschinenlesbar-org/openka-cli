@@ -51,6 +51,22 @@ describe("the Anfragen feed", () => {
     strictEqual(unique.length, new Set(items.map((item) => item.reference)).size);
   });
 
+  it("reads items whose tags carry attributes or are upper case", () => {
+    // Legal RSS the old pattern missed: every item dropped, "0 discovered", no warning
+    // (exploratory 2026-10-13, B04-2).
+    const items = parseFeed(
+      '<rss><channel><item xml:lang="de"><title type="text">Initiativdrucksache 19/6524</title>' +
+        "<description>a</description></item><ITEM><TITLE>Initiativdrucksache 19/12032</TITLE></ITEM></channel></rss>",
+    );
+    deepStrictEqual(
+      items.map((item) => [item.reference, item.subject]),
+      [
+        ["19/6524", "a"],
+        ["19/12032", ""],
+      ],
+    );
+  });
+
   it("ignores an item with no Drucksachennummer", () => {
     strictEqual(parseFeed("<rss><item><title>Kein Aktenzeichen</title></item></rss>").length, 0);
   });
@@ -146,6 +162,24 @@ describe("Bayern source", () => {
     const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
     deepStrictEqual(result.refs, []);
     match(result.unreadable ?? "", /no item/);
+  });
+
+  it("reports a feed that came truncated as unreadable", async () => {
+    // Cut mid-item, it used to yield the items before the cut and say nothing.
+    const cut = FEED.slice(0, FEED.indexOf("<item>", FEED.indexOf("<item>") + 1) + 40);
+    const { transport } = scriptedTransport([{ match: "rssfeed.xhtml", body: cut }]);
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(result.refs, []);
+    match(result.unreadable ?? "", /truncated/);
+  });
+
+  it("reports items it cannot read as unreadable, not as nothing new", async () => {
+    // The feed's format changed under the parser: items there, no reference read.
+    const body = "<rss><channel><item><title>Drucksache Nr. ? vom heute</title></item></channel></rss>";
+    const { transport } = scriptedTransport([{ match: "rssfeed.xhtml", body }]);
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(result.refs, []);
+    match(result.unreadable ?? "", /1 item.*no Drucksachennummer/);
   });
 
   it("defaults to the Wahlperiode currently sitting", () => {

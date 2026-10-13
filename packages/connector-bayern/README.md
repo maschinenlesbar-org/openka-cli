@@ -60,7 +60,9 @@ Parlamentsspiegel takes over.
 
 The same goes for a feed that answers without RSS or lists no item at all: the
 Landtag's feed always holds the newest weeks, so an empty one is a broken feed, not a
-quiet week.
+quiet week. A feed cut off before `</rss>`, or one whose items no longer carry a
+Drucksachennummer the adapter can read, is unreadable in the same way: a format change
+shows up as a fallback with a warning, not as "nothing new".
 
 ## Public surface
 
