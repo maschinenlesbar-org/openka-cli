@@ -256,6 +256,19 @@ describe("a Bayern row", () => {
     }
     deepStrictEqual(refs.find((ref) => ref?.reference === "19/13269")?.dates, { answered: "2026-09-14" });
   });
+
+  it("links its paper in the URL's one spelling, as the Landtag's feed path does", () => {
+    // The portal's href has a literal space ("Schriftliche Anfragen"); the Bayern feed
+    // path builds the same URL with %20. One paper got two URLs, so every switch
+    // between the two paths rewrote the record (exploratory 2026-10-13, B02-3).
+    const ref = blocksWithClass(readFixtureText("payloads", "parlamentsspiegel-bayern.html"), "ps-vorgang", /<hr\s*\/?>/)
+      .map((block) => parseVorgangBlock(block, []))
+      .find((candidate) => candidate?.reference === "19/13269");
+    strictEqual(
+      ref?.documents[0]?.url,
+      "https://www.bayern.landtag.de/www/ElanTextAblage_WP19/Drucksachen/Schriftliche%20Anfragen/19_0013269.pdf",
+    );
+  });
 });
 
 describe("counting the portal (issue #5)", () => {

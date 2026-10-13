@@ -338,14 +338,28 @@ function combinedByLand(parliament: ParliamentKey, role: SourceDocumentRole): So
 export function documentUrl(href: string | undefined, warnings: string[], reference: string): string | undefined {
   if (href === undefined) return undefined;
   const parts = href.split(/(?=https?:\/\/)/i).filter((part) => /^https?:\/\//i.test(part));
-  if (parts.length <= 1) return /^https?:/i.test(href) ? href : undefined;
+  if (parts.length <= 1) return /^https?:/i.test(href) ? canonicalUrl(href) : undefined;
   const chosen = parts.find((part) => /\.pdf(?:$|[?#])/i.test(part)) ?? (parts[0] as string);
   const left = parts.filter((part) => part !== chosen);
   warnings.push(
     `${reference}: the portal's document link holds ${parts.length} URLs glued together (${href}); ` +
       `took ${chosen} and left out ${left.join(", ")}`,
   );
-  return chosen;
+  return canonicalUrl(chosen);
+}
+
+/**
+ * A URL in its one spelling (WHATWG serialisation): Bayern's rows link
+ * ".../Schriftliche Anfragen/..." with a literal space, while the Landtag's own feed
+ * path builds the same file's URL with %20. Two spellings of one paper made every
+ * switch between the paths rewrite the record. A string that is no URL is kept.
+ */
+function canonicalUrl(url: string): string {
+  try {
+    return new URL(url).href;
+  } catch {
+    return url;
+  }
 }
 
 /** The visible text of a row's Fundstelle, or "". */

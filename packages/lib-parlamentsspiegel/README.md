@@ -46,6 +46,12 @@ parts it left out. Until 2026-10-08 the glued string was fetched as one URL, ans
 and the record was stored without its document. A re-sync of the window archives it.
 The pipeline also refuses to ask for such a URL from any source (`gap: "glued"`).
 
+**A document link is kept in the URL's one spelling.** `documentUrl` returns the WHATWG
+serialisation: Bayern's rows link `…/Schriftliche Anfragen/…` with a literal space, which
+becomes `%20` — the spelling the Bayern feed path builds for the same file. Until
+2026-10-13 one paper had two URLs, and a record rewrote itself whenever the other path
+found it.
+
 **A Sachsen-Anhalt question without an answer is `KA 8/NNNN`.** Its row reads "Kleine
 Anfrage ohne Antwort … Kleine Anfrage 8/4011", while its document link says
 "Drucksache 08/4011". That Land numbers Kleine Anfragen apart from Drucksachen, so the
