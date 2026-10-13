@@ -285,3 +285,64 @@ describe("a Vorgang with two Antwort positions", () => {
     }
   });
 });
+
+/**
+ * A DIP with `n` Kleine Anfragen of WP 21: `perDay` questions a day from 2026-06-01, each
+ * answered `lag` days later, the last `unanswered` not yet. It filters like DIP — by
+ * position date, Wahlperiode and Vorgang (repeated `f.vorgang` ORed, as DIP does; checked
+ * live 2026-10-13) — lists newest first, and pages by a cursor that stops moving at the end.
+ */
+function dip(options: { n: number; perDay?: number; lag?: number; unanswered?: number; pageSize?: number }) {
+  const day = (offset: number): string => new Date(Date.UTC(2026, 5, 1 + offset)).toISOString().slice(0, 10);
+  const positions: Record<string, unknown>[] = [];
+  for (let i = 0; i < options.n; i++) {
+    const offset = Math.floor(i / (options.perDay ?? 1));
+    const vorgang = String(400000 + i);
+    positions.push({
+      id: `q${i}`, vorgang_id: vorgang, vorgangsposition: "Kleine Anfrage", titel: `Anfrage ${i}`, datum: day(offset),
+      fundstelle: { dokumentnummer: `21/${1000 + i}`, datum: day(offset), pdf_url: `https://dserver.invalid/q${i}.pdf` },
+    });
+    if (i >= options.n - (options.unanswered ?? 0)) continue;
+    const answered = day(offset + (options.lag ?? 14));
+    positions.push({
+      id: `a${i}`, vorgang_id: vorgang, vorgangsposition: "Antwort", titel: `Anfrage ${i}`, datum: answered,
+      fundstelle: { dokumentnummer: `21/${5000 + i}`, datum: answered, pdf_url: `https://dserver.invalid/a${i}.pdf` },
+    });
+  }
+  const requests: URL[] = [];
+  const engine = testEngine(async (request) => {
+    const url = new URL(request.url);
+    requests.push(url);
+    const query = url.searchParams;
+    const vorgaenge = query.getAll("f.vorgang");
+    const matching = positions
+      .filter((p) => query.get("f.datum.start") === null || (p["datum"] as string) >= (query.get("f.datum.start") as string))
+      .filter((p) => query.get("f.datum.end") === null || (p["datum"] as string) <= (query.get("f.datum.end") as string))
+      .filter((p) => query.get("f.wahlperiode") === null || String((p["fundstelle"] as { dokumentnummer: string }).dokumentnummer).startsWith(`${query.get("f.wahlperiode")}/`))
+      .filter((p) => vorgaenge.length === 0 || vorgaenge.includes(p["vorgang_id"] as string))
+      .sort((a, b) => ((a["datum"] as string) < (b["datum"] as string) ? 1 : (a["datum"] as string) > (b["datum"] as string) ? -1 : 0));
+    const offset = Number(query.get("cursor") ?? "0");
+    const documents = matching.slice(offset, offset + (options.pageSize ?? 100));
+    const cursor = String(offset + documents.length);
+    return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ numFound: matching.length, documents, cursor })) };
+  });
+  return { engine, requests, completions: () => requests.filter((url) => url.searchParams.has("f.vorgang")) };
+}
+const STATE = { source: "bund", http_cache: {} };
+
+describe("completing the pairs of a busy window", () => {
+  it("pairs every question of the window with its answer, in a few requests", async () => {
+    // 150 questions in the window, 70 of them answered after it, and 70 answers in it
+    // to questions before it. Completion was 50 single-Vorgang requests in id order,
+    // spent first on those earlier pairs — dropped by the window afterwards — so 70
+    // records were stored without the answers DIP had, and a re-run spent the same
+    // 50 again (exploratory 2026-10-13-bund, B01-1; August 2026 held 217 half pairs).
+    const { engine, completions } = dip({ n: 300, perDay: 5, lag: 14 });
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, since: "2026-06-15", until: "2026-07-14" });
+    strictEqual(result.refs.length, 150);
+    const unanswered = result.refs.filter((ref) => ref.dates.answered === undefined).map((ref) => ref.reference);
+    deepStrictEqual(unanswered, []);
+    ok(completions().length <= 10, `${completions().length} completion requests`);
+    ok(!result.warnings.some((warning) => warning.includes("stopped completing")), result.warnings.join("\n"));
+  });
+});

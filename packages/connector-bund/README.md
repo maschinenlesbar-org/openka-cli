@@ -13,7 +13,11 @@ current one with `ka config set bund.api-key` — and the key itself is never qu
 
 A Kleine Anfrage is a *Vorgang* with two *Vorgangspositionen*: the question and the
 answer. A date window usually splits a pair across its edge, so half-seen pairs are
-completed with a per-Vorgang request rather than silently filed as unanswered.
+completed rather than silently filed as unanswered: one query asks for 50 Vorgänge at
+once (DIP ORs a repeated `f.vorgang`), the window's own questions first, at most 20
+queries a run (1,000 Vorgänge) — beyond that a warning says how many questions were stored
+without looking for their answer. A month of 2026 holds ~270 Kleine-Anfrage Vorgänge,
+most of them split by the window's edges.
 
 **Before 1976 there are no Vorgänge.** DIP's procedure records start with the 8th
 Wahlperiode (the Bundestag first sat on `FIRST_VORGANG_DATE`, 1976-12-14); the 2,747

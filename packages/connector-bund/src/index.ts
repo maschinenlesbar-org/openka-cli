@@ -11,7 +11,7 @@
 // ("Kleine Anfrage") and the government's reply ("Antwort"). Discovery filters
 // positions by date, then groups them by `vorgang_id`. Because a question and its
 // answer are typically four weeks apart, a date window routinely contains one half
-// of a pair — those are completed with a targeted per-Vorgang request rather than
+// of a pair — those are completed with a targeted query for their Vorgänge rather than
 // being published as a record with an invented counterpart.
 
 import { OpenKaApiError, ParseError, UsageError, apiKeyProblem } from "@maschinenlesbar.org/openka-lib-errors";
@@ -24,8 +24,14 @@ import type { SourceEntry } from "@maschinenlesbar.org/openka-lib-source";
 export const DIP_BASE_URL = "https://search.dip.bundestag.de";
 export const DIP_API_KEY_ENV = "DIP_API_KEY";
 
-/** Cap on the follow-up requests used to complete half-seen pairs in one run. */
-const MAX_REPAIR_REQUESTS = 50;
+/**
+ * Vorgänge completed by one request: DIP ORs a repeated `f.vorgang` (checked live on
+ * 2026-10-13), so one query returns the positions of all of them.
+ */
+const COMPLETION_BATCH = 50;
+
+/** Cap on the completion queries of one run: 20 × 50 Vorgänge. */
+const MAX_COMPLETION_QUERIES = 20;
 
 /** Cursor pages to walk before giving up, a guard against a cursor that never settles. */
 const MAX_PAGES = 200;
@@ -100,7 +106,7 @@ export class BundDipSource implements Source {
   readonly homepage = "https://dip.bundestag.de/";
   readonly notes =
     "Question and answer are two Drucksachen of one Vorgang; a date window usually " +
-    "splits a pair, so half-seen pairs are completed with a per-Vorgang request. " +
+    "splits a pair, so half-seen pairs are completed with a query for their Vorgänge (50 per request). " +
     "Needs an API key (--api-key / DIP_API_KEY).";
   readonly apiKeyEnv = DIP_API_KEY_ENV;
 
@@ -205,30 +211,38 @@ export class BundDipSource implements Source {
       groups.set(vorgang, bucket);
     }
 
-    let repairs = 0;
-    for (const [vorgang, bucket] of [...groups].sort(([a], [b]) => (a < b ? -1 : 1))) {
-      if (bucket.some((p) => p["vorgangsposition"] === "Kleine Anfrage") &&
-          bucket.some((p) => p["vorgangsposition"] === "Antwort")) {
-        continue;
-      }
-      if (repairs >= MAX_REPAIR_REQUESTS) {
+    // Half-seen pairs, completed in batches: the window's own questions first, then
+    // answers whose question lies outside it. Completion used to be one request per
+    // Vorgang, 50 at most, in id order — spent first on pairs the window then dropped,
+    // so a busy month (217 half pairs in August 2026) stored questions without the
+    // answers DIP had, and a re-run spent the same 50 again.
+    const has = (bucket: Record<string, unknown>[], kind: string): boolean => bucket.some((p) => p["vorgangsposition"] === kind);
+    const byId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+    const questionOnly = [...groups].filter(([, bucket]) => has(bucket, "Kleine Anfrage") && !has(bucket, "Antwort")).map(([id]) => id).sort(byId);
+    const answerOnly = [...groups].filter(([, bucket]) => !has(bucket, "Kleine Anfrage")).map(([id]) => id).sort(byId);
+    const pending = [...questionOnly, ...answerOnly];
+    let queries = 0;
+    for (let start = 0; start < pending.length; start += COMPLETION_BATCH) {
+      if (queries >= MAX_COMPLETION_QUERIES) {
+        const left = pending.slice(start);
+        const questions = left.filter((id) => questionOnly.includes(id)).length;
         warnings.push(
-          `stopped completing half-seen pairs after ${MAX_REPAIR_REQUESTS} requests; ` +
-            "narrow the window or re-run to pick up the rest",
+          `stopped completing half-seen pairs after ${MAX_COMPLETION_QUERIES} queries (${MAX_COMPLETION_QUERIES * COMPLETION_BATCH} Vorgänge); ` +
+            `${left.length} were not completed, ${questions} of them questions of this window stored without looking for their answer — ` +
+            "sync a narrower window to complete them",
         );
         break;
       }
-      repairs++;
-      const complete = await this.page(
-        options,
-        "/api/v1/vorgangsposition",
-        {
-          "f.vorgang": vorgang,
-          format: "json",
-        },
-        warnings,
-      );
-      if (complete.length > 0) groups.set(vorgang, complete);
+      queries++;
+      const batch = pending.slice(start, start + COMPLETION_BATCH);
+      const completed = await this.page(options, "/api/v1/vorgangsposition", { "f.vorgang": batch, format: "json" }, warnings);
+      const regrouped = new Map<string, Record<string, unknown>[]>();
+      for (const position of completed) {
+        const vorgang = String(position["vorgang_id"] ?? "");
+        if (!batch.includes(vorgang)) continue;
+        regrouped.set(vorgang, [...(regrouped.get(vorgang) ?? []), position]);
+      }
+      for (const [vorgang, bucket] of regrouped) groups.set(vorgang, bucket);
     }
 
     const refs: DocRef[] = [];
@@ -257,7 +271,7 @@ export class BundDipSource implements Source {
   private async page(
     options: DiscoverOptions,
     path: string,
-    params: Record<string, string | number>,
+    params: Record<string, string | number | readonly string[]>,
     warnings: string[],
     limit?: number,
   ): Promise<Record<string, unknown>[]> {
@@ -269,7 +283,7 @@ export class BundDipSource implements Source {
     // documents do not used to walk all 200 pages and look complete.
     const seen = new Set<string>();
     for (let page = 0; page < MAX_PAGES; page++) {
-      const query: Record<string, string | number> = { ...params };
+      const query: Record<string, string | number | readonly string[]> = { ...params };
       if (cursor !== undefined) query["cursor"] = cursor;
       const response = await dipGet(options.engine, `${DIP_BASE_URL}${path}`, {
         params: query,
