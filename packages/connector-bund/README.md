@@ -19,6 +19,13 @@ queries a run (1,000 Vorgänge) — beyond that a warning says how many question
 without looking for their answer. A month of 2026 holds ~270 Kleine-Anfrage Vorgänge,
 most of them split by the window's edges.
 
+**An answer to a question an earlier window stored updates it.** The window filters on the
+question's date, so the pair of an answer whose question lies before the window is left
+out — unless the corpus holds that question (`DiscoverOptions.store.hasRecord`): then the
+pair is kept, and the stored record gets its answer. A daily or weekly sync used to leave
+every question unanswered at its first sync unanswered for good. A run cut short by
+`--limit` takes no such updates.
+
 **Before 1976 there are no Vorgänge.** DIP's procedure records start with the 8th
 Wahlperiode (the Bundestag first sat on `FIRST_VORGANG_DATE`, 1976-12-14); the 2,747
 Kleine Anfragen of the 1st to 7th exist only as Drucksachen. A `--period` up to 7, or a

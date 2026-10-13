@@ -15,7 +15,7 @@
 // being published as a record with an invented counterpart.
 
 import { OpenKaApiError, ParseError, UsageError, apiKeyProblem } from "@maschinenlesbar.org/openka-lib-errors";
-import type { AnsweredBy, Asker } from "@maschinenlesbar.org/openka-lib-models";
+import { makeRecordId, type AnsweredBy, type Asker } from "@maschinenlesbar.org/openka-lib-models";
 import { periodFromReference } from "@maschinenlesbar.org/openka-lib-extract";
 import type { CountOptions, DiscoverOptions, DiscoverResult, DocRef, DocRefDocument, Source, UpstreamCount } from "@maschinenlesbar.org/openka-lib-source";
 import { applyWindow } from "@maschinenlesbar.org/openka-lib-source";
@@ -246,9 +246,21 @@ export class BundDipSource implements Source {
     }
 
     const refs: DocRef[] = [];
+    // An answer in this window to a question an earlier window stored: the window
+    // filters on the question's date and dropped the completed pair, so a daily or
+    // weekly sync left every question unanswered at its first sync unanswered for
+    // good. A pair whose question the corpus holds is an update of that record, and is
+    // kept whatever the window says; one the corpus does not hold stays outside it.
+    const updates: DocRef[] = [];
     for (const [vorgang, bucket] of groups) {
       const ref = toRef(vorgang, bucket, warnings);
-      if (ref !== undefined) refs.push(ref);
+      if (ref === undefined) continue;
+      const heldElsewhere =
+        answerOnly.includes(vorgang) &&
+        (options.period === undefined || ref.legislative_period === options.period) &&
+        options.store?.hasRecord?.(makeRecordId("bund", ref.legislative_period, ref.reference)) === true;
+      if (heldElsewhere) updates.push(ref);
+      else refs.push(ref);
     }
     if (options.period === undefined && (options.since === undefined || options.since < FIRST_VORGANG_DATE)) {
       warnings.push(
@@ -256,10 +268,12 @@ export class BundDipSource implements Source {
           `Vorgang in DIP and are not in this discovery; sync them with --period 1 … --period ${LAST_PERIOD_WITHOUT_VORGAENGE}`,
       );
     }
-    // The window is re-applied to the assembled refs: a repair request deliberately
+    // The window is re-applied to the assembled refs: a completion query deliberately
     // ignores the date filter, so without this a completed pair from outside the
-    // window would slip in.
-    return { refs: applyWindow(refs, options), warnings };
+    // window would slip in. The updates of held records are added after it; a run cut
+    // short by --limit takes none.
+    const windowed = applyWindow(refs, options);
+    return { refs: options.limit === undefined ? [...windowed, ...updates] : windowed, warnings };
   }
 
   /**

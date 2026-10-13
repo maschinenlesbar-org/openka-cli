@@ -356,7 +356,10 @@ feed do not see them, and re-runs called them "unchanged". `ka stats` now lists 
 and `--from`/`--to` on `search` and `export`, all filter on the question's date, not
 the answer's — a question asked in June is often answered in August, and the other
 reading makes a window exclude exactly what it was meant to include. An `--until`
-before `--since` is a usage error (exit 2), not an empty sync.
+before `--since` is a usage error (exit 2), not an empty sync. One exception keeps
+consecutive windows whole: a Bundestag answer in the window to a question the corpus
+already holds from an earlier window updates that record — a daily sync stores most
+questions before they are answered, and the next window brings the answers.
 
 Where the question's date is unknown — a combined paper (Schleswig-Holstein,
 Mecklenburg-Vorpommern, Baden-Württemberg, Bayern's portal rows) prints only the

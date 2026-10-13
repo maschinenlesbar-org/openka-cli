@@ -346,3 +346,27 @@ describe("completing the pairs of a busy window", () => {
     ok(!result.warnings.some((warning) => warning.includes("stopped completing")), result.warnings.join("\n"));
   });
 });
+
+describe("an answer to a question an earlier window stored", () => {
+  // A daily or weekly sync stores most questions before they are answered. The next
+  // window holds their answers, completed the pairs — and dropped them, since the window
+  // filters on the question's date: those records stayed unanswered for good
+  // (exploratory 2026-10-13-bund, B05-1).
+  const held = (ids: string[]) => ({ loadArtifact: () => undefined, hasRecord: (id: string) => ids.includes(id) });
+
+  it("updates the stored record", async () => {
+    const { engine } = dip({ n: 10, lag: 14 });
+    const stored = Array.from({ length: 10 }, (_, i) => `bund-21-${1000 + i}`);
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, store: held(stored), since: "2026-06-11", until: "2026-06-30" });
+    deepStrictEqual(
+      result.refs.map((ref) => [ref.reference, ref.dates.answered !== undefined]).sort(),
+      stored.map((id) => [`21/${id.slice(-4)}`, true]),
+    );
+  });
+
+  it("is still left out when the corpus does not hold the question", async () => {
+    const { engine } = dip({ n: 10, lag: 14 });
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, store: held(["bund-21-1003"]), since: "2026-06-11", until: "2026-06-30" });
+    deepStrictEqual(result.refs.map((ref) => ref.reference), ["21/1003"]);
+  });
+});
