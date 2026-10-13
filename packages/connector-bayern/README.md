@@ -65,8 +65,11 @@ that takes them. A `--period` the feed does not list at all — an earlier Wahlp
 usage error that says to give a date window instead: the Parlamentsspiegel, which answers
 windows, searches by date, not by period.
 
-The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window. That
-is the price of not guessing, and `lib-http`'s `head()` exists for it.
+The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window that the
+corpus does not hold yet. That is the price of not guessing, and `lib-http`'s `head()`
+exists for it. A Drucksache whose record is stored is not probed again — it was a
+Schriftliche Anfrage when it was stored — so a daily sync, or `--only-new`, sends the
+Landtag one request per new Drucksache rather than ~400.
 
 A probe answered with anything but 200 or 404 — a 403, a 500, a timeout after the
 retries — skips that one Drucksache with a warning naming it; the rest of the feed is

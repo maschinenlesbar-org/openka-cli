@@ -71,10 +71,11 @@ export interface DiscoverOptions {
   engine: FetchEngine;
   /**
    * The corpus, for a source that consumes a frozen artifact the factory built.
-   * Only Niedersachsen needs it, to read the question→answer map its sweep
-   * produces; discovery still never *writes* to the store.
+   * Niedersachsen reads the question→answer map its sweep produces; Bayern asks
+   * `hasRecord` to skip the type probe of a Drucksache it already holds. Discovery
+   * still never *writes* to the store.
    */
-  store?: Pick<Store, "loadArtifact">;
+  store?: Pick<Store, "loadArtifact"> & Partial<Pick<Store, "hasRecord">>;
   /** Per-source state from the corpus: conditional-request validators and history. */
   state: SourceState;
   /** Only Anfragen dated on or after this ISO date. */

@@ -48,6 +48,7 @@ import {
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import { decodeEntities } from "@maschinenlesbar.org/openka-lib-source";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
+import { makeRecordId } from "@maschinenlesbar.org/openka-lib-models";
 
 export const PARLIAMENT = "bayern" as const;
 export const LABEL = "Bayerischer Landtag";
@@ -224,6 +225,14 @@ export class BayernFeedSource implements Source {
     let firstFailure: string | undefined;
     for (const item of candidates) {
       const url = drucksacheUrl(item.period, item.number);
+      // A Drucksache the corpus holds was a Schriftliche Anfrage when it was stored,
+      // and its path cannot change its instrument: no probe. Without this a run of
+      // `--only-new` that fetched nothing still sent ~400 HEADs to the Landtag.
+      if (options.store?.hasRecord?.(makeRecordId(PARLIAMENT, item.period, item.reference)) === true) {
+        refs.push(toRef(item, url));
+        if (options.limit !== undefined && refs.length >= options.limit) break;
+        continue;
+      }
       let status: number;
       try {
         status = (await options.engine.head(url)).status;

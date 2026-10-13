@@ -250,6 +250,24 @@ describe("what createSource returns", () => {
   });
 });
 
+describe("a Drucksache the corpus already holds", () => {
+  it("is not probed again: its record proves the instrument", async () => {
+    // `ka sync --only-new` reported "3 not selected" but still sent one HEAD per
+    // candidate — ~400 to the Landtag per run, for a run that fetched nothing
+    // (exploratory 2026-10-13, B03-2). A stored record was a Schriftliche Anfrage
+    // when it was stored; the file's path cannot have changed its instrument.
+    const { transport, requests } = landtag();
+    const held = new Set(["bayern-19-13327", "bayern-19-13324"]);
+    const store = { loadArtifact: () => undefined, hasRecord: (id: string) => held.has(id) };
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state, store });
+    strictEqual(result.refs.length, 10);
+    ok(result.refs.some((ref) => ref.reference === "19/13327"));
+    const heads = requests.filter((request) => request.method === "HEAD").map((request) => request.url);
+    strictEqual(heads.length, 11);
+    ok(!heads.some((url) => url.endsWith("19_0013327.pdf") || url.endsWith("19_0013324.pdf")));
+  });
+});
+
 describe("a Wahlperiode the feed does not list", () => {
   it("is refused with the way to it, not synced to an empty run", async () => {
     // `--period 18` filtered every feed item out: exit 0, "0 discovered", an empty
