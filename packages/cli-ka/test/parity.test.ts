@@ -825,6 +825,26 @@ describe("a corpus that is not there (finding 7)", () => {
     strictEqual(result.lib.error.name, "StoreError");
   });
 
+  it("refuses a dry run into a path that is a file, before any request", async () => {
+    // `ka sync --dry-run` into such a path queried the upstream, reported "0 already in
+    // corpus" and exit 0; only the real sync then failed
+    // (exploratory 2026-10-13-npm-0.11.0, B05-2).
+    let cliRoot = "";
+    const result = await parity({
+      seed: (corpus) => writeFileSync(join(corpus, "afile"), "x"),
+      argv: (corpus) => {
+        cliRoot = join(corpus, "afile");
+        return ["--corpus", cliRoot, "sync", "--source", "bayern", "--dry-run"];
+      },
+      lib: ({ corpus }) => new FileStore(join(corpus, "afile")).assertCorpusRoot(),
+    });
+    strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+    // After the dry run's own "discovering …" note, which it prints before it starts.
+    ok(result.cli.err.endsWith(`ERROR [ka.store] ${cliRoot} is not a directory, so it cannot be a corpus.`), result.cli.err);
+    deepStrictEqual(result.cli.requests, []);
+    ok(!result.lib.ok);
+  });
+
   it("refuses a path that is a file, not a directory, on both sides", async () => {
     let cliRoot = "";
     const result = await parity({

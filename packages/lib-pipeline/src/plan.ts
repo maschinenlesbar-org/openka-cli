@@ -33,7 +33,7 @@ export const ESTIMATE_MIN_KNOWN = 20;
 export interface SyncPlanOptions extends SyncWindow {
   source: Source;
   /** Read only: records, blobs and source state. Nothing is written. */
-  store: Pick<Store, "getSourceState" | "getRecord" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact" | "assertBlobStore">;
+  store: Pick<Store, "getSourceState" | "getRecord" | "hasRecord" | "hasBlob" | "blobPath" | "loadArtifact" | "assertBlobStore" | "assertCorpusRoot">;
   engine: FetchEngine;
   apiKey?: string;
   metadataOnly?: boolean;
@@ -80,6 +80,9 @@ export interface SyncPlan {
 export async function planSync(options: SyncPlanOptions): Promise<SyncPlan> {
   const window = normalizeSyncWindow(windowOf(options));
   const { source, store, engine } = options;
+  // A dry run takes no lock, so it would not meet a corpus path that is a file; it
+  // reported "0 already in corpus" and exit 0, and the real sync then failed.
+  store.assertCorpusRoot?.();
   // Which documents the corpus holds is read from the blob store; with it unplugged,
   // every one would count as still to fetch.
   store.assertBlobStore?.();

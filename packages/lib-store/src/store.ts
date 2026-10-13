@@ -127,6 +127,12 @@ export interface BlobStore {
    * (the in-memory double) has nothing to check.
    */
   assertBlobStore?(): void;
+  /**
+   * Throw `StoreError` when the corpus path can never be a corpus — it exists and is
+   * not a directory. A writer meets this when it takes the lock; a run that takes no
+   * lock (`ka sync --dry-run`) asks it first. Optional, like `assertBlobStore`.
+   */
+  assertCorpusRoot?(): void;
 }
 
 export interface RecordStore {
