@@ -42,6 +42,14 @@ Sammeldrucksachen answer 404.
 That file is a **combined paper** — question and "Antwort des Staatsministeriums …"
 in one document — which our PDF reader parses with no problems reported.
 
+**A date window is the Parlamentsspiegel's.** The feed holds about eight weeks and no
+dates, so `--since`/`--until` used to be refused — and everything older than the feed was
+out of reach. `createSource()` returns a `BayernSource`: without a window it reads the feed
+(the Parlamentsspiegel behind it as the fallback); with one it searches the
+Parlamentsspiegel's Bayern rows (`qyHerk=BAY`, `qyZeitAb`/`qyZeitBis`), which list the
+earlier Wahlperioden too and link the same static Drucksachen. `BayernFeedSource` on its
+own still refuses a window.
+
 **No dates and no askers are claimed from the feed.** `pubDate` is when the entry
 appeared, not when the Anfrage was submitted or answered; the paper's head carries the
 askers, the question's date ("vom …") and the paper's date, and `lib-extract`'s
@@ -74,7 +82,7 @@ shows up as a fallback with a warning, not as "nothing new".
 Everything is re-exported from the package root:
 
 ```
-PARLIAMENT, LABEL, LANDTAG_BAYERN, ANFRAGEN_FEED, BAYERN_LATEST_PERIOD, drucksacheUrl, FeedItem, parseFeed, byReference, BayernFeedSource, toRef, createSource, ENTRY
+PARLIAMENT, LABEL, LANDTAG_BAYERN, ANFRAGEN_FEED, BAYERN_LATEST_PERIOD, drucksacheUrl, FeedItem, parseFeed, byReference, BayernFeedSource, toRef, BayernSource, createSource, ENTRY
 ```
 
 ## Depends on

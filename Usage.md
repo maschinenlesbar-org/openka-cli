@@ -70,6 +70,7 @@ ka sync --source nordrhein-westfalen --since 2025-03-01 --until 2025-04-30
 ka sync --source bund --period 21                       # the DIP key from `ka config set bund.api-key`
 ka sync --source bund --period 3                        # 1957–1961: from DIP's Drucksachen, question only
 ka sync --source parlamentsspiegel --since 2025-01-01   # all 16 Länder, metadata + links
+ka sync --source bayern --since 2024-01-01 --until 2024-03-31   # Bayern's history: its feed holds only the newest weeks, a window is searched in the Parlamentsspiegel
 ka sync --source berlin --metadata-only                 # no downloads: new records abstain on qa, stored ones keep their documents
 ka sync --source berlin --force                         # re-extract unchanged inputs
 ka sync --source berlin --ocr tesseract --ocr-version 5.3.4 --ocr-traineddata /usr/share/tessdata/deu.traineddata
@@ -771,6 +772,9 @@ result count — also Berlin's, whose own feed is a 50+ MB download per Wahlperi
 BASIS column says which. `--period` narrows DIP's count and the corpus side; the
 Parlamentsspiegel cannot count by period, so such a row gets a note (named alone with
 `--source`, it is a usage error). The `total` row adds up the parliaments counted.
+Bayern's own feed holds only the newest weeks; what its row counts beyond them is reached
+with a windowed sync (`ka sync --source bayern --since … --until …`), which searches the
+same Parlamentsspiegel rows.
 
 `ka reindex` rebuilds the catalog and the search index without reading the old ones,
 so it repairs a corrupt catalog. The new index is built in memory and written over the

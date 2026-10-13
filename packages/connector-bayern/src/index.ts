@@ -37,11 +37,13 @@
 
 import {
   FallbackSource,
+  type CountOptions,
   type DiscoverOptions,
   type DiscoverResult,
   type DocRef,
   type Source,
   type SourceEntry,
+  type UpstreamCount,
 } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
 import { decodeEntities } from "@maschinenlesbar.org/openka-lib-source";
@@ -152,9 +154,8 @@ export class BayernFeedSource implements Source {
     // are extracted from it, so the window is answered by the corpus instead.
     if (options.since !== undefined || options.until !== undefined) {
       throw new UsageError(
-        "Bayern's Anfragen feed carries no submission dates, so --since/--until cannot be applied to it. " +
-          "Sync without a window (the feed holds only the newest Drucksachen) and filter the corpus " +
-          "afterwards with --from/--to; the extractor reads the dates from each paper.",
+        "Bayern's Anfragen feed carries no submission dates, so --since/--until cannot be applied to it; " +
+          "createSource() answers a window from the Parlamentsspiegel's Bayern rows instead.",
       );
     }
     const warnings: string[] = [];
@@ -262,9 +263,59 @@ export function toRef(item: FeedItem, url: string): DocRef {
   };
 }
 
-/** The Landtag's own feed, with the Parlamentsspiegel behind it. */
+/** A stored record, as `Source.checkRecord` receives it. */
+type StoredRecord = Parameters<NonNullable<Source["checkRecord"]>>[1];
+
+/**
+ * Bayern as `ka` syncs it: the Landtag's own feed for the newest weeks, with the
+ * Parlamentsspiegel behind it — and the Parlamentsspiegel for a date window.
+ *
+ * The feed holds about eight weeks and no dates, so a window used to be refused, and
+ * everything older than the feed was out of reach for good. The Parlamentsspiegel
+ * lists Bayern's Schriftliche Anfragen back through the earlier Wahlperioden, with
+ * their dates and a link to the same static Drucksache the feed path archives; it
+ * searches by date (`qyZeitAb`/`qyZeitBis`), so it is what answers a window.
+ */
+export class BayernSource implements Source {
+  private readonly feed = new BayernFeedSource();
+  private readonly portal = new ParlamentsspiegelSource(PARLIAMENT);
+  private readonly composed = new FallbackSource(this.feed, this.portal);
+
+  readonly key = PARLIAMENT;
+  readonly parliament = PARLIAMENT;
+  readonly tier = this.feed.tier;
+  readonly label = this.feed.label;
+  readonly homepage = this.feed.homepage;
+  readonly notes =
+    `${this.feed.notes} The feed holds only the newest weeks, so a date window (--since/--until) is ` +
+    "searched in the Parlamentsspiegel's Bayern rows instead, which link the same static Drucksachen. " +
+    "Without a window the Parlamentsspiegel is the fallback when the feed cannot be read.";
+
+  checkRecord(ref: DocRef, record: StoredRecord): string | undefined {
+    return this.composed.checkRecord(ref, record);
+  }
+
+  count(options: CountOptions): Promise<UpstreamCount> {
+    return this.composed.count(options);
+  }
+
+  async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+    if (options.since === undefined && options.until === undefined) return this.composed.discover(options);
+    const result = await this.portal.discover(options);
+    return {
+      ...result,
+      warnings: [
+        "bayern: the Anfragen feed carries no dates, so this window was searched in the Parlamentsspiegel's " +
+          "Bayern rows; the documents are the Landtag's own files",
+        ...result.warnings,
+      ],
+    };
+  }
+}
+
+/** The Landtag's own feed, with the Parlamentsspiegel behind it and for date windows. */
 export function createSource(): Source {
-  return new FallbackSource(new BayernFeedSource(), new ParlamentsspiegelSource(PARLIAMENT));
+  return new BayernSource();
 }
 
 /** How this connector announces itself to the registry and `ka sources list`. */
@@ -273,6 +324,6 @@ export const ENTRY: SourceEntry = {
   parliament: PARLIAMENT,
   label: LABEL,
   status: "implemented",
-  note: "the Landtag's own Anfragen RSS feed plus its static Drucksachen, with the Parlamentsspiegel as a fallback",
+  note: "the Landtag's own Anfragen RSS feed plus its static Drucksachen; date windows and the fallback from the Parlamentsspiegel",
   factory: createSource,
 };

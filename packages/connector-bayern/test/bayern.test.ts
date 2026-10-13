@@ -15,11 +15,15 @@ import {
   parseFeed,
   toRef,
 } from "../src/index.js";
-import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
+import { scriptedTransport, testEngine, fixtures, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 
 const { readFixtureText } = fixtures(import.meta.url);
 const FEED = readFixtureText("payloads", "rss-anfragen.xml");
+const PORTAL = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url).readFixtureText(
+  "payloads",
+  "parlamentsspiegel-bayern.html",
+);
 const state = { source: "bayern", http_cache: {} };
 
 /** The Landtag files a Schriftliche Anfrage; an Anfrage zum Plenum 404s. */
@@ -128,20 +132,16 @@ describe("Bayern source", () => {
     deepStrictEqual(toRef(item!, "https://x.invalid/a.pdf").dates, {});
   });
 
-  it("refuses a date window rather than ignoring it", async () => {
+  it("refuses a date window on its own rather than ignoring it", async () => {
     // The feed carries no dates and the refs claim none, so a window could not be
     // applied even after the fact. It used to return everything the feed held and
     // say nothing — exactly the dropped constraint the CLI is built to refuse.
+    // `createSource()` answers a window from the Parlamentsspiegel instead (below).
     const { transport, requests } = landtag();
     await rejects(
       () => new BayernFeedSource().discover({ engine: testEngine(transport), state, since: "2026-09-01" }),
       UsageError,
     );
-    await rejects(
-      () => createSource().discover({ engine: testEngine(transport), state, until: "2026-09-07" }),
-      UsageError,
-    );
-    // And neither the feed nor the aggregator was asked.
     strictEqual(requests.length, 0);
   });
 
@@ -247,5 +247,40 @@ describe("what createSource returns", () => {
     const result = await createSource().discover({ engine: testEngine(transport), state });
     strictEqual(result.refs.length, 10);
     ok(!requests.some((request) => request.url.includes("parlamentsspiegel")));
+  });
+});
+
+describe("a date window", () => {
+  // The feed holds only the newest weeks and carries no dates, so a window used to
+  // be refused — and Bayern's history was out of reach, though the Parlamentsspiegel
+  // lists it and links the same static Drucksachen (exploratory 2026-10-13, B01-2).
+  function portal(): ReturnType<typeof scriptedTransport> {
+    return scriptedTransport([
+      { match: /parlamentsspiegel\.de\/suche\?.*page=0/, body: PORTAL },
+      { match: "parlamentsspiegel.de/suche", body: "<html></html>" },
+    ]);
+  }
+
+  it("is answered from the Parlamentsspiegel's Bayern rows, not refused", async () => {
+    const { transport, requests } = portal();
+    const result = await createSource().discover({ engine: testEngine(transport), state, since: "2026-09-01", until: "2026-09-30" });
+    deepStrictEqual(
+      result.refs.map((ref) => ref.reference).sort(),
+      ["19/13227", "19/13262", "19/13269"],
+    );
+    const search = new URL(requests[0]?.url ?? "");
+    strictEqual(search.searchParams.get("qyHerk"), "BAY");
+    strictEqual(search.searchParams.get("qyZeitAb"), "01.09.2026");
+    strictEqual(search.searchParams.get("qyZeitBis"), "30.09.2026");
+    // The feed is not asked: it could not answer a window.
+    ok(!requests.some((request) => request.url.includes("rssfeed")));
+    for (const ref of result.refs) match(ref.documents[0]?.url ?? "", /\/ElanTextAblage_WP19\/Drucksachen\/Schriftliche/);
+    ok(result.warnings.some((warning) => warning.includes("Parlamentsspiegel")));
+  });
+
+  it("keeps a period given beside it", async () => {
+    const { transport } = portal();
+    const result = await createSource().discover({ engine: testEngine(transport), state, since: "2026-09-01", period: 18 });
+    deepStrictEqual(result.refs, []);
   });
 });
