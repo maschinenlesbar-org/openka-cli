@@ -136,6 +136,18 @@ describe("Bayern source", () => {
     ok(result.unreadable?.includes("RSS"));
   });
 
+  it("reports a feed without a single item as unreadable, not as a quiet week", async () => {
+    // The Landtag's "Drucksachen von Anfragen" always lists the newest weeks; an RSS
+    // channel with no item is a feed that broke, and read as an answer it was a
+    // silent `0 discovered` with no fallback (exploratory 2026-10-13, B02-1).
+    const { transport } = scriptedTransport([
+      { match: "rssfeed.xhtml", body: '<?xml version="1.0"?><rss version="2.0"><channel><title>x</title></channel></rss>' },
+    ]);
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(result.refs, []);
+    match(result.unreadable ?? "", /no item/);
+  });
+
   it("defaults to the Wahlperiode currently sitting", () => {
     strictEqual(BAYERN_LATEST_PERIOD, 19);
   });

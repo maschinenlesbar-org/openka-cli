@@ -58,6 +58,10 @@ retries — skips that one Drucksache with a warning naming it; the rest of the 
 kept. Only when no probe is answered at all is the Landtag unreadable, and the
 Parlamentsspiegel takes over.
 
+The same goes for a feed that answers without RSS or lists no item at all: the
+Landtag's feed always holds the newest weeks, so an empty one is a broken feed, not a
+quiet week.
+
 ## Public surface
 
 Everything is re-exported from the package root:

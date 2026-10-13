@@ -161,6 +161,12 @@ export class BayernFeedSource implements Source {
     if (!/<rss\b/i.test(xml)) {
       return { refs: [], warnings, unreadable: "the Anfragen feed did not answer with RSS" };
     }
+    // The feed always lists the newest weeks' Drucksachen. A channel without a single
+    // item is a feed that broke, not a quiet week — and read as an answer it was a
+    // silent "0 discovered" that never reached the fallback.
+    if (!/<item\b/i.test(xml)) {
+      return { refs: [], warnings, unreadable: "the Anfragen feed listed no item" };
+    }
 
     const candidates = byReference(parseFeed(xml)).filter((item) => item.period === period);
     const refs: DocRef[] = [];
