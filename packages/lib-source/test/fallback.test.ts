@@ -136,3 +136,36 @@ describe("FallbackSource counting (issue #5)", () => {
     await rejects(new FallbackSource(silent, silent).count({ engine }), /cannot count its upstream/);
   });
 });
+
+describe("FallbackSource when both fail", () => {
+  it("names the parliament's own failure as well as the aggregator's", async () => {
+    // Only the aggregator's error reached the user — "HTTP 500 for GET
+    // https://www.parlamentsspiegel.de/suche…" — while the Landtag's own failure,
+    // the reason the aggregator was asked at all, was lost
+    // (exploratory 2026-10-13, B02-2).
+    const composed = new FallbackSource(
+      source("official", async () => {
+        throw new Error("HTTP 500 for GET https://official.invalid/feed");
+      }),
+      source("aggregator", async () => {
+        throw new Error("HTTP 500 for GET https://aggregator.invalid/suche");
+      }),
+    );
+    await rejects(composed.discover(options), (err: Error) => {
+      ok(err.message.includes("official: HTTP 500 for GET https://official.invalid/feed"), err.message);
+      ok(err.message.includes("aggregator label"), err.message);
+      ok(err.message.includes("HTTP 500 for GET https://aggregator.invalid/suche"), err.message);
+      return true;
+    });
+  });
+
+  it("keeps the aggregator's usage error as it is", async () => {
+    const composed = new FallbackSource(
+      source("official", async () => ({ refs: [], warnings: [], unreadable: "markup changed" })),
+      source("aggregator", async () => {
+        throw new UsageError("leave out --period for this source");
+      }),
+    );
+    await rejects(composed.discover(options), UsageError);
+  });
+});

@@ -358,7 +358,18 @@ export class FallbackSource implements Source {
       if (err instanceof UsageError) throw err;
       reason = err instanceof Error ? err.message : String(err);
     }
-    const result = await this.fallback.discover(options);
+    let result: DiscoverResult;
+    try {
+      result = await this.fallback.discover(options);
+    } catch (err) {
+      if (err instanceof UsageError) throw err;
+      // The aggregator's error alone sends the reader to the wrong host: the
+      // parliament's own failure is why the aggregator was asked at all.
+      const message = err instanceof Error ? err.message : String(err);
+      throw new OpenKaError(`${this.primary.key}: ${reason} — fell back to ${this.fallback.label}, which failed too: ${message}`, {
+        cause: err,
+      });
+    }
     return {
       ...result,
       warnings: [

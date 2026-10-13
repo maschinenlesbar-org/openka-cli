@@ -45,6 +45,11 @@ discovering everything leaves it out — and a `period` the upstream cannot coun
 `UsageError`, never the count of something else. `FallbackSource` counts with its primary
 when the primary can, else with its fallback. `ka sources count` is built on it.
 
+**Falling back.** `FallbackSource` asks its primary, and the fallback only when the
+primary cannot be read (an error, or `unreadable`) — never on an empty window. The run
+then warns which interface failed and why. When the fallback fails as well, its error
+names both failures: the primary's is why the fallback was asked at all.
+
 ## robots.txt
 
 `RobotsPolicy` reads a host's `robots.txt` once per run and answers, per URL, whether it
