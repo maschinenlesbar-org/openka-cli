@@ -237,7 +237,8 @@ describe("a cursor that moves without moving on", () => {
       if (request.url.includes("f.vorgang=")) return { status: 200, headers: {}, body: Buffer.from('{"numFound":0,"documents":[],"cursor":"*"}') };
       walk++;
       const documents = [{ id: "p1", vorgang_id: "v1", vorgangsposition: "Kleine Anfrage" }];
-      return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ numFound: 1, documents, cursor: `c${walk}` })) };
+      // DIP says there is more than it hands out: the cursor moves, the page does not.
+      return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ numFound: 5, documents, cursor: `c${walk}` })) };
     });
     const result = await new BundDipSource().discover({ engine, apiKey: "k", state: { source: "bund", http_cache: {} }, period: 21 });
     strictEqual(walk, 2);
@@ -404,6 +405,20 @@ describe("questions DIP has no answer to yet", () => {
       strictEqual(result.refs.filter((ref) => ref.dates.answered === undefined).length, 60);
       strictEqual(completions().length, 0, JSON.stringify(window));
       ok(!result.warnings.some((warning) => warning.includes("stopped completing")));
+    }
+  });
+});
+
+describe("--limit", () => {
+  it("bounds the completion to the Anfragen it keeps", async () => {
+    // `--limit 1` sent 101 requests to DIP: every half pair of the first page was
+    // completed, and the limit applied afterwards (exploratory 2026-10-13-bund, B01-3).
+    for (const limit of [1, 3]) {
+      const { engine, requests, completions } = dip({ n: 300, perDay: 5, lag: 14 });
+      const result = await new BundDipSource().discover({ engine, apiKey: "k", state: STATE, since: "2026-06-15", until: "2026-07-14", limit });
+      strictEqual(result.refs.length, limit);
+      ok(completions().length <= 1, `${completions().length} completion requests for --limit ${limit}`);
+      ok(requests.length <= 3, `${requests.length} requests for --limit ${limit}`);
     }
   });
 });

@@ -230,8 +230,17 @@ export class BundDipSource implements Source {
     // Completing it spent requests on nothing and raised the budget warning on runs
     // that missed nothing.
     const answersListed = options.until === undefined && options.limit === undefined && walk.ended;
-    const questionsToComplete = answersListed ? [] : questionOnly;
-    const pending = canUpdate ? [...questionsToComplete, ...answerOnly] : questionsToComplete;
+    // With --limit, the refs kept are the first `limit` by Vorgang (applyWindow's
+    // order), so only their questions are completed: `--limit 1` used to complete every
+    // half pair of the first page — 101 requests for one Anfrage.
+    const kept =
+      options.limit === undefined
+        ? undefined
+        : new Set([...groups].filter(([, bucket]) => has(bucket, "Kleine Anfrage")).map(([id]) => id).sort(byId).slice(0, options.limit));
+    const questionsToComplete = answersListed ? [] : questionOnly.filter((id) => kept === undefined || kept.has(id));
+    // A run cut short by --limit takes no updates of held records (below): their
+    // answers are not completed either.
+    const pending = canUpdate && kept === undefined ? [...questionsToComplete, ...answerOnly] : questionsToComplete;
     let queries = 0;
     for (let start = 0; start < pending.length; start += COMPLETION_BATCH) {
       if (queries >= MAX_COMPLETION_QUERIES) {
@@ -343,7 +352,9 @@ export class BundDipSource implements Source {
         ended = true;
         break;
       }
-      if (documents.length === 0 || body.cursor === undefined || body.cursor === cursor) {
+      // Everything DIP counted has been read: no second request just to see the
+      // cursor stop moving (it doubled every short completion query).
+      if (documents.length === 0 || body.cursor === undefined || body.cursor === cursor || (numFound !== undefined && out.length >= numFound)) {
         ended = true;
         break;
       }

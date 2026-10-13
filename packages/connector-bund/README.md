@@ -19,7 +19,8 @@ queries a run (1,000 Vorgänge) — beyond that a warning says how many question
 without looking for their answer. A month of 2026 holds ~270 Kleine-Anfrage Vorgänge,
 most of them split by the window's edges. A query that reaches to today — a period, or a
 window without `--until` — already lists every later answer, so a question alone in it has
-no answer yet and is not completed.
+no answer yet and is not completed. With `--limit`, only the questions of the Anfragen kept
+are completed, and a walk ends as soon as it has read what DIP's `numFound` counts.
 
 **An answer to a question an earlier window stored updates it.** The window filters on the
 question's date, so the pair of an answer whose question lies before the window is left
