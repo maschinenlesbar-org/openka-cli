@@ -242,7 +242,10 @@ export class BundDipSource implements Source {
       } catch (err) {
         throw new ParseError(`DIP returned a body that is not JSON (${path})`, { cause: err });
       }
-      const documents = body.documents ?? [];
+      // DIP lists an empty result as `"documents": []`; an answer without the list is
+      // not one this adapter can read, and taking it as empty made it "0 discovered".
+      if (!Array.isArray(body.documents)) throw new ParseError(`DIP answered without a documents list (${path})`);
+      const documents = body.documents;
       out.push(...documents);
       // Two positions per Anfrage, so the position budget is twice the ref budget.
       if (limit !== undefined && out.length >= limit * 2) break;

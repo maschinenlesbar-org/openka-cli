@@ -196,3 +196,16 @@ describe("the 1st to 7th Wahlperiode, from DIP's Drucksachen (issue #7)", () => 
     deepStrictEqual(warnings, ["Drucksache 1: no Drucksachennummer; skipped", "Drucksache 03/120: DIP names no PDF; stored with metadata only"]);
   });
 });
+
+describe("an answer DIP did not shape as a list", () => {
+  it("is an error, not an empty window", async () => {
+    // `{"numFound": 6}` without `documents` read as "0 discovered", exit 0 — while an
+    // empty result does carry `"documents": []` (checked live 2026-10-13)
+    // (exploratory 2026-10-13-bund, B02-2).
+    const { transport } = scriptedTransport([{ match: "/api/v1/vorgangsposition", body: '{"numFound":6}' }]);
+    await rejects(
+      () => new BundDipSource().discover({ engine: testEngine(transport), apiKey: "k", state: { source: "bund", http_cache: {} }, since: "2026-06-01" }),
+      /without a documents list/,
+    );
+  });
+});
