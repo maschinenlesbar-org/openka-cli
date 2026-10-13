@@ -209,3 +209,21 @@ describe("an answer DIP did not shape as a list", () => {
     );
   });
 });
+
+describe("a walk that reaches the page cap", () => {
+  it("says the window was not discovered to its end", async () => {
+    // Discovery stopped after 200 pages without a word: 1,007 of 1,200 Anfragen in the
+    // mock, and Wahlperiode 19 holds 23,384 positions — 234 of DIP's pages
+    // (exploratory 2026-10-13-bund, B02-1).
+    let page = 0;
+    const engine = testEngine(async (request) => {
+      if (request.url.includes("f.vorgang=")) return { status: 200, headers: {}, body: Buffer.from('{"numFound":0,"documents":[],"cursor":"*"}') };
+      page++;
+      const documents = [{ id: `p${page}`, vorgang_id: `v${page}`, vorgangsposition: "Kleine Anfrage" }];
+      return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ numFound: 23384, documents, cursor: `c${page}` })) };
+    });
+    const result = await new BundDipSource().discover({ engine, apiKey: "k", state: { source: "bund", http_cache: {} }, period: 19 });
+    strictEqual(page, 200);
+    match(result.warnings.join("\n"), /stopped after 200 pages \(200 of 23384 positions\).*--since\/--until/);
+  });
+});

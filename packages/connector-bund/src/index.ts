@@ -139,7 +139,7 @@ export class BundDipSource implements Source {
     // One Drucksache per Anfrage: `page` budgets two positions per Anfrage, so it
     // is given half the limit to stop at the same number of refs.
     const budget = options.limit === undefined ? undefined : Math.ceil(options.limit / 2);
-    const documents = await this.page(options, "/api/v1/drucksache", params, budget);
+    const documents = await this.page(options, "/api/v1/drucksache", params, warnings, budget);
     const refs: DocRef[] = [];
     const seen = new Set<string>();
     for (const document of documents) {
@@ -172,7 +172,7 @@ export class BundDipSource implements Source {
     if (options.until !== undefined) params["f.datum.end"] = options.until;
     if (options.period !== undefined) params["f.wahlperiode"] = options.period;
 
-    const positions = await this.page(options, "/api/v1/vorgangsposition", params, options.limit);
+    const positions = await this.page(options, "/api/v1/vorgangsposition", params, warnings, options.limit);
     const groups = new Map<string, Record<string, unknown>[]>();
     for (const position of positions) {
       const vorgang = String(position["vorgang_id"] ?? "");
@@ -196,10 +196,15 @@ export class BundDipSource implements Source {
         break;
       }
       repairs++;
-      const complete = await this.page(options, "/api/v1/vorgangsposition", {
-        "f.vorgang": vorgang,
-        format: "json",
-      });
+      const complete = await this.page(
+        options,
+        "/api/v1/vorgangsposition",
+        {
+          "f.vorgang": vorgang,
+          format: "json",
+        },
+        warnings,
+      );
       if (complete.length > 0) groups.set(vorgang, complete);
     }
 
@@ -220,15 +225,23 @@ export class BundDipSource implements Source {
     return { refs: applyWindow(refs, options), warnings };
   }
 
-  /** Walk the cursor until it stops moving, which is how DIP signals the end. */
+  /**
+   * Walk the cursor until it stops moving, which is how DIP signals the end. A walk
+   * that reaches `MAX_PAGES` while DIP still has more says so in `warnings`: it used
+   * to stop there without a word, and a Wahlperiode of 23,384 positions (WP 19) came
+   * back short, looking complete.
+   */
   private async page(
     options: DiscoverOptions,
     path: string,
     params: Record<string, string | number>,
+    warnings: string[],
     limit?: number,
   ): Promise<Record<string, unknown>[]> {
     const out: Record<string, unknown>[] = [];
     let cursor: string | undefined;
+    let ended = false;
+    let numFound: number | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const query: Record<string, string | number> = { ...params };
       if (cursor !== undefined) query["cursor"] = cursor;
@@ -246,11 +259,24 @@ export class BundDipSource implements Source {
       // not one this adapter can read, and taking it as empty made it "0 discovered".
       if (!Array.isArray(body.documents)) throw new ParseError(`DIP answered without a documents list (${path})`);
       const documents = body.documents;
+      if (typeof body.numFound === "number") numFound = body.numFound;
       out.push(...documents);
       // Two positions per Anfrage, so the position budget is twice the ref budget.
-      if (limit !== undefined && out.length >= limit * 2) break;
-      if (documents.length === 0 || body.cursor === undefined || body.cursor === cursor) break;
+      if (limit !== undefined && out.length >= limit * 2) {
+        ended = true;
+        break;
+      }
+      if (documents.length === 0 || body.cursor === undefined || body.cursor === cursor) {
+        ended = true;
+        break;
+      }
       cursor = body.cursor;
+    }
+    if (!ended) {
+      warnings.push(
+        `discovery stopped after ${MAX_PAGES} pages (${out.length} of ${numFound ?? "?"} positions) and DIP has more: ` +
+          "the rest of this window was not discovered — sync it in parts with --since/--until",
+      );
     }
     return out;
   }

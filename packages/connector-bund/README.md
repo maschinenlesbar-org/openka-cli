@@ -27,6 +27,12 @@ also typed plain "Anfrage" (241 Drucksachen from 1950); those are not taken, sin
 nothing here can tell which of them were Kleine Anfragen. `count()` asks the
 Drucksachen for those periods too.
 
+**A walk stops at 200 pages, and says so.** DIP pages by cursor, 100 documents a page;
+discovery walks at most `MAX_PAGES` (200) pages per query. Wahlperiode 19 alone holds
+23,384 Kleine-Anfrage positions (234 pages), so `--period 19` reaches the cap: the run
+warns that the rest of the window was not discovered and to sync it in parts with
+`--since`/`--until`, rather than stopping there without a word.
+
 **The answering ministry is only taken when DIP marks it.** A Vorgang can list
 several `ressort` entries, and only the one flagged `federfuehrend` is the answering
 one. With several and none flagged, the adapter names none and says so in a warning
