@@ -37,6 +37,11 @@ warns that the rest of the window was not discovered and to sync it in parts wit
 no document not already read stops the walk too, with a warning — it used to run all 200
 pages.
 
+**One answer per record: the first.** A Vorgang can hold a second "Antwort" position — a
+correction or a supplement. The record archives the first by date (then by
+Drucksachennummer), whatever order DIP lists them in, and a warning names the others, which
+are not archived.
+
 **The answering ministry is only taken when DIP marks it.** A Vorgang can list
 several `ressort` entries, and only the one flagged `federfuehrend` is the answering
 one. With several and none flagged, the adapter names none and says so in a warning

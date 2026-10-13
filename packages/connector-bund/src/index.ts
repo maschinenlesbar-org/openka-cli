@@ -330,7 +330,22 @@ export function toRef(
   warnings: string[],
 ): DocRef | undefined {
   const question = positions.find((p) => p["vorgangsposition"] === "Kleine Anfrage");
-  const answer = positions.find((p) => p["vorgangsposition"] === "Antwort");
+  // The first answer by date, then by Drucksachennummer — not the first DIP happens to
+  // list: with a later "Antwort" (a correction, a supplement) in the Vorgang, the
+  // listing order decided which paper the record archived, and a re-sync could swap a
+  // correct answer for the later one. The others are named, not archived.
+  const answers = positions
+    .filter((p) => p["vorgangsposition"] === "Antwort")
+    .map((p) => ({ position: p, date: positionDate(p) ?? "9999-99-99", number: stringOf(record(p["fundstelle"])?.["dokumentnummer"]) ?? "" }))
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.number < b.number ? -1 : a.number > b.number ? 1 : 0));
+  const answer = answers[0]?.position;
+  if (answers.length > 1) {
+    const [kept, ...others] = answers;
+    warnings.push(
+      `Vorgang ${vorgangId}: ${answers.length} "Antwort" positions; the first (${kept?.number || "?"}, ${kept?.date}) is archived, ` +
+        `${others.map((other) => other.number || "?").join(", ")} ${others.length === 1 ? "is" : "are"} not`,
+    );
+  }
   if (question === undefined) {
     warnings.push(`Vorgang ${vorgangId}: no "Kleine Anfrage" position found; skipped`);
     return undefined;
@@ -437,6 +452,11 @@ export function drucksacheRef(document: Record<string, unknown>, warnings: strin
   const submitted = isoDate(stringOf(fundstelle?.["datum"]) ?? stringOf(document["datum"]));
   if (submitted !== undefined) ref.dates.submitted = submitted;
   return ref;
+}
+
+/** A position's date: its Drucksache's, else its own; ISO or nothing. */
+function positionDate(position: Record<string, unknown>): string | undefined {
+  return isoDate(stringOf(record(position["fundstelle"])?.["datum"]) ?? stringOf(position["datum"]));
 }
 
 /** The ISO day before `iso`. */

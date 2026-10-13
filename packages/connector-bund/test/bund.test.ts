@@ -267,3 +267,21 @@ describe("a key DIP rejects", () => {
     }
   });
 });
+
+describe("a Vorgang with two Antwort positions", () => {
+  it("keeps the first answer whatever order DIP lists them in, and names the other", () => {
+    // `positions.find` took whichever DIP listed first: a correction three days later
+    // replaced the original answer, and a re-sync overwrote a correct record
+    // (exploratory 2026-10-13-bund, B01-5).
+    const question = { vorgangsposition: "Kleine Anfrage", fundstelle: { dokumentnummer: "21/1000", pdf_url: "https://x.invalid/q.pdf", datum: "2026-06-01" } };
+    const first = { vorgangsposition: "Antwort", fundstelle: { dokumentnummer: "21/5000", pdf_url: "https://x.invalid/a.pdf", datum: "2026-06-15" } };
+    const later = { vorgangsposition: "Antwort", fundstelle: { dokumentnummer: "21/8000", pdf_url: "https://x.invalid/b.pdf", datum: "2026-06-18" } };
+    for (const order of [[question, later, first], [question, first, later]]) {
+      const warnings: string[] = [];
+      const ref = toRef("400000", order, warnings);
+      deepStrictEqual(ref?.documents.map((document) => document.url), ["https://x.invalid/q.pdf", "https://x.invalid/a.pdf"]);
+      strictEqual(ref?.dates.answered, "2026-06-15");
+      match(warnings.join("\n"), /Vorgang 400000: 2 "Antwort" positions; the first \(21\/5000, 2026-06-15\) is archived, 21\/8000 is not/);
+    }
+  });
+});
