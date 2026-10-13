@@ -805,6 +805,26 @@ describe("a corpus that is not there (finding 7)", () => {
     });
   }
 
+  it("refuses to sync into a path that is a file, as a corpus problem, before any request", async () => {
+    // `ka sync` into a --corpus that names a regular file failed as "Unexpected error:
+    // EEXIST: file already exists, mkdir …", exit 1, while every reader said "is not a
+    // directory", exit 3 (exploratory 2026-10-13-npm-0.11.0, B05-1).
+    let cliRoot = "";
+    const result = await parity({
+      seed: (corpus) => writeFileSync(join(corpus, "afile"), "x"),
+      argv: (corpus) => {
+        cliRoot = join(corpus, "afile");
+        return ["--corpus", cliRoot, "sync", "--source", "bayern"];
+      },
+      lib: ({ corpus }) => new FileStore(join(corpus, "afile")).lock("sync --source bayern"),
+    });
+    strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+    strictEqual(result.cli.err, `ERROR [ka.store] ${cliRoot} is not a directory, so it cannot be a corpus.`);
+    deepStrictEqual(result.cli.requests, []);
+    ok(!result.lib.ok);
+    strictEqual(result.lib.error.name, "StoreError");
+  });
+
   it("refuses a path that is a file, not a directory, on both sides", async () => {
     let cliRoot = "";
     const result = await parity({

@@ -178,6 +178,10 @@ export class FileStore implements Store {
     }
     const path = this.path("lock");
     const mine = JSON.stringify({ host: hostname(), pid: process.pid, purpose }) + "\n";
+    // Every writer takes the lock before its first write. A corpus path that is a file
+    // failed right here on mkdir with a bare EEXIST, which `ka sync` showed as an
+    // unexpected error (exit 1) while every reader said "not a directory" (exit 3).
+    this.assertCorpusRoot();
     mkdirSync(this.root, { recursive: true });
     for (let attempt = 0; ; attempt++) {
       try {
@@ -301,6 +305,27 @@ export class FileStore implements Store {
       return `blob store ${this.blobsRoot} is not available — is its drive mounted? On first use, create the directory.`;
     }
     return isDirectory ? undefined : `blob store ${this.blobsRoot} is not a directory`;
+  }
+
+  /**
+   * What is wrong with the corpus path itself, if anything: a path that exists and is
+   * not a directory can never be a corpus. A path that is not there yet is fine — a
+   * writer creates it.
+   */
+  corpusRootProblem(): string | undefined {
+    let stats;
+    try {
+      stats = statSync(this.root);
+    } catch {
+      return undefined;
+    }
+    return stats.isDirectory() ? undefined : `${this.root} is not a directory, so it cannot be a corpus.`;
+  }
+
+  /** Throw `StoreError` for a corpus path that can never be a corpus (`corpusRootProblem`). */
+  assertCorpusRoot(): void {
+    const problem = this.corpusRootProblem();
+    if (problem !== undefined) throw new StoreError(problem);
   }
 
   /**
