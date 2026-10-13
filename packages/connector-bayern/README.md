@@ -50,6 +50,11 @@ the combined paper). Until 2026-10 nothing read them: these records had no asker
 no dates, unflagged. A head of another shape is not read, and the record abstains on
 `askers` / `dates.*`.
 
+**The Wahlperiode is the feed's newest.** Without `--period`, discovery takes the newest
+period the feed lists — after an election, the new Landtag's Drucksachen the day the feed
+carries them — and names any older period's leftovers it left out, with the `--period`
+that takes them.
+
 The cost worth knowing: one `HEAD` per distinct Drucksachennummer in the window. That
 is the price of not guessing, and `lib-http`'s `head()` exists for it.
 

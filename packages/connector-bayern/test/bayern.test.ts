@@ -182,8 +182,27 @@ describe("Bayern source", () => {
     match(result.unreadable ?? "", /1 item.*no Drucksachennummer/);
   });
 
-  it("defaults to the Wahlperiode currently sitting", () => {
+  it("defaults to the newest Wahlperiode the feed lists", async () => {
+    // The default was the constant 19: after the next Landtag election a feed of
+    // Wahlperiode-20 Drucksachen synced to "0 discovered", silently
+    // (exploratory 2026-10-13, B04-1).
     strictEqual(BAYERN_LATEST_PERIOD, 19);
+    const body =
+      "<rss><channel>" +
+      ["20/15", "20/16", "19/13999"].map((reference) => `<item><title>Initiativdrucksache ${reference}</title></item>`).join("") +
+      "</channel></rss>";
+    const { transport, requests } = scriptedTransport([
+      { match: "rssfeed.xhtml", body },
+      { match: ".pdf", body: "%PDF-1.7" },
+    ]);
+    const result = await new BayernFeedSource().discover({ engine: testEngine(transport), state });
+    deepStrictEqual(
+      result.refs.map((ref) => ref.reference),
+      ["20/15", "20/16"],
+    );
+    ok(requests.some((request) => request.url.endsWith("/ElanTextAblage_WP20/Drucksachen/Schriftliche%20Anfragen/20_0000015.pdf")));
+    // The older period's leftovers are named, with the way to them.
+    ok(result.warnings.some((warning) => warning.includes("1 Drucksache") && warning.includes("--period 19")));
   });
 });
 

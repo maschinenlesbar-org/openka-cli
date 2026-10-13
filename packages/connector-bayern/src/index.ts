@@ -55,7 +55,11 @@ export const LANDTAG_BAYERN = "https://www.bayern.landtag.de";
 /** "Drucksachen von Anfragen" — the feed this adapter discovers from. */
 export const ANFRAGEN_FEED = `${LANDTAG_BAYERN}/webangebot3/views/rssfeed/rssfeed.xhtml`;
 
-/** The Wahlperiode currently sitting; the default when none is given. */
+/**
+ * The Wahlperiode sitting when this adapter was written. Discovery no longer
+ * defaults to it: it takes the newest period its feed lists, so the next Landtag's
+ * Drucksachen are found the day the feed carries them.
+ */
 export const BAYERN_LATEST_PERIOD = 19;
 
 /**
@@ -154,7 +158,6 @@ export class BayernFeedSource implements Source {
       );
     }
     const warnings: string[] = [];
-    const period = options.period ?? BAYERN_LATEST_PERIOD;
 
     const response = await options.engine.get(ANFRAGEN_FEED, {
       params: { art: "ANFRAGE", titel: "Drucksachen von Anfragen" },
@@ -185,7 +188,22 @@ export class BayernFeedSource implements Source {
         unreadable: `the Anfragen feed's ${count} item(s) carried no Drucksachennummer this adapter can read — its format may have changed`,
       };
     }
-    const candidates = byReference(parsed).filter((item) => item.period === period);
+    const unique = byReference(parsed);
+    // The newest period the feed lists, not a constant: after an election the feed
+    // carries the new Landtag's Drucksachen, and a fixed default filtered all of them
+    // out without a word.
+    const period = options.period ?? Math.max(...unique.map((item) => item.period));
+    if (options.period === undefined) {
+      const others = unique.filter((item) => item.period !== period);
+      if (others.length > 0) {
+        const periods = [...new Set(others.map((item) => item.period))].sort((a, b) => a - b);
+        warnings.push(
+          `the feed also lists ${others.length} Drucksache(n) of Wahlperiode ${periods.join(", ")}; this run takes ` +
+            `Wahlperiode ${period}, the newest — sync ${periods.map((p) => `--period ${p}`).join(" / ")} for the others`,
+        );
+      }
+    }
+    const candidates = unique.filter((item) => item.period === period);
     const refs: DocRef[] = [];
     // One refused probe is that Drucksache's problem, not the feed's: the engine
     // throws for anything but a 404, and that throw used to end discovery, so the
