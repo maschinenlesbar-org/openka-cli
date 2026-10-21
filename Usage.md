@@ -107,7 +107,10 @@ space: ≈ 270 MB to fetch, 85 GB free for /Users/me/.local/share/openka
 each counted once. The size is the average of what the corpus already holds for that
 source once it holds at least 20 documents (`ka stats` shows it), and otherwise
 the `Content-Length` of a HEAD request to up to 20 of the documents, spread over the
-list — asked under the same robots.txt rules and pacing as a sync. Discovery itself is
+list — asked under the same robots.txt rules and pacing as a sync. When no HEAD answers
+with a size, the average of the fewer documents the corpus holds is used, and the plan
+says how many (`average of 2 in the corpus`). A sampled document that answers 404 or 410
+is named in a warning: the sync would store its record without it. Discovery itself is
 not free: Berlin's is a 50+ MB feed. With `--json` the plan is an object (an array for
 several sources). When the download would not fit beside `--min-free`, or a sync would
 refuse the volume, a `WARN` record of `ka.store` on stderr says so in place of the `space:` line.

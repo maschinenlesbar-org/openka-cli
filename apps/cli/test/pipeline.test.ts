@@ -789,6 +789,22 @@ describe("sync pipeline", () => {
     );
   });
 
+  it("says in a dry run which sampled documents are not there", async () => {
+    // DIP listed both answers, dserver answered 404 to the HEAD for each, and the plan
+    // said "documents to fetch: 2 (≈ 518 KB …)" and nothing about the 404s
+    // (exploratory 2026-10-21, B04-3).
+    const { transport } = scriptedTransport([
+      { match: "robots.txt", status: 404 },
+      { match: ".pdf", status: 404 },
+    ]);
+    const plan = await planSync({ source: new StubSource(), store: new MemoryStore(), engine: testEngine(transport) });
+    strictEqual(plan.documents_to_fetch, 1);
+    ok(
+      plan.warnings.includes(`1 of 1 sampled document(s) are not there: ${PDF_URL} (HTTP 404); a sync stores their records without them`),
+      plan.warnings.join("\n"),
+    );
+  });
+
   it("says where the run's time went, in the report and in every progress event", async () => {
     // Issue #14. One clock for the engine and the pipeline: every request takes 2 s,
     // every reading of the pipeline's clock 1 ms.

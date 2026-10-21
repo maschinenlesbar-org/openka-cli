@@ -205,6 +205,7 @@ function evenSample<T>(items: readonly T[], n: number): T[] {
 async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPolicy, warnings: string[]): Promise<number[]> {
   const sizes: number[] = [];
   const oversize: string[] = [];
+  const missing: string[] = [];
   let refused = 0;
   for (const url of urls) {
     const verdict = await robots.decide(url);
@@ -229,6 +230,9 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
         refused++;
         continue;
       }
+      // A document the listing names and the server does not have: the sync would store
+      // its record without it. The plan used to count it and say nothing.
+      if (response.status === 404 || response.status === 410) missing.push(`${url} (HTTP ${response.status})`);
       const length = Number(firstHeader(response.headers["content-length"]));
       if (response.status === 200 && Number.isSafeInteger(length) && length > 0) {
         sizes.push(length);
@@ -239,6 +243,10 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
     }
   }
   if (refused > 0) warnings.push(`${refused} of ${urls.length} sampled document(s) are disallowed by robots.txt and were not asked for`);
+  if (missing.length > 0) {
+    const named = missing.length > 5 ? `${missing.slice(0, 5).join(", ")}, and ${missing.length - 5} more` : missing.join(", ");
+    warnings.push(`${missing.length} of ${urls.length} sampled document(s) are not there: ${named}; a sync stores their records without them`);
+  }
   // A sync stores such a record without its document (issue #23): better known now.
   if (oversize.length > 0) {
     warnings.push(
