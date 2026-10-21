@@ -319,7 +319,10 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         io.out(`note:       ${entry.note}`);
         if (entry.factory !== undefined) {
           const source = entry.factory();
-          io.out(`tier:       ${source.tier}`);
+          // The source's own tier is what it hands over (an API, an export); a record
+          // declares the path that ran — text_layer once a document's text was read
+          // (exploratory 2026-10-21, B04-4).
+          io.out(`tier:       ${source.tier}${source.tier === "structured" ? " — what the source hands over; a record whose documents were read declares text_layer" : ""}`);
           io.out(`homepage:   ${source.homepage}`);
           if (source.apiKeyEnv !== undefined) io.out(`credential: --api-key, ${source.apiKeyEnv} or \`ka config set ${source.key}.api-key\``);
           io.out(`requests:   ${describeRequestFloor(source)}`);

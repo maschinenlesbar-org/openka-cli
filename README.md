@@ -149,7 +149,11 @@ the detail, the fixtures and the tests for that Land.
 own interface; *aggregator* means the [Parlamentsspiegel](https://www.parlamentsspiegel.de/),
 the Länder's shared portal run by the Landtag NRW. **Fallback** is what runs when the
 own interface throws or answers in a shape the connector does not recognise — never
-when it simply returns nothing. **Tier** is the extraction path the record declares.
+when it simply returns nothing. **Tier** is the source's own (`ka sources show`): what it
+hands over — `structured` for an API or an export. A record declares the path that
+actually ran (`extraction.tier`): every source's Q/A text is read from its PDFs, so a
+record whose documents were read says `text_layer` (or `ocr`), and only one whose
+documents yielded no text keeps its source's tier.
 Whatever the source, every document is checked against its host's `robots.txt` before
 it is fetched; `--ignore-robots` overrides that, never silently.
 

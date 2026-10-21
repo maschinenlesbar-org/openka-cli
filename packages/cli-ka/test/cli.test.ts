@@ -317,6 +317,21 @@ describe("ka", () => {
     harness.cleanup();
   });
 
+  it("says that a structured source's records declare text_layer once their documents are read", async () => {
+    // `ka sources show bund` said "tier: structured" while every record it syncs declares
+    // text_layer (exploratory 2026-10-21, B04-4).
+    const harness = cliHarness();
+    try {
+      strictEqual(await run(["sources", "show", "bund"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^tier: {7}structured — what the source hands over; a record whose documents were read declares text_layer$/m);
+      harness.out.length = 0;
+      strictEqual(await run(["sources", "show", "bayern"], harness.deps), EXIT_OK);
+      match(harness.stdout(), /^tier: {7}text_layer$/m);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("syncs, searches, shows and gets a record", async () => {
     const harness = await seeded();
     try {
