@@ -393,6 +393,12 @@ ka search --like berlin-19-10006         # needs `ka-factory embed` first
 ka search "radwege" --snippet --json
 ```
 
+A word the paper breaks at a line end with a hyphen (`Waldbiotopkar-` over `tierung`) is
+found whole (`ka search Waldbiotopkartierung`, and in a phrase), as well as by its halves;
+the record keeps the text as the page prints it, a soft hyphen at a line end included as
+`-`. A corpus synced before 0.13 finds such words after `ka reextract --all` (which
+rebuilds the index too) or `ka reindex`.
+
 Filters are repeatable (`--parliament berlin --parliament bund`). An empty query
 lists everything that passes the filters. `--party` matches the party, not the
 spelling: the sources print the Greens as "Grüne", "GRU" or "BÜNDNIS 90/DIE GRÜNEN", the

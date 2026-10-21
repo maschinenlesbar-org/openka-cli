@@ -41,7 +41,7 @@ import {
   spaceGuard,
   systemVolumes,
 } from "@maschinenlesbar.org/openka-lib-store";
-import { containsPhrase, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
+import { containsPhrase, lineBreakJoins, normalizeTerm, normalizeWithOffsets, parseQuery, scoreTerm, shardOf, termFrequencies, tokenize } from "@maschinenlesbar.org/openka-lib-store";
 import { abstainedFieldKind, catalogGaps, corpusStats, indexableFields, indexRecord, lockCorpus, markHumanVerified, reindexAll, toCatalogEntry, unindexRecord } from "@maschinenlesbar.org/openka-lib-store";
 import { DEFAULT_REVIEW_LIMIT, makeSnippet, matchesFilters, reviewGroups, reviewQueue, search, selectRecords } from "../src/search.js";
 import {
@@ -65,6 +65,32 @@ import { cosine, searchLike } from "../src/semantic.js";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { MemoryStore, sampleRecord } from "@maschinenlesbar.org/openka-lib-testing";
+
+describe("words a line-end hyphen broke", () => {
+  // `ka search Tierschutzgesetzes` and `Waldbiotopkartierung` answered "No matches." for
+  // records whose Q/A held the word broken at a line end (exploratory 2026-10-21, B04-1).
+  it("are indexed joined, beside their halves; a capital after the break is no join", () => {
+    deepStrictEqual(lineBreakJoins("die Waldbiotopkar-\ntierung und Außen-\nund Innenpolitik der CDU-\nFraktion"), ["Waldbiotopkartierung", "Außenund"]);
+    const counts = termFrequencies({ body: "einer Trennung des Tier-\nschutzgesetzes" });
+    deepStrictEqual([counts.get("tierschutzgesetzes"), counts.get("tier"), counts.get("schutzgesetzes")], [1, 1, 1]);
+    strictEqual(containsPhrase("zur Kleinen Anfra-\nge 8/2962", tokenize("Kleinen Anfrage")), true);
+    strictEqual(containsPhrase("zur Kleinen Anfra-\nge 8/2962", tokenize("Kleinen Anfragen")), false);
+  });
+
+  it("are found by ka search's library call, in a question and a title", () => {
+    const store = new MemoryStore();
+    const base = sampleRecord();
+    const record = sampleRecord({
+      title: "Planung der Waldbiotopkar-\ntierung",
+      qa: [{ ...(base.qa[0] as KaRecord["qa"][number]), question: "Bedarf es einer Trennung des Tier-\nschutzgesetzes?" }],
+    });
+    store.putRecord(record);
+    indexRecord(store, record);
+    for (const query of ["Tierschutzgesetzes", "Waldbiotopkartierung", '"Trennung des Tierschutzgesetzes"']) {
+      strictEqual(search(store, query).total, 1, query);
+    }
+  });
+});
 
 describe("tokenizer", () => {
   it("folds German umlauts the way a searcher expects", () => {

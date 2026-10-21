@@ -43,6 +43,25 @@ export function tokenize(text: string): string[] {
   return tokens;
 }
 
+/**
+ * A word a line-end hyphen broke in two, followed by its continuation in lower case —
+ * `Waldbiotopkar-` over `tierung`. A capital after the break is a compound printed with
+ * its hyphen (`CDU-` over `Fraktion`), which its two halves already find.
+ */
+const LINE_END_HYPHEN = /(\p{L}+)-[ \t]*\n[ \t]*(\p{Ll}+)/gu;
+
+/**
+ * The words a line-end hyphen broke, joined: `Waldbiotopkartierung` from
+ * `Waldbiotopkar-\ntierung`. The record keeps the text as the page prints it, so
+ * `ka search Waldbiotopkartierung` found nothing in 10 of 11 live papers that held such
+ * a word (exploratory 2026-10-21, B04-1). The index takes the joined word beside the two
+ * halves; a suspended compound (`Außen-` over `und Innenpolitik`) adds a token nobody
+ * searches for, and takes nothing away.
+ */
+export function lineBreakJoins(text: string): string[] {
+  return [...text.matchAll(LINE_END_HYPHEN)].map((match) => `${match[1] ?? ""}${match[2] ?? ""}`);
+}
+
 /** The shard a token's postings live in: the first byte of its sha256, as hex. */
 export function shardOf(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex").slice(0, 2);
@@ -61,7 +80,7 @@ export type IndexShard = Record<string, Posting[]>;
 export function termFrequencies(fields: { title?: string; body?: string; extra?: string[] }): Map<string, number> {
   const counts = new Map<string, number>();
   const add = (text: string, weight: number): void => {
-    for (const token of tokenize(text)) {
+    for (const token of [...tokenize(text), ...tokenize(lineBreakJoins(text).join(" "))]) {
       counts.set(token, (counts.get(token) ?? 0) + weight);
     }
   };
@@ -156,10 +175,19 @@ export function normalizeWithOffsets(text: string): { normalized: string; offset
   return { normalized, offsets };
 }
 
-/** True when `tokens` occurs as a contiguous run in `haystack`'s token stream. */
+/**
+ * True when `tokens` occurs as a contiguous run in `haystack`'s token stream — as
+ * printed, or with the words a line-end hyphen broke joined (`lineBreakJoins`), so
+ * `"Kleinen Anfrage"` finds `Kleinen Anfra-\nge`.
+ */
 export function containsPhrase(haystack: string, tokens: string[]): boolean {
   if (tokens.length === 0) return true;
-  const stream = tokenize(haystack);
+  if (inTokenStream(tokenize(haystack), tokens)) return true;
+  const joined = haystack.replace(LINE_END_HYPHEN, "$1$2");
+  return joined !== haystack && inTokenStream(tokenize(joined), tokens);
+}
+
+function inTokenStream(stream: string[], tokens: string[]): boolean {
   const first = tokens[0] as string;
   outer: for (let i = 0; i + tokens.length <= stream.length; i++) {
     if (stream[i] !== first) continue;

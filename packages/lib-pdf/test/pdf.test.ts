@@ -178,6 +178,18 @@ describe("text assembly", () => {
     strictEqual(assemble(runs), "Alt-Treptow rechts\nzweite");
   });
 
+  it("keeps a soft hyphen that ends a line as the hyphen the page prints, and drops one elsewhere", () => {
+    // Thüringen's InDesign papers mark their line-end hyphens as U+00AD; dropping it left
+    // "Tier\nschutzgesetzes" — two words nobody wrote (exploratory 2026-10-21, B04-1).
+    const runs = [
+      { x: 0, y: 100, width: 30, size: 10, text: "des Tier\u00ad" },
+      { x: 0, y: 88, width: 60, size: 10, text: "schutz\u00adgesetzes" },
+      { x: 0, y: 76, width: 30, size: 10, text: "Anfra\u00ad " },
+      { x: 0, y: 64, width: 10, size: 10, text: "ge" },
+    ];
+    strictEqual(assemble(runs), "des Tier-\nschutzgesetzes\nAnfra-\nge");
+  });
+
   it("orders lines top to bottom whatever order the runs arrived in", () => {
     const runs = [
       { x: 0, y: 10, width: 10, size: 10, text: "unten" },

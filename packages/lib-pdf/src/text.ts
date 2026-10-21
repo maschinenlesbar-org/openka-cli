@@ -100,6 +100,16 @@ export class InterpretBudget {
 const SPACE_SEPARATORS = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g;
 const INVISIBLE = /[\u00ad\u200b-\u200d\ufeff]/g;
 
+/**
+ * A soft hyphen that ends a line: where the typesetter broke a word, and where the page
+ * prints a hyphen. It is kept as "-", so the text reads as the page does — `Tier-` over
+ * `schutzgesetzes`, like a hard hyphen at a line end — instead of `Tier` over
+ * `schutzgesetzes`, two words nobody wrote. Thüringen's InDesign papers (axaio
+ * MadeToTag) mark their line-end hyphens this way (exploratory 2026-10-21, B04-1:
+ * thueringen-8-3241). Anywhere else a soft hyphen is invisible and goes.
+ */
+const SOFT_HYPHEN_AT_LINE_END = /\u00ad[\s\u00ad\u200b-\u200d\ufeff]*$/u;
+
 /** Fold typographic whitespace so the frozen rules see ordinary spaces. */
 export function normalizeSpaces(text: string): string {
   return text.replace(SPACE_SEPARATORS, " ").replace(INVISIBLE, "");
@@ -463,7 +473,7 @@ export function assemble(runs: Run[]): string {
       text += run.text;
       cursor = run.x + run.width;
     }
-    return stripControlCharacters(normalizeSpaces(text)).replace(/[ \t]+/g, " ").trimEnd();
+    return stripControlCharacters(normalizeSpaces(text.replace(SOFT_HYPHEN_AT_LINE_END, "-"))).replace(/[ \t]+/g, " ").trimEnd();
   });
 
   return rendered

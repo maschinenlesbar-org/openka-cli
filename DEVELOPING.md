@@ -668,7 +668,11 @@ they need reading quickly. What it does and does not do:
 - **Whitespace** — typographic spaces are folded to a plain space and invisible
   characters are dropped. Not cosmetic: the Bundestag right-aligns question numbers
   with an EN SPACE, so without the fold every rule that looks for a number at the
-  start of a line goes blind.
+  start of a line goes blind. One exception: a soft hyphen that *ends* a line is where
+  the typesetter broke a word and where the page prints a hyphen, so it is kept as `-`
+  (Thüringen's InDesign papers, Sachsen's Word papers). Dropping it left `Tier` over
+  `schutzgesetzes`, two words nobody wrote. The search index takes such a broken word
+  joined as well (`lineBreakJoins` in `lib-store`), hard hyphens and soft alike.
 - **Images** — embedded JPEG/JPEG2000/CCITT/JBIG2 streams are handed to the OCR tier
   as-is. Nothing is rasterised, so the `ocr` tier needs no graphics dependency. An
   image that would need rendering is skipped and reported.
