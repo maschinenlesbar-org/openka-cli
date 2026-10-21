@@ -29,6 +29,9 @@ import type { CatalogEntry, EmbeddingSet, PostingChange, QueueProgress, SourceSt
 import { applyPostingChanges } from "./indexer.js";
 import type { RunStatus } from "./run-status.js";
 
+/** The directories the corpus keeps under its root, as path parts (the layout above). */
+const CORPUS_DIRECTORIES: readonly (readonly string[])[] = [["records"], ["index"], ["index", "tokens"], ["state"], ["state", "queues"], ["run"], ["artifacts"]];
+
 /** Record ids and source keys reach the filesystem, so they are strictly checked. */
 const SAFE_KEY = /^[a-z0-9][a-z0-9._-]*$/;
 
@@ -152,7 +155,9 @@ export class FileStore implements Store {
       throw new StoreError(`Could not open the corpus at ${resolved}: ${reason}`, { cause: err });
     }
     if (!isDirectory) throw new StoreError(`${resolved} is not a directory, so it cannot be a corpus.`);
-    return new FileStore(resolved, options);
+    const store = new FileStore(resolved, options);
+    store.assertLayout();
+    return store;
   }
 
   // ----------------------------------------------------------------- lock
@@ -182,6 +187,7 @@ export class FileStore implements Store {
     // failed right here on mkdir with a bare EEXIST, which `ka sync` showed as an
     // unexpected error (exit 1) while every reader said "not a directory" (exit 3).
     this.assertCorpusRoot();
+    this.assertLayout();
     try {
       mkdirSync(this.root, { recursive: true });
     } catch (err) {
@@ -329,6 +335,33 @@ export class FileStore implements Store {
       return uncreatableProblem(this.root, err);
     }
     return stats.isDirectory() ? undefined : `${this.root} is not a directory, so it cannot be a corpus.`;
+  }
+
+  /**
+   * What is damaged in the corpus's own layout, if anything: a directory the corpus
+   * keeps (`records/`, `index/`, `state/`, …) that is there but is not a directory. Every
+   * listing and write below it would meet a bare ENOTDIR — `ka doctor`, `stats` and
+   * `reindex` ended in "Unexpected error" on it, and a sync failed after downloading.
+   */
+  layoutProblem(): string | undefined {
+    const dirs = [...CORPUS_DIRECTORIES, ...(this.separateBlobs ? [] : [["blobs"]])];
+    for (const parts of dirs) {
+      const path = this.path(...parts);
+      let isDirectory: boolean;
+      try {
+        isDirectory = statSync(path).isDirectory();
+      } catch {
+        continue;
+      }
+      if (!isDirectory) return `${path} is not a directory, so the corpus at ${this.root} is damaged — move that file aside.`;
+    }
+    return undefined;
+  }
+
+  /** Throw `StoreError` for a damaged corpus layout (`layoutProblem`). */
+  assertLayout(): void {
+    const problem = this.layoutProblem();
+    if (problem !== undefined) throw new StoreError(problem);
   }
 
   /** Throw `StoreError` for a corpus path that can never be a corpus (`corpusRootProblem`). */

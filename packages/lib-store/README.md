@@ -112,7 +112,10 @@ cannot be created (below a file, a dangling symbolic link, an ancestor this proc
 write to), is refused when the writer takes the lock (`assertCorpusRoot`, a `StoreError`),
 not on a bare EEXIST, ENOTDIR or EACCES from mkdir. A reader wants `FileStore.open(root)`, which requires the corpus to be
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
-than an empty corpus that answers "no matches" for a mistyped path.
+than an empty corpus that answers "no matches" for a mistyped path. Both doors also refuse
+a damaged layout — `records/`, `index/` or another directory the corpus keeps that is a
+file (`layoutProblem`/`assertLayout`, a `StoreError`) — rather than meeting a bare ENOTDIR
+in the first listing.
 
 Everything the line persists goes through the `Store` interface, so the pipeline,
 search and the CLI can be driven against an in-memory store in tests without

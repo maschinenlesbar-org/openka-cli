@@ -902,6 +902,27 @@ describe("ka", () => {
     }
   });
 
+  for (const part of ["records", "index"]) {
+    it(`calls a corpus whose ${part}/ is a file damaged, in ka doctor and every reader and writer, exit 3`, async () => {
+      // doctor, stats and reindex ended in "Unexpected error: ENOTDIR: not a directory,
+      // scandir '…/records'", exit 1, and a sync failed after downloading
+      // (exploratory 2026-10-21, B01-4).
+      const harness = cliHarness();
+      try {
+        writeFileSync(join(harness.corpus, part), "");
+        const damaged = `${join(harness.corpus, part)} is not a directory, so the corpus at ${harness.corpus} is damaged — move that file aside.`;
+        for (const argv of [["doctor"], ["stats"], ["stats", "--json"], ["reindex"], ["search", "x"], ["export", "--format", "jsonl"], ["sync", "--source", "bayern"]]) {
+          harness.err.length = 0;
+          const code = await run(["--corpus", harness.corpus, ...argv], harness.deps);
+          strictEqual(code, EXIT_STORE, `${argv.join(" ")}: ${harness.stderr()}`);
+          ok(harness.stderr().includes(`] ${damaged}\n`) || harness.stderr().endsWith(`] ${damaged}`), `${argv.join(" ")}: ${harness.stderr()}`);
+        }
+      } finally {
+        harness.cleanup();
+      }
+    });
+  }
+
   it("calls a corpus path a sync could never create a problem in ka doctor, exit 3", async () => {
     // "corpus …/afile/sub (not created yet) … No problems found.", exit 0, where the sync
     // then failed (exploratory 2026-10-21, B01-3).

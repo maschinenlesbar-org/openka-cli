@@ -83,6 +83,12 @@ export function diagnoseCorpus(store: FileStore, options: DiagnoseOptions = {}):
     return diagnosis;
   }
 
+  const damaged = store.layoutProblem();
+  if (damaged !== undefined) {
+    problems.push(damaged);
+    return diagnosis;
+  }
+
   try {
     const gaps = catalogGaps(store);
     const rows = store.catalog();
