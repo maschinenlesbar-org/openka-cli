@@ -570,6 +570,23 @@ describe("indexing and search", () => {
     strictEqual(partyKey("Tierschutzpartei"), "tierschutzpartei");
   });
 
+  it("matches a party whatever Unicode form the filter or the upstream wrote it in", () => {
+    // `--party GRÜNE` typed in NFD found nothing, and in NFC missed the asker whose party
+    // the upstream sent decomposed (exploratory 2026-10-21, B02-1).
+    const store = new MemoryStore();
+    const nfd = (text: string) => text.normalize("NFD");
+    [nfd("BÜNDNIS 90/DIE GRÜNEN"), "BÜNDNIS 90/DIE GRÜNEN", nfd("Tierschützer")].forEach((party, i) => {
+      const record = sampleRecord({ id: `berlin-19-${i + 1}`, reference: `19/${i + 1}`, askers: [{ name: "Anna Muster", party }] });
+      store.putRecord(record);
+      indexRecord(store, record);
+    });
+    const ids = (party: string) => search(store, "", { party: [party] }).hits.map((hit) => hit.entry.id);
+    deepStrictEqual(ids("GRÜNE"), ["berlin-19-1", "berlin-19-2"]);
+    deepStrictEqual(ids(nfd("GRÜNE")), ["berlin-19-1", "berlin-19-2"]);
+    deepStrictEqual(ids("Tierschützer"), ["berlin-19-3"]);
+    strictEqual(partyKey(nfd("Tierschützer")), partyKey("Tierschützer"));
+  });
+
   // Finding 01#2: SH 20/2905, asked in February and answered in May, was found by a
   // May window and not by February's — dated by its answer where the question's
   // date was unknown.
@@ -1748,6 +1765,17 @@ describe("stats breakdowns", () => {
     );
     strictEqual(breakdown.overlapping, true, "a question of two parties counts for both");
     strictEqual(statsBreakdown([row(1, { parties: ["Grüne"] })], ["party"]).overlapping, false);
+  });
+
+  it("counts one party once whatever Unicode form the upstream sent, in its composed spelling", () => {
+    // `ka stats --by party` listed "BÜNDNIS 90/DIE GRÜNEN" twice, the NFD row misaligned
+    // (exploratory 2026-10-21, B02-1).
+    const nfd = "BÜNDNIS 90/DIE GRÜNEN".normalize("NFD");
+    const entries = [row(1, { parties: [nfd] }), row(2, { parties: [nfd] }), row(3, { parties: ["BÜNDNIS 90/DIE GRÜNEN"] }), row(4, { parties: ["Tierschützer".normalize("NFD")] })];
+    deepStrictEqual(
+      statsBreakdown(entries, ["party"]).rows.map((r) => [r.keys[0], r.records]),
+      [["BÜNDNIS 90/DIE GRÜNEN", 3], ["Tierschützer", 1]],
+    );
   });
 
   it("runs time forward with the undated last, and crosses two dimensions", () => {

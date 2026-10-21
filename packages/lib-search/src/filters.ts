@@ -37,9 +37,14 @@ const PARTY_ALIASES: Record<string, readonly string[]> = {
 
 const PARTY_KEY = new Map(Object.entries(PARTY_ALIASES).flatMap(([key, aliases]) => aliases.map((alias) => [alias, key] as const)));
 
-/** The key `--party` matches on: a known alias's party, else the label case-folded. */
+/**
+ * The key `--party` matches on: a known alias's party, else the label case-folded.
+ * Composed (NFC) first: an upstream that copies text out of a PDF or a macOS form sends
+ * "GRÜNEN" decomposed, and a filter typed on such a keyboard is decomposed too — the
+ * two spellings of one party were two keys (exploratory 2026-10-21, B02-1).
+ */
 export function partyKey(label: string): string {
-  const folded = label.trim().toLowerCase().replace(/\s+/g, " ");
+  const folded = label.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ");
   return PARTY_KEY.get(folded) ?? folded;
 }
 
@@ -126,7 +131,7 @@ export function normalizeSearchFilters(filters: SearchFilters): SearchFilters {
 
   const normalized: SearchFilters = { ...filters };
   if (filters.parliament !== undefined) normalized.parliament = filters.parliament.map(normalizeParliamentKey);
-  if (filters.party !== undefined) normalized.party = filters.party.map((party) => party.trim().toLowerCase());
+  if (filters.party !== undefined) normalized.party = filters.party.map((party) => party.normalize("NFC").trim().toLowerCase());
   if (filters.from !== undefined) normalized.from = normalizeIsoDate(filters.from);
   if (filters.to !== undefined) normalized.to = normalizeIsoDate(filters.to);
   return normalized;

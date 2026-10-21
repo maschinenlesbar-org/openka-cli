@@ -87,7 +87,9 @@ export function statsBreakdown(entries: readonly CatalogEntry[], by: readonly St
   // The spelling a party key is shown in: the one most records use.
   const spellings = new Map<string, Map<string, number>>();
   for (const entry of entries) {
-    for (const party of entry.party_labels ?? entry.parties) {
+    for (const label of entry.party_labels ?? entry.parties) {
+      // Shown composed: a decomposed spelling is the same spelling, and it padded wrong.
+      const party = label.normalize("NFC");
       const forKey = spellings.get(partyKey(party)) ?? new Map<string, number>();
       forKey.set(party, (forKey.get(party) ?? 0) + 1);
       spellings.set(partyKey(party), forKey);

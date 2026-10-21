@@ -389,7 +389,8 @@ Filters are repeatable (`--parliament berlin --parliament bund`). An empty query
 lists everything that passes the filters. `--party` matches the party, not the
 spelling: the sources print the Greens as "Grüne", "GRU" or "BÜNDNIS 90/DIE GRÜNEN", the
 Left as "Die Linke" or "DIE LINKE", the FDP as "Freie Demokraten" — any of them (or
-"GRÜNE", "Linke", "FDP") finds all; records keep the spelling their source printed. With `--like`, `total` in the JSON counts
+"GRÜNE", "Linke", "FDP") finds all, in either Unicode form (an umlaut composed or
+decomposed, as a PDF or a macOS form may send it); records keep the spelling their source printed. With `--like`, `total` in the JSON counts
 every similar record, not just the page `--limit` shows, as it does for keyword search.
 
 ## `ka get` / `ka show` / `ka open`
@@ -762,8 +763,8 @@ the whole corpus's.
 `--by` breaks the records down by `party`, `ministry`, `month`, `year`, `period` or
 `parliament`, or crosses two (`--by party --by year`), into a table of records and how
 many of them need review. A party is grouped across its spellings (Bayern's "GRU" and
-Hessen's "BÜNDNIS 90/DIE GRÜNEN" are one party) and shown in the spelling most records
-use; a question asked by two parties counts for both, and a note says so. Months, years
+Hessen's "BÜNDNIS 90/DIE GRÜNEN" are one party, whichever Unicode form the source sent)
+and shown, composed, in the spelling most records use; a question asked by two parties counts for both, and a note says so. Months, years
 and periods run forward, with `(undated)` last; the rest are ordered by size. The
 filters `ka search` and `ka export` take (`--parliament`, `--party`, `--year`,
 `--period`, `--from`, `--to`) narrow every number but the disk use. `--json` adds
