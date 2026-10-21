@@ -509,7 +509,7 @@ export function addGlobalOptions(program: Command): Command {
       parseBoundedInt(0, MAX_HOST_INTERVAL_MS),
     )
     .option("--max-redirects <n>", "redirects to follow (0 = surface a 3xx as an error)", parseBoundedInt(0, MAX_REDIRECTS))
-    .option("--compact", "compact JSON output")
+    .option("--compact", "compact JSON output (not `get --format json`, which prints the stored record's bytes)")
     .option("--quiet", "suppress progress output on stderr")
     .option(
       "--log-format <format>",

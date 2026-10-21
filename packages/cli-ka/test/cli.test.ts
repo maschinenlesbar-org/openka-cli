@@ -2581,6 +2581,28 @@ describe("the --corpus help", () => {
   });
 });
 
+describe("--compact", () => {
+  it("makes get --format jsonld and export --format jsonld one line, the same JSON", async () => {
+    // `ka --compact get <id> --format jsonld` printed 46 indented lines, as without it
+    // (exploratory 2026-10-21, B03-3).
+    const harness = await seeded();
+    try {
+      for (const argv of [["get", "berlin-19-10006", "--format", "jsonld"], ["export", "--format", "jsonld"]]) {
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, harness.stderr());
+        const pretty = harness.stdout();
+        harness.out.length = 0;
+        strictEqual(await run(["--compact", "--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, harness.stderr());
+        const compact = harness.stdout();
+        ok(!compact.includes("\n"), `${argv.join(" ")}: ${compact.slice(0, 200)}`);
+        deepStrictEqual(JSON.parse(compact), JSON.parse(pretty));
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("the -o file", () => {
   // `( ulimit -f 100; ka export --format jsonl -o good.jsonl --force )` left the first
   // 102,400 bytes under the final name and lost the complete file it replaced; a new name

@@ -124,7 +124,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       let text: string;
       if (format === "csv") text = [csvHeader(), ...records.map(renderCsvRow)].join("\n") + "\n";
       else if (format === "jsonl") text = renderJsonLines(records);
-      else text = renderJsonLdDocument(records);
+      else text = renderJsonLdDocument(records, { compact: ctx.global.compact === true });
 
       emit(ctx, text, out);
       if (out !== undefined) logOf(ctx.deps).info(ctx.area, `${records.length} record(s) exported.`);

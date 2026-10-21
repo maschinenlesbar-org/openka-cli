@@ -29,8 +29,21 @@ export function renderJson(record: KaRecord): string {
  * a bespoke vocabulary. `openka:` terms cover what schema.org has no word for —
  * the abstentions and the provenance, which are the parts worth publishing.
  */
-export function renderJsonLd(record: KaRecord): string {
-  return canonicalJsonLine(jsonLdNode(record));
+export function renderJsonLd(record: KaRecord, options: RenderOptions = {}): string {
+  return canonicalJsonLine(jsonLdNode(record), indentOf(options));
+}
+
+/** How a JSON rendering is laid out. */
+export interface RenderOptions {
+  /**
+   * One line instead of two-space indentation (`ka --compact`), for `jsonld`. `json` is
+   * the stored record's bytes and ignores it; the other formats are not JSON.
+   */
+  compact?: boolean;
+}
+
+function indentOf(options: RenderOptions): number {
+  return options.compact === true ? 0 : 2;
 }
 
 /**
@@ -50,8 +63,8 @@ export function renderJsonLines(records: readonly KaRecord[]): string {
  * The objects used to be written back to back, which no JSON parser reads past the
  * first one.
  */
-export function renderJsonLdDocument(records: readonly KaRecord[]): string {
-  return canonicalJsonLine(records.map(jsonLdNode));
+export function renderJsonLdDocument(records: readonly KaRecord[], options: RenderOptions = {}): string {
+  return canonicalJsonLine(records.map(jsonLdNode), indentOf(options));
 }
 
 function jsonLdNode(record: KaRecord): Record<string, unknown> {
@@ -279,13 +292,13 @@ export function renderText(record: KaRecord): string {
  * `OpenKaValidationError`: it used to fall through to JSON, so a caller passing
  * user input on got a different format with no error.
  */
-export function renderRecord(record: KaRecord, format: RenderFormat): string {
+export function renderRecord(record: KaRecord, format: RenderFormat, options: RenderOptions = {}): string {
   assertValid("format", format, renderFormatProblem);
   switch (format) {
     case "json":
       return renderJson(record);
     case "jsonld":
-      return renderJsonLd(record);
+      return renderJsonLd(record, options);
     case "csv":
       return `${csvHeader()}\n${renderCsvRow(record)}\n`;
     case "md":

@@ -15,7 +15,7 @@ are authoritative; this is the narrative version.
 | `--max-response-bytes <n>` | hard cap on one response body (at least 1024; default 134217728, 128 MiB). A body that declares more is not downloaded. A document over it is left out of its record — the record is stored with holes, in `ka review` — and the sync warns with the value to pass to fetch it; `ka sync --dry-run` names sampled documents over it |
 | `--min-host-interval <ms>` | minimum delay between two requests to one host (0–60000; default 500). A source with a floor of its own — Brandenburg and Sachsen-Anhalt, 4000 ms, see `ka sources show <key>` — is never made faster by it: a lower value is kept out, and `ka sync` says so |
 | `--max-redirects <n>` | redirects to follow (0–10); `0` surfaces a 3xx as an error |
-| `--compact` | compact JSON output |
+| `--compact` | compact JSON output (not `get --format json`, which prints the stored record's bytes) |
 | `--quiet` | suppress progress on stderr (`ka sync`'s progress line) |
 | `--log-format <format>` | how errors, warnings, notes and progress are written to stderr: `text` (default; log4j style, `2026-10-09T14:03:12.481Z WARN  [ka.sync] …`) or `jsonl` (one JSON object per line, starting with `ts`, `level`, `topic`, `msg`). Before or after the command (`ka sync --log-format jsonl` works). stdout is not affected |
 

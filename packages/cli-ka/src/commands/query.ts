@@ -225,7 +225,7 @@ export function registerQuery(program: Command, deps: CliDeps): void {
       // `emit` wraps the write in a typed error; writing directly meant a bad
       // path surfaced as "Unexpected error: ENOENT" while `ka export -o` gave a
       // clean message for the identical failure.
-      emit(ctx, renderRecord(record, format), out);
+      emit(ctx, renderRecord(record, format, { compact: ctx.global.compact === true }), out);
     }),
   );
 
