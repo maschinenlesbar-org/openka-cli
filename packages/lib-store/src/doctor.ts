@@ -72,7 +72,12 @@ export function diagnoseCorpus(store: FileStore, options: DiagnoseOptions = {}):
     problems,
     warnings,
   };
-  if (!exists) return diagnosis;
+  if (!exists) {
+    // A path a sync could never create is a problem now, not "not created yet".
+    const uncreatable = store.corpusRootProblem();
+    if (uncreatable !== undefined) problems.push(uncreatable);
+    return diagnosis;
+  }
   if (!statSync(store.root).isDirectory()) {
     problems.push(`${store.root} is not a directory, so it cannot be a corpus.`);
     return diagnosis;

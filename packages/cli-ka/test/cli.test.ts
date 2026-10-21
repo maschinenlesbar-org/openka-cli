@@ -902,6 +902,20 @@ describe("ka", () => {
     }
   });
 
+  it("calls a corpus path a sync could never create a problem in ka doctor, exit 3", async () => {
+    // "corpus …/afile/sub (not created yet) … No problems found.", exit 0, where the sync
+    // then failed (exploratory 2026-10-21, B01-3).
+    const harness = cliHarness();
+    try {
+      writeFileSync(join(harness.corpus, "afile"), "");
+      const path = join(harness.corpus, "afile", "sub");
+      strictEqual(await run(["--corpus", path, "doctor"], harness.deps), EXIT_STORE, harness.stderr());
+      match(harness.stderr(), new RegExp(`^ERROR \\[ka\\.doctor\\] ${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} cannot be created as a corpus: .*afile is not a directory\\.$`, "m"));
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("gives each --source a window of its own after @, the shared flags filling in the rest", async () => {
     const { transport, requests } = scriptedTransport([
       { match: "robots.txt", status: 404 },

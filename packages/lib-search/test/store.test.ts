@@ -1447,6 +1447,22 @@ describe("the corpus doctor", () => {
     }
   });
 
+  it("calls a corpus path a sync could never create a problem, not 'not created yet'", () => {
+    // `ka doctor` answered "No problems found." for a path below a file, a dangling link
+    // or a read-only parent, while the sync then failed on mkdir (exploratory 2026-10-21,
+    // B01-3).
+    const store = corpus();
+    try {
+      writeFileSync(join(store.root, "afile"), "");
+      const below = diagnoseCorpus(new FileStore(join(store.root, "afile", "sub")), { probe: roomy });
+      strictEqual(below.exists, false);
+      match(below.problems.join("\n"), /afile\/sub cannot be created as a corpus: .*afile is not a directory\.$/);
+      strictEqual(diagnoseCorpus(new FileStore(join(store.root, "later")), { probe: roomy }).problems.length, 0);
+    } finally {
+      rmSync(store.root, { recursive: true, force: true });
+    }
+  });
+
   it("says who holds the lock without taking it", () => {
     const store = corpus();
     try {
