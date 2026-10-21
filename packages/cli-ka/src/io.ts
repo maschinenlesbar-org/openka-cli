@@ -3,7 +3,7 @@
 // test with a temporary corpus, a mocked transport and captured output — no
 // subprocess, no network, no clock.
 
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, fstatSync, mkdirSync, writeFileSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { FileStore, systemVolumes, type FileStoreOptions, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
@@ -109,6 +109,54 @@ function listenForInterrupts(handler: (signal: InterruptSignal) => void): () => 
   return stop;
 }
 
+/**
+ * A write to stdout that did not reach it whole — a full disk, a file size limit
+ * (`ulimit -f`), a quota. `run()` logs it as an ERROR record of `ka.output` and exits 1.
+ */
+export class OutputError extends OpenKaError {}
+
+/** `fs.writeSync`'s buffer form: how many bytes of `data[offset, offset + length)` reached `fd`. */
+export type WriteSyncFn = (fd: number, data: Buffer, offset: number, length: number) => number;
+
+/**
+ * What `CliIO.out` writes with: on a stdout redirected to a regular file, every byte with
+ * `writeSync`, looping over short writes, and a write that fails (EFBIG, ENOSPC, EDQUOT)
+ * throws `OutputError`. Node's own stream for a file drops `writeSync`'s count, so a
+ * write cut short by `ulimit -f` or a full disk left a truncated file behind a run that
+ * exited 0 with nothing on stderr. A pipe or a terminal (anything that is not a regular
+ * file) stays with `stdout`, whose errors `handleOutputErrors` reports.
+ */
+export function stdoutWriter(stdout: Pick<NodeJS.WriteStream, "write"> = process.stdout, fd = 1, write: WriteSyncFn = writeSync): (text: string) => void {
+  let toFile: boolean | undefined;
+  return (text) => {
+    toFile ??= isRegularFile(fd);
+    if (!toFile) {
+      stdout.write(text);
+      return;
+    }
+    const data = Buffer.from(text, "utf8");
+    let offset = 0;
+    try {
+      while (offset < data.length) {
+        const written = write(fd, data, offset, data.length - offset);
+        if (written <= 0) throw new Error(`wrote ${offset} of ${data.length} bytes`);
+        offset += written;
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new OutputError(`Could not write to stdout: ${reason}`, { cause: err });
+    }
+  };
+}
+
+function isRegularFile(fd: number): boolean {
+  try {
+    return fstatSync(fd).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** The two process streams, as far as `handleOutputErrors` needs them. */
 export interface OutputStreams {
   stdout: Pick<NodeJS.WriteStream, "on">;
@@ -123,8 +171,8 @@ export interface OutputStreams {
  * closes the pipe while `ka` is still writing, and the next write fails with
  * EPIPE (ENOTCONN when stdout is a socket whose peer has gone, as when a Node parent
  * spawns `ka` with piped stdio on macOS). That is ordinary use, so the process exits 0
- * at once, quietly. Any other stdout error logs one `Output error: <message>` ERROR
- * record of `<program>.cli` (in the `--log-format` of the process's argv) and exits 1. On stderr an EPIPE or ENOTCONN is ignored, so a failed run keeps its own exit code (2 for a usage error,
+ * at once, quietly. Any other stdout error logs one `Could not write to stdout: <message>`
+ * ERROR record of `<program>.output` (in the `--log-format` of the process's argv) and exits 1. On stderr an EPIPE or ENOTCONN is ignored, so a failed run keeps its own exit code (2 for a usage error,
  * 3 for a corpus problem) when stderr's reader is gone; any other stderr error
  * exits 1 silently, since there is nowhere left to report it. Both bins install
  * this once, before `run()`.
@@ -136,7 +184,7 @@ export function handleOutputErrors(
 ): void {
   streams.stdout.on("error", (err: NodeJS.ErrnoException) => {
     if (readerGone(err)) return exit(0);
-    log.error("cli", `Output error: ${err.message}`);
+    log.error("output", `Could not write to stdout: ${err.message}`);
     exit(1);
   });
   streams.stderr.on("error", (err: NodeJS.ErrnoException) => {
@@ -260,8 +308,10 @@ export async function readSecretFrom(
   });
 }
 
+const writeStdout = stdoutWriter();
+
 export const defaultIO: CliIO = {
-  out: (text) => process.stdout.write(text + "\n"),
+  out: (text) => writeStdout(text + "\n"),
   err: (text) => process.stderr.write(text + "\n"),
   errIsTerminal: process.stderr.isTTY === true,
   errPartial: (text) => process.stderr.write(text),

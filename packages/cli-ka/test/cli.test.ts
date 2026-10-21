@@ -3,7 +3,7 @@
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } from "../src/run.js";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
@@ -16,7 +16,7 @@ import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.j
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
-import { InterruptedRunError, defaultIO, handleOutputErrors, readSecretFrom } from "../src/io.js";
+import { InterruptedRunError, defaultIO, handleOutputErrors, readSecretFrom, stdoutWriter } from "../src/io.js";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
@@ -2577,6 +2577,77 @@ describe("the --corpus help", () => {
       } finally {
         harness.cleanup();
       }
+    }
+  });
+});
+
+describe("stdout redirected to a file", () => {
+  // `( ulimit -f 100; ka export --format jsonl > out.jsonl )` left 102,400 of 204,795
+  // bytes, exit 0, stderr empty: Node's write to a file-backed stdout drops a short
+  // write's count (exploratory 2026-10-21, B03-1).
+  const shortThenLimit = (): { calls: number; write: (fd: number, data: Buffer, offset: number, length: number) => number } => {
+    const state = {
+      calls: 0,
+      write: (fd: number, data: Buffer, offset: number, length: number): number => {
+        state.calls++;
+        if (state.calls === 1) return writeSync(fd, data, offset, Math.min(length, 10));
+        throw Object.assign(new Error("EFBIG: file too large, write"), { code: "EFBIG" });
+      },
+    };
+    return state;
+  };
+
+  it("writes every byte, over short writes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-stdout-"));
+    const fd = openSync(join(dir, "out"), "w");
+    try {
+      let calls = 0;
+      const halves = (target: number, data: Buffer, offset: number, length: number): number => {
+        calls++;
+        return writeSync(target, data, offset, Math.max(1, Math.floor(length / 2)));
+      };
+      const write = stdoutWriter({ write: () => true }, fd, halves);
+      write("a".repeat(100) + "\n");
+      closeSync(fd);
+      strictEqual(readFileSync(join(dir, "out"), "utf8"), "a".repeat(100) + "\n");
+      ok(calls > 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails the run with an ERROR record of ka.output when the write is cut short, exit 1", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-stdout-"));
+    const fd = openSync(join(dir, "out"), "w");
+    const harness = await seeded();
+    try {
+      const limit = shortThenLimit();
+      harness.deps.io.out = stdoutWriter({ write: () => true }, fd, limit.write);
+      const code = await run(["--corpus", harness.corpus, "export", "--format", "jsonl"], harness.deps);
+      strictEqual(code, EXIT_ERROR, harness.stderr());
+      strictEqual(harness.stderr(), "ERROR [ka.output] Could not write to stdout: EFBIG: file too large, write");
+      strictEqual(readFileSync(join(dir, "out")).length, 10);
+    } finally {
+      closeSync(fd);
+      harness.cleanup();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a pipe or a terminal to the stream", () => {
+    const written: string[] = [];
+    const dir = mkdtempSync(join(tmpdir(), "openka-stdout-"));
+    try {
+      // A directory's fd is no regular file: the stream gets the text, as for a pipe.
+      const fd = openSync(dir, "r");
+      try {
+        stdoutWriter({ write: (text: string) => void written.push(text) !== undefined }, fd)("x\n");
+      } finally {
+        closeSync(fd);
+      }
+      deepStrictEqual(written, ["x\n"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

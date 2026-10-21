@@ -291,7 +291,7 @@ a reference or an upstream reason cut it at the source too (`truncate` with `ID_
   already a timestamped row, and the level and topic are what it lacked.
 - **Left raw**: the redrawn progress line on a terminal, `ka config set`'s no-echo
   prompt (`readSecretFrom`), and `--help`/`--version`, which commander writes to stdout.
-  `handleOutputErrors`' "Output error" is a record too, in the format of the process's
+  `handleOutputErrors`' "Could not write to stdout" (`ka.output`) is a record too, in the format of the process's
   argv, since it fires outside `run()`; so are Node's own process warnings (`(node:PID)
   Warning: …`, e.g. with `NODE_TLS_REJECT_UNAUTHORIZED=0`), a `WARN` record of
   `<program>.cli`, `(node) <name>: <message>`: both bin shims build `processLogger(argv)`

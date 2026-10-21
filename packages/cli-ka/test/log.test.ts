@@ -270,14 +270,14 @@ describe("ka's stderr", () => {
     }
   });
 
-  it("logs a stdout write error as an ERROR record of ka.cli", () => {
+  it("logs a stdout write error as an ERROR record of ka.output", () => {
     const lines: string[] = [];
     const streams = { stdout: new EventEmitter(), stderr: new EventEmitter() };
     const exits: number[] = [];
     handleOutputErrors(streams as never, (code) => void exits.push(code), createLogger({ format: "jsonl", write: (line) => lines.push(line), now: () => new Date(TS) }));
     streams.stdout.emit("error", Object.assign(new Error("EIO"), { code: "EIO" }));
     deepStrictEqual(exits, [1]);
-    deepStrictEqual(records(lines), [{ ts: TS, level: "ERROR", topic: "ka.cli", msg: "Output error: EIO" }]);
+    deepStrictEqual(records(lines), [{ ts: TS, level: "ERROR", topic: "ka.output", msg: "Could not write to stdout: EIO" }]);
   });
 
   it("logs Node's process warnings as WARN records of <program>.cli, Node's own line removed (#12)", () => {

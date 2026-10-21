@@ -38,7 +38,9 @@ errors, commander's messages, unexpected errors), `http` (a dropped connection, 
 retry, a source's request floor), `api` (everything the server sent: its error answers and
 answers that could not be read), `store` (the corpus: missing, locked,
 the volume it is on, catalog gaps, macOS files), `sync` (progress off a terminal, the
-events, warnings and errors of a run), and every other command under its own name —
+events, warnings and errors of a run), `output` (a write to stdout that failed or was cut
+short — a full disk, `ulimit -f` — which exits 1; a reader that stops early, `| head`,
+still ends the run quietly with exit 0), and every other command under its own name —
 `search`, `export`, `review`, `verify`, `reextract`, `rm`, `status`, `sources`, `stats`,
 `config`, `doctor`, `open`, `get`, `feed`. An error that ends a run is logged as an
 `ERROR` record (commander's help after a usage error follows as one `INFO` record per

@@ -5,7 +5,7 @@
 import { CommanderError, type Command } from "commander";
 import { NetworkError, OpenKaApiError, OpenKaError, ParseError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { buildProgram, defaultDeps } from "./program.js";
-import { InterruptedRunError, logOf, type CliDeps } from "./io.js";
+import { InterruptedRunError, OutputError, logOf, type CliDeps } from "./io.js";
 import { DEFAULT_LOG_FORMAT, LOG_PROGRAM, createLogger, logFormatFromArgv, type LogFormat, type Logger } from "./log.js";
 import { VersionOnlyError } from "@maschinenlesbar.org/openka-lib-verify";
 
@@ -155,6 +155,7 @@ export function errorArea(err: unknown, commandArea: string | undefined): string
   if (err instanceof UsageError) return "cli";
   if (err instanceof StoreError) return "store";
   if (err instanceof NetworkError) return "http";
+  if (err instanceof OutputError) return "output";
   // `api` is everything the server sent: its error answers and its malformed ones.
   if (err instanceof OpenKaApiError || err instanceof ParseError) return "api";
   return commandArea ?? "cli";
