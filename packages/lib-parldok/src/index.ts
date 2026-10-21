@@ -95,19 +95,65 @@ export type ApiReading<T> =
  * never an empty result, which the callers distinguish.
  */
 export function successPayload(body: string): Record<string, unknown> | undefined {
+  const payload = readPayload(body);
+  return typeof payload === "string" ? undefined : payload;
+}
+
+/** The payload (`successPayload`), or why there is none: the reason an `unrecognised` reading gives. */
+function readPayload(body: string): Record<string, unknown> | string {
+  const envelope = "not a Parldok success envelope";
   let outer: { success?: unknown; data?: unknown };
   try {
     outer = JSON.parse(body) as { success?: unknown; data?: unknown };
   } catch {
-    return undefined;
+    return envelope;
   }
-  if (outer.success !== true || typeof outer.data !== "string") return undefined;
+  if (outer.success !== true || typeof outer.data !== "string") return envelope;
+  // A document id becomes a URL: one JSON cannot carry exactly would be rounded to a
+  // neighbour's id and fetched as this paper (exploratory 2026-10-21, B05-3).
+  const inexact = firstInexactNumber(outer.data);
+  if (inexact !== undefined) return `a number in the answer cannot be read exactly (${inexact.length > 40 ? `${inexact.slice(0, 40)}…` : inexact})`;
   try {
     const inner = JSON.parse(outer.data) as unknown;
-    return typeof inner === "object" && inner !== null ? (inner as Record<string, unknown>) : undefined;
+    return typeof inner === "object" && inner !== null ? (inner as Record<string, unknown>) : envelope;
   } catch {
-    return undefined;
+    return envelope;
   }
+}
+
+/** A JSON string, or a number literal: what `firstInexactNumber` walks over. */
+const JSON_TOKEN = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+/**
+ * The first number literal in `json` that `JSON.parse` would not read as written: one at
+ * or past 2^53 whose double is another integer, or one too large for a double at all.
+ * Below 2^53 every integer is exact and a decimal is read as JSON means it. Strings are
+ * skipped.
+ */
+export function firstInexactNumber(json: string): string | undefined {
+  for (const [token] of json.matchAll(JSON_TOKEN)) {
+    if (token.startsWith('"')) continue;
+    const value = Number(token);
+    if (!Number.isFinite(value)) return token;
+    if (Math.abs(value) < 2 ** 53) continue;
+    if (integerOf(token) !== BigInt(value)) return token;
+  }
+  return undefined;
+}
+
+/** The integer a number literal writes, or undefined when it has a fraction. */
+function integerOf(literal: string): bigint | undefined {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(literal);
+  if (match === null) return undefined;
+  const fraction = match[3] ?? "";
+  let digits = (match[2] ?? "") + fraction;
+  const exponent = Number(match[4] ?? "0") - fraction.length;
+  if (exponent < 0) {
+    if (!/^0*$/.test(digits.slice(exponent))) return undefined;
+    digits = digits.slice(0, exponent) || "0";
+  }
+  const magnitude = BigInt(digits) * 10n ** BigInt(Math.max(0, exponent));
+  return match[1] === "-" ? -magnitude : magnitude;
 }
 
 export interface FoundDocument {
@@ -117,8 +163,8 @@ export interface FoundDocument {
 
 /** The first hit of a search, with the query id its Vorgang lookup needs. */
 export function firstHit(body: string): ApiReading<FoundDocument> {
-  const data = successPayload(body);
-  if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
+  const data = readPayload(body);
+  if (typeof data === "string") return { kind: "unrecognised", reason: data };
   if (!Array.isArray(data["docs"])) return { kind: "unrecognised", reason: "no docs array in the search result" };
   const docs = data["docs"] as Record<string, unknown>[];
   // An empty docs array is the honest "that number is not in Parldok".
@@ -140,8 +186,8 @@ export function firstHit(body: string): ApiReading<FoundDocument> {
 const PENDING_ANSWER = /(noch nicht vor|wird noch erfasst|liegt nicht vor)/i;
 
 export function answerPosition(body: string, web: string): ApiReading<{ url: string; reference?: string }> {
-  const data = successPayload(body);
-  if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
+  const data = readPayload(body);
+  if (typeof data === "string") return { kind: "unrecognised", reason: data };
   const process = data["process"];
   if (typeof process !== "object" || process === null) return { kind: "unrecognised", reason: "no process object" };
   const positions = (process as Record<string, unknown>)["positions"];
@@ -220,8 +266,8 @@ export interface SearchHits {
  * which is not.
  */
 export function searchResults(body: string): ApiReading<SearchHits> {
-  const data = successPayload(body);
-  if (data === undefined) return { kind: "unrecognised", reason: "not a Parldok success envelope" };
+  const data = readPayload(body);
+  if (typeof data === "string") return { kind: "unrecognised", reason: data };
   if (!Array.isArray(data["docs"])) return { kind: "unrecognised", reason: "no docs array in the search result" };
   const docs = data["docs"] as Record<string, unknown>[];
   if (docs.length === 0) return { kind: "absent" };

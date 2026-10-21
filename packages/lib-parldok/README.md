@@ -19,7 +19,10 @@ documents, and asking it for JSON is gentler than scraping the rendered page, bu
 nothing promises it will keep its shape. Every response is therefore read into an
 `ApiReading` — `found`, `absent`, or `unrecognised` with a reason — so "there is
 nothing" and "I do not understand this" stay different facts. Only the second is a
-reason to fall back to the aggregator.
+reason to fall back to the aggregator. An answer holding a number JSON cannot carry
+exactly — at or past 2^53, rounded to another integer, or past a double's range — is
+`unrecognised` too (`firstInexactNumber`): a document id becomes a URL, and a rounded
+one would fetch a neighbour's paper as this one.
 
 **The facet ids are software; the values are data.** `pd.facet_*` is byte-identical
 in the Thüringen and MV bundles, so `FACET_KIND`, `FACET_TYPE`, `FACET_TIME`,
@@ -42,7 +45,7 @@ error used to drop every page already read and hand the run to the aggregator.
 Everything is re-exported from the package root:
 
 ```
-ParldokEndpoint, FACET_KIND, FACET_TYPE, FACET_TIME, FACET_LP, FACET_NUMBER, FACET_KIND_MV, KIND_KLEINE_ANFRAGE, searchBody, processBody, ApiReading, successPayload, FoundDocument, firstHit, answerPosition, SearchTag, searchDocumentsBody, searchResults
+ParldokEndpoint, FACET_KIND, FACET_TYPE, FACET_TIME, FACET_LP, FACET_NUMBER, FACET_KIND_MV, KIND_KLEINE_ANFRAGE, searchBody, processBody, ApiReading, successPayload, firstInexactNumber, FoundDocument, firstHit, answerPosition, SearchTag, searchDocumentsBody, searchResults
 ```
 
 ## Depends on

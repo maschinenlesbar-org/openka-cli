@@ -22,6 +22,7 @@ import {
   successPayload,
 } from "../src/index.js";
 import { scriptedTransport, testEngine, fixtures } from "@maschinenlesbar.org/openka-lib-testing";
+import { searchResults } from "@maschinenlesbar.org/openka-lib-parldok";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
 
 const { readFixtureText } = fixtures(import.meta.url);
@@ -65,6 +66,20 @@ describe("Parldok responses", () => {
     strictEqual(successPayload('{"success":false,"data":"{}"}'), undefined);
     strictEqual(successPayload('{"success":true,"data":{"already":"an object"}}'), undefined);
     strictEqual(successPayload('{"success":true,"data":"not json either"}'), undefined);
+  });
+
+  it("refuses an answer holding a number JSON cannot carry exactly, rather than fetch a neighbouring id", () => {
+    // A row's "id":9007199254740993 became a GET for /parldok/dokument/9007199254740992
+    // and was stored with that URL (exploratory 2026-10-21, B05-3).
+    const page = (id: string): string =>
+      JSON.stringify({ success: true, data: `{"queryid":366775,"numFound":1,"docs":[{"id":${id},"lp":8,"title":"x \\"9007199254740993\\""}]}` });
+    for (const reading of [searchResults(page("9007199254740993")), firstHit(page("9007199254740993")), searchResults(page("1e400"))]) {
+      strictEqual(reading.kind, "unrecognised");
+      match(reading.kind === "unrecognised" ? reading.reason : "", /a number in the answer cannot be read exactly \((9007199254740993|1e400)\)/);
+    }
+    // Exact at the edge, and in a string, passes.
+    for (const id of ["9007199254740992", "7e4", "102282"]) strictEqual(searchResults(page(id)).kind, "found", id);
+    strictEqual(successPayload(page("9007199254740993")), undefined);
   });
 
   it("reads the first hit and its query id", () => {
