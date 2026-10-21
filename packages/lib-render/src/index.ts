@@ -244,7 +244,8 @@ export function renderMarkdown(record: KaRecord): string {
     lines.push(`- abstained fields: ${record.extraction.abstained_fields.map((field) => `\`${field}\``).join(", ")}`);
   }
   for (const source of record.source_documents) {
-    lines.push(`- source (${source.role}): ${source.url}${source.url_stable ? "" : " _(link expires upstream)_"}`);
+    const notArchived = source.sha256 === undefined ? " _(not archived — it could not be fetched)_" : "";
+    lines.push(`- source (${source.role}): ${source.url}${source.url_stable ? "" : " _(link expires upstream)_"}${notArchived}`);
   }
   return readable(lines.join("\n")) + "\n";
 }

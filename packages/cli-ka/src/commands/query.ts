@@ -106,7 +106,8 @@ export function renderShowLines(record: KaRecord): string[] {
   for (const source of record.source_documents) {
     // A URL is scraped out of upstream HTML, which makes it among the most
     // attacker-influenced strings in the record.
-    lines.push(`${source.role}: ${sanitizeForTerminal(source.url)}${source.url_stable ? "" : " (link expires upstream)"}`);
+    const notArchived = source.sha256 === undefined ? " (not archived — it could not be fetched)" : "";
+    lines.push(`${source.role}: ${sanitizeForTerminal(source.url)}${source.url_stable ? "" : " (link expires upstream)"}${notArchived}`);
   }
   return lines;
 }

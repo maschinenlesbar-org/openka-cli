@@ -91,6 +91,12 @@ describe("CSV", () => {
 });
 
 describe("Markdown", () => {
+  it("says which listed document was not archived", () => {
+    const base = sampleRecord();
+    const text = renderMarkdown(sampleRecord({ source_documents: [...base.source_documents, { role: "answer_pdf", url: "https://example.invalid/answer.pdf", url_stable: true }] }));
+    match(text, /^- source \(answer_pdf\): https:\/\/example\.invalid\/answer\.pdf _\(not archived — it could not be fetched\)_$/m);
+  });
+
   it("renders the questions and the provenance", () => {
     const text = renderMarkdown(sampleRecord());
     match(text, /^# Zustand der Brückenbauwerke/);

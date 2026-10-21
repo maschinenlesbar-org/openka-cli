@@ -155,9 +155,10 @@ describe("sync pipeline", () => {
     ok(!requests.some((request) => request.url.endsWith(".pdf")));
     strictEqual(report.warnings.filter((warning) => warning.includes("robots.txt")).length, 1);
     ok(report.warnings[0]?.includes("--ignore-robots"));
-    // The record exists, with the hole named, rather than not at all.
+    // The record exists, with the hole named, rather than not at all — and the document
+    // it lacks listed without bytes (B04-2 of 2026-10-21).
     const record = store.getRecord("berlin-19-10006");
-    deepStrictEqual(record?.source_documents, []);
+    deepStrictEqual(record?.source_documents, [{ role: "combined_pdf", url: PDF_URL, url_stable: true }]);
     ok(record?.extraction.abstained_fields.includes("full_text"));
   });
 
@@ -199,7 +200,7 @@ describe("sync pipeline", () => {
       strictEqual(report.stored, 1);
       ok(!requests.some((request) => request.url === "https://other.invalid/x.pdf"));
       ok(report.warnings.some((warning) => warning.includes("https://other.invalid disallows /x.pdf")));
-      deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, []);
+      deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, [{ role: "combined_pdf", url: PDF_URL, url_stable: true }], "listed, not archived");
     });
 
     it("is not fetched when it lands on a disallowed path of the same host", async () => {
@@ -377,7 +378,7 @@ describe("sync pipeline", () => {
         JSON.stringify(report.warnings),
       );
       const record = store.getRecord("berlin-19-10006");
-      deepStrictEqual(record?.source_documents, []);
+      deepStrictEqual(record?.source_documents, [{ role: "combined_pdf", url: PDF_URL, url_stable: true }], "listed, not archived");
       ok(record?.extraction.abstained_fields.includes("full_text"));
     });
 
@@ -769,7 +770,7 @@ describe("sync pipeline", () => {
         "rerun with --max-response-bytes 140509184 to fetch it",
     ]);
     const record = store.getRecord("berlin-19-10006");
-    deepStrictEqual(record?.source_documents, []);
+    deepStrictEqual(record?.source_documents, [{ role: "combined_pdf", url: PDF_URL, url_stable: true }], "listed, not archived");
     ok(record?.extraction.abstained_fields.includes("qa"), JSON.stringify(record?.extraction.abstained_fields));
 
     // Without a declared size, twice the cap is the suggestion.
@@ -787,6 +788,44 @@ describe("sync pipeline", () => {
       plan.warnings.includes(`1 of 1 sampled document(s) are larger than --max-response-bytes (128 MiB): ${PDF_URL} (200.0 MiB); a sync stores their records without them unless it is raised`),
       plan.warnings.join("\n"),
     );
+  });
+
+  it("keeps a document it could not fetch in the record, listed without archived bytes", async () => {
+    // DIP listed the answer 21/8737, dserver answered 404, and the record kept no trace of
+    // it: `source_documents` held only the question, and `ka show` said every answer was
+    // "not recognised" (exploratory 2026-10-21, B04-2).
+    const ANSWER_URL = "https://pardok.parlament-berlin.de/starweb/adis/citat/VT/19/SchrAnfr/S19-10006-antwort.pdf";
+    class AnswerGoneSource extends StubSource {
+      override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+        const result = await super.discover(options);
+        const ref = result.refs[0] as DocRef;
+        return { ...result, refs: [{ ...ref, documents: [{ role: "question_pdf", url: PDF_URL, urlStable: true }, { role: "answer_pdf", url: ANSWER_URL, urlStable: true }] }] };
+      }
+    }
+    const root = mkdtempSync(join(tmpdir(), "openka-gap-"));
+    try {
+      const store = new FileStore(root);
+      const { transport } = scriptedTransport([
+        { match: "robots.txt", status: 404 },
+        { match: "antwort.pdf", status: 404 },
+        { match: ".pdf", body: PDF },
+      ]);
+      const report = await sync({ source: new AnswerGoneSource(), store, engine: testEngine(transport) });
+      strictEqual(report.stored, 1, report.errors.join("\n"));
+      const record = store.getRecord("berlin-19-10006");
+      deepStrictEqual(
+        record?.source_documents.map((document) => [document.role, document.url, document.sha256 !== undefined]),
+        [["answer_pdf", ANSWER_URL, false], ["question_pdf", PDF_URL, true]].sort((a, b) => (String(a[1]) < String(b[1]) ? -1 : 1)),
+      );
+      // Reproducible: the entry is carried across a re-extraction, and the next sync is a no-op.
+      const verified = await verifyRecord("berlin-19-10006", { store, env: {} });
+      strictEqual(verified.ok, true, verified.reason ?? JSON.stringify(verified.differences));
+      strictEqual((await sync({ source: new AnswerGoneSource(), store, engine: testEngine(transport) })).unchanged, 1);
+      await sync({ source: new AnswerGoneSource(), store, engine: testEngine(transport), metadataOnly: true, force: true });
+      ok(store.getRecord("berlin-19-10006")?.source_documents.some((document) => document.url === ANSWER_URL), "a metadata-only run keeps it");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("says in a dry run which sampled documents are not there", async () => {
@@ -1013,7 +1052,11 @@ describe("sync pipeline", () => {
       const store = new MemoryStore();
       const gap = pdfs([{ match: "/d2.pdf", status: 404 }]);
       await sync({ source: fourSource(["8/1", "8/2", "8/3"]), store, engine: testEngine(gap.transport) });
-      deepStrictEqual(store.getRecord("sachsen-anhalt-8-2")?.source_documents, [], "stored without its document");
+      deepStrictEqual(
+        store.getRecord("sachsen-anhalt-8-2")?.source_documents.map((document) => document.sha256),
+        [undefined],
+        "stored without its document, which it lists unarchived",
+      );
 
       const { transport, requests } = pdfs();
       const report = await sync({ source: fourSource(), store, engine: testEngine(transport), onlyNew: true });

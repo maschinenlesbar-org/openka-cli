@@ -2309,6 +2309,15 @@ describe("ka-factory", () => {
     );
   });
 
+  it("says which listed document was not archived", () => {
+    // An answer the upstream listed and answered 404 for (exploratory 2026-10-21, B04-2).
+    const base = sampleRecord();
+    const record = sampleRecord({
+      source_documents: [...base.source_documents, { role: "answer_pdf", url: "https://example.invalid/answer.pdf", url_stable: true }],
+    });
+    ok(renderShowLines(record).includes("answer_pdf: https://example.invalid/answer.pdf (not archived — it could not be fetched)"), renderShowLines(record).join("\n"));
+  });
+
   it("says so rather than printing a blank when nothing was extracted", () => {
     const lines = renderShowLines(sampleRecord({ qa: [] }));
     ok(lines.includes("(no question/answer pairs were extracted)"));

@@ -8,7 +8,7 @@
 
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import type { FetchEngine, RetryReasons } from "@maschinenlesbar.org/openka-lib-http";
-import { currentReference, makeRecordId, parseReference, periodNumber, referenceSlug, type KaRecord } from "@maschinenlesbar.org/openka-lib-models";
+import { currentReference, makeRecordId, parseReference, periodNumber, referenceSlug, withUnfetchedDocuments, type KaRecord, type SourceDocument } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, unindexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
 import { canonicalJson, extractorVersion, sha256 } from "@maschinenlesbar.org/openka-lib-repro";
@@ -613,6 +613,8 @@ async function syncRef(
   };
 
   const documents: FetchedDocument[] = [];
+  /** Documents the source lists that are not archived: kept in the record without bytes. */
+  const unfetched: SourceDocument[] = [];
   let bytesFetched = 0;
 
   if (options.metadataOnly) {
@@ -622,7 +624,13 @@ async function syncRef(
     // one, Q/A pairs and archive links gone, and counted it as stored.
     for (const wanted of ref.documents) {
       const archived = existing?.source_documents.find((document) => document.url === wanted.url && document.sha256 !== undefined);
-      if (archived?.sha256 === undefined) continue;
+      if (archived?.sha256 === undefined) {
+        // Listed but never archived: it stays listed, as the sync that missed it left it.
+        if (existing?.source_documents.some((document) => document.url === wanted.url) === true) {
+          unfetched.push({ role: wanted.role, url: wanted.url, url_stable: wanted.urlStable });
+        }
+        continue;
+      }
       if (!store.hasBlob(archived.sha256)) {
         throw new OpenKaError(
           `${wanted.url}: the archived copy the stored record was built from is missing, and --metadata-only ` +
@@ -651,6 +659,9 @@ async function syncRef(
         const archived = existing?.source_documents.find((document) => document.url === wanted.url);
         if (archived?.sha256 === undefined) {
           if (fetched.gap !== "robots") run.warnings.push(`${ref.reference}: ${wanted.url} ${gapText(fetched)}`);
+          // Listed in the record without bytes — except a link that is several URLs glued
+          // together, which names no paper at all.
+          if (fetched.gap !== "glued") unfetched.push({ role: wanted.role, url: wanted.url, url_stable: wanted.urlStable });
           continue;
         }
         if (!store.hasBlob(archived.sha256)) {
@@ -711,6 +722,10 @@ async function syncRef(
   const extractStart = now().getTime();
   const { record } = await extract(request);
   run.watch.extractMs += Math.max(0, now().getTime() - extractStart);
+  // The record names what it lacks: an answer the upstream lists and did not serve
+  // read as "no answer text recognised", with nothing in the record saying the paper
+  // exists (exploratory 2026-10-21, B04-2).
+  if (unfetched.length > 0) record.source_documents = withUnfetchedDocuments(record.source_documents, unfetched);
   // A source that can tell whether the document is the paper the ref names says so
   // here; a mismatch stores nothing. A row and its PDF are joined only by a URL, and a
   // record that paired one paper's metadata with another's text verified fine.
@@ -793,7 +808,8 @@ function isUpToDate(existing: KaRecord, documents: FetchedDocument[], metadata: 
   for (const document of documents) {
     if (!stored.has(sha256(document.bytes))) return false;
   }
-  if (documents.length !== existing.source_documents.length) return false;
+  // A listed document without bytes (`withUnfetchedDocuments`) was not an input.
+  if (documents.length !== existing.source_documents.filter((document) => document.sha256 !== undefined).length) return false;
 
   if (existing.reference !== metadata.reference) return false;
   if (existing.legislative_period !== metadata.legislative_period) return false;

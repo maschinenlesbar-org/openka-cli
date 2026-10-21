@@ -16,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
 import { sha256 } from "@maschinenlesbar.org/openka-lib-repro";
 import { extract, type FetchedDocument } from "@maschinenlesbar.org/openka-lib-extract";
-import type { KaRecord, Tier } from "@maschinenlesbar.org/openka-lib-models";
+import { withUnfetchedDocuments, type KaRecord, type Tier } from "@maschinenlesbar.org/openka-lib-models";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { diffPaths } from "@maschinenlesbar.org/openka-lib-verify";
@@ -285,6 +285,9 @@ export async function verifyGolden(golden: Golden, perceiver?: Perceiver): Promi
     documents,
     ...(perceiver === undefined ? {} : { perceiver }),
   });
+  // A listed document without bytes was no input; the sync listed it after extracting.
+  const unfetched = golden.record.source_documents.filter((document) => document.sha256 === undefined);
+  if (unfetched.length > 0) record.source_documents = withUnfetchedDocuments(record.source_documents, unfetched);
 
   const expected = comparableRecord(golden.record);
   const actual = comparableRecord(record);

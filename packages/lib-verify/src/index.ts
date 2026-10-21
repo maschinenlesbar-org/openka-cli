@@ -7,7 +7,7 @@
 // bug — the point is that you find out.
 
 import { extract, type FetchedDocument } from "@maschinenlesbar.org/openka-lib-extract";
-import type { KaRecord, Tier } from "@maschinenlesbar.org/openka-lib-models";
+import { withUnfetchedDocuments, type KaRecord, type Tier } from "@maschinenlesbar.org/openka-lib-models";
 import type { Store } from "@maschinenlesbar.org/openka-lib-store";
 import type { Perceiver } from "@maschinenlesbar.org/openka-lib-perceive";
 import { canonicalJsonLine } from "@maschinenlesbar.org/openka-lib-repro";
@@ -149,6 +149,11 @@ export async function reextractStored(stored: KaRecord, options: VerifyOptions, 
     ...(options.perceiver !== undefined ? { perceiver: options.perceiver } : {}),
     ...(options.env !== undefined ? { env: options.env } : {}),
   });
+
+  // Documents the record lists without bytes were not inputs: the sync that missed them
+  // listed them after extracting, and so does this.
+  const unfetched = stored.source_documents.filter((document) => document.sha256 === undefined);
+  if (unfetched.length > 0) record.source_documents = withUnfetchedDocuments(record.source_documents, unfetched);
 
   // `human_verified` is the one field a human sets and re-extraction cannot
   // reproduce: it records that a person checked the holes, not that they were

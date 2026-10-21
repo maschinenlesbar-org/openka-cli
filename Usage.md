@@ -177,7 +177,10 @@ still runs over the window, and an Anfrage left out costs nothing:
   nothing was recorded, so name those with `--ref`.
 - `--only-new`: skip every Anfrage the corpus holds with all its documents, and take the
   rest: those not in the corpus, and those stored without a document (a glued link, a
-  document over the size cap, a timeout).
+  document over the size cap, a timeout). A document the source lists and the sync could
+  not fetch (a 404, robots.txt, over the size cap, not a PDF) stays in the record's
+  `source_documents` without `sha256` and `retrieved_at`, and `ka show` marks it "not
+  archived", so a record whose answer paper 404'd says that paper exists.
 
 `--ref` and `--retry-failed` together take either; `--only-new` then narrows what they
 took. `--limit` counts what discovery returns, before the selection. Such a run discovers

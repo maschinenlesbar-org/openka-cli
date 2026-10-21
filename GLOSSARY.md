@@ -91,7 +91,8 @@ is not promoted to `structured`.
 certainty. Recorded in `abstained_fields`, surfaced by `ka review`, whose queue is
 every record with an abstention that no person has marked `human_verified` yet. The project's
 central safety mechanism: a record may publish with holes, because holes are honest
-and invented content is not.
+and invented content is not. A document the source lists that could not be fetched is a
+hole too: it stays in `source_documents` without `sha256`, named rather than dropped.
 Some holes are named whatever the document: no asker (`askers`, also when a name still
 carries a party word or a bracket the parser did not understand), no question date
 (`dates.submitted` — a combined paper is dated by its answer), and for an answered

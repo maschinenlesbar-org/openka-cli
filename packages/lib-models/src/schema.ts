@@ -81,6 +81,22 @@ export interface SourceDocument {
   url_stable: boolean;
 }
 
+/**
+ * `documents` plus the `unfetched` ones — documents the source lists that were not
+ * archived (a 404, a robots.txt refusal, an answer that was not a PDF) — sorted by URL as
+ * extraction sorts them. An unfetched entry has no `sha256` and no `retrieved_at`: it
+ * names the paper the record lacks, so "no answer text recognised" is not the only trace
+ * of an answer the upstream lists and does not serve. A URL already among `documents`
+ * is not added twice.
+ */
+export function withUnfetchedDocuments(documents: readonly SourceDocument[], unfetched: readonly SourceDocument[]): SourceDocument[] {
+  const listed = new Set(documents.map((document) => document.url));
+  const added = unfetched
+    .filter((document) => !listed.has(document.url))
+    .map((document): SourceDocument => ({ role: document.role, url: document.url, url_stable: document.url_stable }));
+  return [...documents, ...added].sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+}
+
 /** A perceptual model that ran at execution time, pinned and hashed. */
 export interface ModelArtifact {
   name: string;
