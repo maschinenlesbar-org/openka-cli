@@ -107,8 +107,10 @@ everything that reads only records and the index does not. A store without the m
 (`Store.assertBlobStore` is optional) has nothing to check.
 
 `new FileStore(root)` opens a corpus or creates it on the first write — what a
-writer wants; a path that exists and is not a directory is refused when the writer takes
-the lock (`assertCorpusRoot`, a `StoreError`), not on a bare EEXIST. A reader wants `FileStore.open(root)`, which requires the corpus to be
+writer wants; a path that exists and is not a directory, or one that is not there and
+cannot be created (below a file, a dangling symbolic link, an ancestor this process may not
+write to), is refused when the writer takes the lock (`assertCorpusRoot`, a `StoreError`),
+not on a bare EEXIST, ENOTDIR or EACCES from mkdir. A reader wants `FileStore.open(root)`, which requires the corpus to be
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
 than an empty corpus that answers "no matches" for a mistyped path.
 

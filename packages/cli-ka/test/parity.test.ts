@@ -4,7 +4,7 @@
 
 import { deepStrictEqual, match, ok, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { CORPUS_ENV, FileStore, archivedDocument, corpusStats, indexRecord, markHumanVerified, resolveCorpusRoot } from "@maschinenlesbar.org/openka-lib-store";
@@ -844,6 +844,55 @@ describe("a corpus that is not there (finding 7)", () => {
     deepStrictEqual(result.cli.requests, []);
     ok(!result.lib.ok);
   });
+
+  // A corpus path that is not there and cannot be created: below a regular file, a
+  // dangling symbolic link, inside a directory nobody may write. `ka sync` ended in
+  // "Unexpected error: ENOTDIR|ENOENT|EACCES: … mkdir", exit 1, and the dry run planned
+  // the sync after three requests, exit 0 (exploratory 2026-10-21, B01-1 and B01-2).
+  const UNCREATABLE: { name: string; seed: (corpus: string) => void; path: (corpus: string) => string; reason: (corpus: string) => string }[] = [
+    {
+      name: "below a regular file",
+      seed: (corpus) => writeFileSync(join(corpus, "afile"), "x"),
+      path: (corpus) => join(corpus, "afile", "sub"),
+      reason: (corpus) => `${join(corpus, "afile", "sub")} cannot be created as a corpus: ${join(corpus, "afile")} is not a directory.`,
+    },
+    {
+      name: "a dangling symbolic link",
+      seed: (corpus) => symlinkSync(join(corpus, "nowhere"), join(corpus, "dangling")),
+      path: (corpus) => join(corpus, "dangling"),
+      reason: (corpus) =>
+        `${join(corpus, "dangling")} cannot be created as a corpus: ${join(corpus, "dangling")} is a symbolic link to ${join(corpus, "nowhere")}, which does not exist.`,
+    },
+    {
+      name: "inside a read-only directory",
+      seed: (corpus) => {
+        mkdirSync(join(corpus, "rodir"));
+        chmodSync(join(corpus, "rodir"), 0o555);
+      },
+      path: (corpus) => join(corpus, "rodir", "corpus"),
+      reason: (corpus) => `${join(corpus, "rodir", "corpus")} cannot be created as a corpus: ${join(corpus, "rodir")} is not writable.`,
+    },
+  ];
+  for (const { name, seed, path, reason } of UNCREATABLE) {
+    for (const dryRun of [false, true]) {
+      it(`refuses ${dryRun ? "a dry run" : "to sync"} into a corpus path ${name}, as a corpus problem, before any request`, async () => {
+        let cliCorpus = "";
+        const result = await parity({
+          seed,
+          argv: (corpus) => {
+            cliCorpus = corpus;
+            return ["--corpus", path(corpus), "sync", "--source", "bayern", ...(dryRun ? ["--dry-run"] : [])];
+          },
+          lib: ({ corpus }) => new FileStore(path(corpus)).lock("sync --source bayern"),
+        });
+        strictEqual(result.cli.code, EXIT_STORE, result.cli.err);
+        ok(result.cli.err.endsWith(`ERROR [ka.store] ${reason(cliCorpus)}`), result.cli.err);
+        deepStrictEqual(result.cli.requests, []);
+        ok(!result.lib.ok);
+        strictEqual(result.lib.error.name, "StoreError");
+      });
+    }
+  }
 
   it("refuses a path that is a file, not a directory, on both sides", async () => {
     let cliRoot = "";

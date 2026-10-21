@@ -90,8 +90,10 @@ ka --corpus /Volumes/STICK/openka sync --source berlin --allow-fs exfat   # a co
 
 **Look before you sync.** `--dry-run` runs discovery only — no document is downloaded,
 nothing is written, the corpus lock is not taken — and says what a sync over the window
-would do. A corpus the sync could not use (a `--corpus` that names a file, blobs on an
-unmounted drive) is refused first, as the sync would refuse it (exit 3):
+would do. A corpus the sync could not use (a `--corpus` that names a file, or a path it
+could not create — below a file, through a dangling symbolic link, inside a directory you
+may not write to; blobs on an unmounted drive) is refused first, as the sync would refuse
+it (exit 3):
 
 ```
 berlin 2026-01-01..: 2,471 Anfragen discovered, 0 already in corpus

@@ -15,7 +15,7 @@
 // be inspected with `cat`, and — crucially for the reproducibility claim — is
 // byte-identical for the same inputs regardless of the machine that wrote it.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -182,7 +182,12 @@ export class FileStore implements Store {
     // failed right here on mkdir with a bare EEXIST, which `ka sync` showed as an
     // unexpected error (exit 1) while every reader said "not a directory" (exit 3).
     this.assertCorpusRoot();
-    mkdirSync(this.root, { recursive: true });
+    try {
+      mkdirSync(this.root, { recursive: true });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new StoreError(`Could not create the corpus at ${this.root}: ${reason}`, { cause: err });
+    }
     for (let attempt = 0; ; attempt++) {
       try {
         writeFileSync(path, mine, { flag: "wx" });
@@ -309,15 +314,19 @@ export class FileStore implements Store {
 
   /**
    * What is wrong with the corpus path itself, if anything: a path that exists and is
-   * not a directory can never be a corpus. A path that is not there yet is fine — a
-   * writer creates it.
+   * not a directory can never be a corpus. A path that is not there yet is fine only
+   * when a writer can create it — its nearest existing ancestor is a directory this
+   * process may write to, and no dangling symbolic link stands in the way. Without that
+   * second half `ka sync` met such a path with a bare ENOTDIR, ENOENT or EACCES from
+   * mkdir (exit 1), its dry run planned a sync that could never run, and `ka doctor`
+   * found "no problems".
    */
   corpusRootProblem(): string | undefined {
     let stats;
     try {
       stats = statSync(this.root);
-    } catch {
-      return undefined;
+    } catch (err) {
+      return uncreatableProblem(this.root, err);
     }
     return stats.isDirectory() ? undefined : `${this.root} is not a directory, so it cannot be a corpus.`;
   }
@@ -821,4 +830,52 @@ function describeHolder(holder: LockHolder | undefined): string {
   const pid = typeof holder.pid === "number" ? `pid ${holder.pid}` : "unknown pid";
   const host = typeof holder.host === "string" ? ` on ${holder.host}` : "";
   return `${purpose}, ${pid}${host}`;
+}
+
+/**
+ * Why `root`, which `stat` could not find, cannot be created as a corpus — or undefined
+ * when a writer can create it. Walks up to the nearest existing ancestor: it must be a
+ * directory this process may write to and enter. A dangling symbolic link on the way is
+ * named as such, since mkdir cannot create through it.
+ */
+function uncreatableProblem(root: string, err: unknown): string | undefined {
+  const prefix = `${root} cannot be created as a corpus:`;
+  let path = root;
+  let code = (err as { code?: unknown }).code;
+  for (;;) {
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      const reason = err instanceof Error ? err.message : String(err);
+      return `${prefix} ${reason}`;
+    }
+    const link = danglingLinkTarget(path);
+    if (link !== undefined) return `${prefix} ${path} is a symbolic link to ${link}, which does not exist.`;
+    const parent = dirname(path);
+    if (parent === path) return undefined;
+    path = parent;
+    let stats;
+    try {
+      stats = statSync(path);
+    } catch (next) {
+      err = next;
+      code = (next as { code?: unknown }).code;
+      continue;
+    }
+    if (!stats.isDirectory()) return `${prefix} ${path} is not a directory.`;
+    try {
+      accessSync(path, constants.W_OK | constants.X_OK);
+    } catch {
+      return `${prefix} ${path} is not writable.`;
+    }
+    return undefined;
+  }
+}
+
+/** The target of `path` when it is a symbolic link to nothing, else undefined. */
+function danglingLinkTarget(path: string): string | undefined {
+  try {
+    if (!lstatSync(path).isSymbolicLink()) return undefined;
+  } catch {
+    return undefined;
+  }
+  return existsSync(path) ? undefined : resolve(dirname(path), readlinkSync(path));
 }
