@@ -784,7 +784,31 @@ describe("onRetry", () => {
       onRetry: (event) => events.push(event),
     });
     await engine.get("https://example.invalid/x");
-    deepStrictEqual(events, [{ retry: 1, maxRetries: 3, delayMs: 1000, url: "https://example.invalid/x" }]);
+    deepStrictEqual(events, [{ retry: 1, maxRetries: 3, delayMs: 1000, reason: "connection reset", url: "https://example.invalid/x" }]);
+  });
+
+  it("says what failed: a timeout, a refused connection, a name that did not resolve", async () => {
+    // Every network retry was logged as "connection reset", a timeout and a DNS failure
+    // too (exploratory 2026-10-21, B05-2).
+    const withCode = (message: string, code: string): NetworkError => new NetworkError(message, { cause: Object.assign(new Error(message), { code }) });
+    const cases: [NetworkError, string][] = [
+      [new NetworkError("Request timed out after 30000ms", { failure: "timeout" }), "timeout"],
+      [withCode("connect ECONNREFUSED 10.0.0.1:443", "ECONNREFUSED"), "connection refused"],
+      [withCode("getaddrinfo ENOTFOUND example.invalid", "ENOTFOUND"), "name not resolved"],
+      [withCode("read ECONNRESET", "ECONNRESET"), "connection reset"],
+      [withCode("connect EHOSTUNREACH 10.0.0.1:443", "EHOSTUNREACH"), "host unreachable"],
+      [new NetworkError("Response stream error: aborted"), "Response stream error: aborted"],
+    ];
+    for (const [thrown, reason] of cases) {
+      const events: RetryEvent[] = [];
+      let calls = 0;
+      const engine = testEngine(async () => {
+        if (++calls === 1) throw thrown;
+        return { status: 200, headers: {}, body: Buffer.from("ok") };
+      }, { onRetry: (event) => events.push(event) });
+      await engine.get("https://example.invalid/x");
+      deepStrictEqual(events.map((event) => event.reason), [reason]);
+    }
   });
 
   it("is never called on success, an error not retried, or when the retries are used up", async () => {

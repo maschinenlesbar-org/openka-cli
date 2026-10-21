@@ -129,6 +129,11 @@ export interface RetryEvent {
   delayMs: number;
   /** The HTTP status that caused the retry; absent for a failed connection. */
   status?: number;
+  /**
+   * For a failed connection, what failed: `timeout`, `connection refused`, `name not
+   * resolved`, `connection reset`, `host unreachable`, else the transport's message.
+   */
+  reason?: string;
   /** The URL being retried, userinfo removed. */
   url: string;
 }
@@ -296,6 +301,30 @@ function namedFailure(method: string, url: string, err: NetworkError): NetworkEr
     ...(err.bytes === undefined ? {} : { bytes: err.bytes }),
   });
   return named;
+}
+
+/** What failed on a connection, in words, for `RetryEvent.reason`. */
+function failureReason(err: unknown): string {
+  if (err instanceof NetworkError && err.failure === "timeout") return "timeout";
+  const code = (err as { code?: unknown }).code ?? (err as { cause?: { code?: unknown } }).cause?.code;
+  switch (code) {
+    case "ETIMEDOUT":
+      return "timeout";
+    case "ECONNREFUSED":
+      return "connection refused";
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      return "name not resolved";
+    case "ECONNRESET":
+    case "ECONNABORTED":
+    case "EPIPE":
+      return "connection reset";
+    case "EHOSTUNREACH":
+    case "ENETUNREACH":
+      return "host unreachable";
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return message === "socket hang up" ? "connection reset" : message;
 }
 
 /** Which `RetryReasons` a failed attempt counts towards. */
@@ -598,7 +627,7 @@ export class FetchEngine {
         if (failure === "too_large" || failure === "bad_url") break;
         if (failure === "timeout" && ++timeouts > 1) break;
         counters.retryReasons[retryReason(err)]++;
-        await this.backoff(retryDelayMs(undefined, attempt), attempt + 1, maxRetries, url);
+        await this.backoff(retryDelayMs(undefined, attempt), attempt + 1, maxRetries, url, undefined, failureReason(err));
       }
     }
     // The loop always runs once (maxRetries >= 0) and leaves only through a
@@ -632,9 +661,16 @@ export class FetchEngine {
   }
 
   /** Tell `onRetry` about a retry, then sleep, counted as waiting. A throwing hook never breaks the request. */
-  private async backoff(ms: number, retry: number, maxRetries: number, url: string, status?: number): Promise<void> {
+  private async backoff(ms: number, retry: number, maxRetries: number, url: string, status?: number, reason?: string): Promise<void> {
     try {
-      this.onRetry?.({ retry, maxRetries, delayMs: ms, ...(status === undefined ? {} : { status }), url: withoutUserinfo(url) });
+      this.onRetry?.({
+        retry,
+        maxRetries,
+        delayMs: ms,
+        ...(status === undefined ? {} : { status }),
+        ...(reason === undefined ? {} : { reason }),
+        url: withoutUserinfo(url),
+      });
     } catch {
       // a logging hook is no reason to fail the request
     }

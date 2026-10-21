@@ -162,7 +162,11 @@ export interface GlobalOptions {
   logFormat?: string;
 }
 
-/** `HTTP 503 from host: retry 1 of 3 in 2 s` (host only; whole seconds, ms under 1 s). */
+/**
+ * `HTTP 503 from host: retry 1 of 3 in 2 s`, or for a failed connection what failed —
+ * `timeout at host: …`, `connection refused at host: …` (host only; whole seconds, ms
+ * under 1 s). Every network retry used to say "connection reset".
+ */
 export function retryMessage(event: RetryEvent): string {
   let host: string;
   try {
@@ -170,9 +174,9 @@ export function retryMessage(event: RetryEvent): string {
   } catch {
     host = "the server";
   }
-  const why = event.status === undefined ? "connection reset" : `HTTP ${event.status}`;
+  const why = event.status === undefined ? `${event.reason ?? "connection failed"} at` : `HTTP ${event.status} from`;
   const wait = event.delayMs < 1000 ? `${event.delayMs} ms` : `${Math.round(event.delayMs / 1000)} s`;
-  return `${why} from ${host}: retry ${event.retry} of ${event.maxRetries} in ${wait}`;
+  return `${why} ${host}: retry ${event.retry} of ${event.maxRetries} in ${wait}`;
 }
 
 /** Translate global CLI options into engine options; each retry is a WARN record of `http`. */

@@ -45,8 +45,13 @@ describe("a retry in the log", () => {
     }
   });
 
-  it("says ms under a second, and a reset connection", () => {
+  it("says ms under a second, and what failed on the connection", () => {
     strictEqual(retryMessage({ retry: 2, maxRetries: 3, delayMs: 250, status: 429, url: "https://a.example/x" }), "HTTP 429 from a.example: retry 2 of 3 in 250 ms");
-    strictEqual(retryMessage({ retry: 1, maxRetries: 3, delayMs: 2000, url: "https://a.example/x" }), "connection reset from a.example: retry 1 of 3 in 2 s");
+    strictEqual(retryMessage({ retry: 1, maxRetries: 3, delayMs: 2000, reason: "connection reset", url: "https://a.example/x" }), "connection reset at a.example: retry 1 of 3 in 2 s");
+    // A timeout, a refused connection and a DNS failure were each "connection reset"
+    // (exploratory 2026-10-21, B05-2).
+    strictEqual(retryMessage({ retry: 1, maxRetries: 3, delayMs: 1000, reason: "timeout", url: "https://a.example/x" }), "timeout at a.example: retry 1 of 3 in 1 s");
+    strictEqual(retryMessage({ retry: 1, maxRetries: 3, delayMs: 1000, reason: "name not resolved", url: "https://a.example/x" }), "name not resolved at a.example: retry 1 of 3 in 1 s");
+    strictEqual(retryMessage({ retry: 1, maxRetries: 3, delayMs: 1000, url: "https://a.example/x" }), "connection failed at a.example: retry 1 of 3 in 1 s");
   });
 });
