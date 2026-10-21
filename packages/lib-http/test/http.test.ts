@@ -709,6 +709,39 @@ describe("a kept-alive connection the server has closed (issue #31)", () => {
   });
 });
 
+describe("a failed request names itself", () => {
+  // "8/6344 failed: Request timed out after 30000ms", "8/6344: connect ECONNREFUSED
+  // 10.0.0.1:443" — no method, host or path, while an HTTP error said "HTTP 500 for GET
+  // https://…" (exploratory 2026-10-21, B05-1).
+  it("prefixes a network failure with the method and the URL, userinfo removed, keeping its kind", async () => {
+    const refused = Object.assign(new Error("connect ECONNREFUSED 10.0.0.1:443"), { code: "ECONNREFUSED" });
+    const cases: [NetworkError, string, string | undefined][] = [
+      [new NetworkError(refused.message, { cause: refused }), "GET https://example.invalid/dokument/70000?x=1: connect ECONNREFUSED 10.0.0.1:443", undefined],
+      [new NetworkError("Request timed out after 30000ms", { failure: "timeout" }), "GET https://example.invalid/dokument/70000?x=1: Request timed out after 30000ms", "timeout"],
+      [new NetworkError("Response exceeded maxResponseBytes (10)", { failure: "too_large" }), "GET https://example.invalid/dokument/70000?x=1: Response exceeded maxResponseBytes (10)", "too_large"],
+    ];
+    for (const [thrown, message, failure] of cases) {
+      const engine = testEngine(async () => {
+        throw thrown;
+      }, { maxRetries: 0 });
+      await rejects(
+        () => engine.get("https://user:secret@example.invalid/dokument/70000?x=1"),
+        (err: unknown) => {
+          ok(err instanceof NetworkError);
+          strictEqual(err.message, message);
+          strictEqual(err.failure, failure);
+          strictEqual(err.cause, thrown);
+          return true;
+        },
+      );
+    }
+    await rejects(
+      () => testEngine(async () => { throw new NetworkError("socket hang up"); }, { maxRetries: 0 }).post("https://example.invalid/Search", { body: "q=1" }),
+      { message: "POST https://example.invalid/Search: socket hang up" },
+    );
+  });
+});
+
 describe("onRetry", () => {
   const reset = (): never => {
     throw new NetworkError("socket hang up");

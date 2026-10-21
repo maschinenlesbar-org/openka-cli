@@ -282,6 +282,22 @@ export interface RetryReasons {
 /** Socket errors that mean the connection failed, not the server's answer. */
 const CONNECTION_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNREFUSED", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH"]);
 
+/**
+ * A failed request, named: `<METHOD> <url>: <what failed>`, the URL without its
+ * userinfo. The transport's errors said only "socket hang up" or "Request timed out
+ * after 30000ms", so `ka sync` reported "8/6344 failed: read ECONNRESET" and nobody could
+ * tell which of a record's documents it was, while an HTTP error said "HTTP 500 for GET
+ * https://…". The kind (`failure`, `bytes`) is kept and the transport's error is the cause.
+ */
+function namedFailure(method: string, url: string, err: NetworkError): NetworkError {
+  const named = new NetworkError(`${method} ${withoutUserinfo(url)}: ${err.message}`, {
+    cause: err,
+    ...(err.failure === undefined ? {} : { failure: err.failure }),
+    ...(err.bytes === undefined ? {} : { bytes: err.bytes }),
+  });
+  return named;
+}
+
 /** Which `RetryReasons` a failed attempt counts towards. */
 function retryReason(err: unknown): Exclude<keyof RetryReasons, "throttled"> {
   if (err instanceof NetworkError && err.failure === "timeout") return "timeout";
@@ -588,6 +604,7 @@ export class FetchEngine {
     // The loop always runs once (maxRetries >= 0) and leaves only through a
     // caught failure, so lastError is set; the fallback still names the request
     // rather than reading "undefined".
+    if (lastError instanceof NetworkError) throw namedFailure(method, url, lastError);
     throw lastError instanceof Error ? lastError : new NetworkError(`${method} ${url} failed: ${String(lastError ?? "no attempt was made")}`);
   }
 
