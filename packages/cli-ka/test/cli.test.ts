@@ -3,8 +3,8 @@
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
-import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
+import { basename, join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } from "../src/run.js";
 import type { KaRecord } from "@maschinenlesbar.org/openka-lib-models";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
@@ -16,7 +16,7 @@ import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.j
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
-import { InterruptedRunError, defaultIO, handleOutputErrors, readSecretFrom, stdoutWriter } from "../src/io.js";
+import { InterruptedRunError, defaultIO, deferSignals, handleOutputErrors, readSecretFrom, stdoutWriter, writeOutFile } from "../src/io.js";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
@@ -2578,6 +2578,114 @@ describe("the --corpus help", () => {
         harness.cleanup();
       }
     }
+  });
+});
+
+describe("the -o file", () => {
+  // `( ulimit -f 100; ka export --format jsonl -o good.jsonl --force )` left the first
+  // 102,400 bytes under the final name and lost the complete file it replaced; a new name
+  // was left half-written (exploratory 2026-10-21, B03-2).
+  const efbig = (path: string, data: Buffer): void => {
+    writeFileSync(path, data.subarray(0, 10), { flag: "wx" });
+    throw Object.assign(new Error("EFBIG: file too large, write"), { code: "EFBIG" });
+  };
+  const inDir = (test: (dir: string) => void): void => {
+    const dir = mkdtempSync(join(tmpdir(), "openka-out-"));
+    try {
+      test(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("leaves no file under a new name when the write fails, and no temporary file", () => {
+    inDir((dir) => {
+      throws(() => writeOutFile(join(dir, "new.jsonl"), Buffer.from("x".repeat(100)), false, efbig), { code: "EFBIG" });
+      deepStrictEqual(readdirSync(dir), []);
+    });
+  });
+
+  it("keeps the file --force would replace when the write fails", () => {
+    inDir((dir) => {
+      writeFileSync(join(dir, "good.jsonl"), "complete\n");
+      throws(() => writeOutFile(join(dir, "good.jsonl"), Buffer.from("x".repeat(100)), true, efbig), { code: "EFBIG" });
+      deepStrictEqual(readdirSync(dir), ["good.jsonl"]);
+      strictEqual(readFileSync(join(dir, "good.jsonl"), "utf8"), "complete\n");
+    });
+  });
+
+  it("writes a new file whole, replaces one with --force keeping its mode, and refuses one without", () => {
+    inDir((dir) => {
+      const path = join(dir, "out.json");
+      writeOutFile(path, Buffer.from("one\n"), false);
+      strictEqual(readFileSync(path, "utf8"), "one\n");
+      throws(() => writeOutFile(path, Buffer.from("two\n"), false), { code: "EEXIST" });
+      chmodSync(path, 0o640);
+      writeOutFile(path, Buffer.from("two\n"), true);
+      strictEqual(readFileSync(path, "utf8"), "two\n");
+      strictEqual(statSync(path).mode & 0o777, 0o640);
+      throws(() => writeOutFile(dir, Buffer.from("x"), true), { code: "EISDIR" });
+      deepStrictEqual(readdirSync(dir), ["out.json"]);
+    });
+  });
+
+  it("writes through a symbolic link with --force, a dangling one too, and refuses one without", () => {
+    inDir((dir) => {
+      writeFileSync(join(dir, "target.json"), "old\n");
+      symlinkSync(join(dir, "target.json"), join(dir, "link.json"));
+      throws(() => writeOutFile(join(dir, "link.json"), Buffer.from("new\n"), false), { code: "EEXIST" });
+      writeOutFile(join(dir, "link.json"), Buffer.from("new\n"), true);
+      ok(lstatSync(join(dir, "link.json")).isSymbolicLink());
+      strictEqual(readFileSync(join(dir, "target.json"), "utf8"), "new\n");
+      symlinkSync(join(dir, "later.json"), join(dir, "dangling.json"));
+      writeOutFile(join(dir, "dangling.json"), Buffer.from("made\n"), true);
+      strictEqual(readFileSync(join(dir, "later.json"), "utf8"), "made\n");
+      deepStrictEqual(readdirSync(dir).sort(), ["dangling.json", "later.json", "link.json", "target.json"]);
+    });
+  });
+
+  it("writes a target that is no regular file in place, without --force", () => {
+    writeOutFile("/dev/null", Buffer.from("x\n"), false);
+  });
+
+  it("keeps a temporary name within NAME_MAX for a long file name", () => {
+    inDir((dir) => {
+      const path = join(dir, `${"n".repeat(250)}.json`);
+      writeOutFile(path, Buffer.from("x\n"), false, (temporary, data) => {
+        ok(Buffer.byteLength(basename(temporary)) <= 255, basename(temporary));
+        writeFileSync(temporary, data, { flag: "wx" });
+      });
+      strictEqual(readFileSync(path, "utf8"), "x\n");
+    });
+  });
+
+  it("finishes the write before a SIGINT, SIGTERM or SIGHUP ends the run with 130, 143 or 129", () => {
+    for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+      const signals = new EventEmitter();
+      const exits: number[] = [];
+      let finished = false;
+      deferSignals(
+        () => {
+          signals.emit(signal);
+          strictEqual(exits.length, 0, "not while the file is half written");
+          finished = true;
+        },
+        { signals, exit: (status) => void exits.push(status) },
+      );
+      ok(finished);
+      deepStrictEqual(exits, [code]);
+      strictEqual(signals.listenerCount(signal), 0);
+    }
+    // A real signal arrives on the event loop, after the write: the listeners wait for it.
+    const signals = new EventEmitter();
+    const exits: number[] = [];
+    const later: (() => void)[] = [];
+    deferSignals(() => undefined, { signals, exit: (status) => void exits.push(status), later: (task) => void later.push(task) });
+    deepStrictEqual(exits, []);
+    signals.emit("SIGTERM");
+    deepStrictEqual(exits, [143]);
+    for (const task of later) task();
+    strictEqual(signals.listenerCount("SIGINT") + signals.listenerCount("SIGTERM") + signals.listenerCount("SIGHUP"), 0);
   });
 });
 

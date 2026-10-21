@@ -3,8 +3,25 @@
 // test with a temporary corpus, a mocked transport and captured output — no
 // subprocess, no network, no clock.
 
-import { appendFileSync, fstatSync, mkdirSync, writeFileSync, writeSync } from "node:fs";
-import { dirname } from "node:path";
+import {
+  appendFileSync,
+  chmodSync,
+  closeSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+  type Stats,
+} from "node:fs";
+import { randomBytes } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
 import { FileStore, systemVolumes, type FileStoreOptions, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { FetchEngine, type EngineOptions } from "@maschinenlesbar.org/openka-lib-http";
@@ -22,8 +39,9 @@ export interface CliIO {
   /** Write to stderr without a newline — only for redrawing a progress line on a terminal. */
   errPartial?(text: string): void;
   /**
-   * Write a file. Without `overwrite` the file must not exist yet: an exclusive
-   * create, which also never follows a symlink at the path.
+   * Write the `-o` file: whole or not at all (`writeOutFile`). Without `overwrite` the
+   * file must not exist yet (EEXIST), a symbolic link included; with it, a link is
+   * written through. A device or a FIFO is written in place.
    */
   writeFile(path: string, data: Buffer, options?: { overwrite?: boolean }): void;
   /**
@@ -154,6 +172,151 @@ function isRegularFile(fd: number): boolean {
     return fstatSync(fd).isFile();
   } catch {
     return false;
+  }
+}
+
+/** How `writeOutFile` writes the temporary file: an exclusive create. Injected by tests. */
+export type WriteNewFile = (path: string, data: Buffer) => void;
+
+const writeNewFile: WriteNewFile = (path, data) => writeFileSync(path, data, { flag: "wx" });
+
+/** The longest file name most filesystems take, in bytes. */
+const NAME_MAX = 255;
+
+/**
+ * Write `data` to the `-o` file so that it is either the whole new output or what it was
+ * before. `( ulimit -f 100; ka export -o good.jsonl --force )` used to leave the first
+ * 102,400 bytes under the final name — a new file half-written, a complete one replaced
+ * by half of the next.
+ *
+ * - A regular file (or a name not there yet) gets a temporary file beside it, created
+ *   exclusively and renamed over it. A new name is claimed first with an exclusive
+ *   create, so a file that appears meanwhile is refused (EEXIST) as one that was there,
+ *   and the claim is removed again if the write fails. A replaced file keeps its mode.
+ * - An existing name needs `overwrite` (`--force`): EEXIST otherwise. With it, a symbolic
+ *   link is written through — its target is replaced, a dangling link's target created —
+ *   and the link stays a link, as a shell's `>` would leave it.
+ * - A target that is no regular file — `/dev/null`, a FIFO, a socket, `/dev/stdout`,
+ *   anything under `/dev/` — is written in place, and needs no `--force`: nothing that
+ *   existed can be lost.
+ * - A directory is EISDIR.
+ */
+export function writeOutFile(path: string, data: Buffer, overwrite: boolean, write: WriteNewFile = writeNewFile): void {
+  const entry = lstatOrUndefined(path);
+  if (entry === undefined) return replaceAtomically(path, data, true, write);
+  const followed = entry.isSymbolicLink() ? statOrUndefined(path) : entry;
+  if (followed?.isDirectory() === true) {
+    throw Object.assign(new Error(`EISDIR: illegal operation on a directory, open '${path}'`), { code: "EISDIR" });
+  }
+  if ((followed !== undefined && !followed.isFile()) || isDevicePath(path)) {
+    writeFileSync(path, data);
+    return;
+  }
+  if (!overwrite) throw Object.assign(new Error(`EEXIST: file already exists, open '${path}'`), { code: "EEXIST" });
+  if (!entry.isSymbolicLink()) return replaceAtomically(path, data, false, write);
+  const target = followed === undefined ? linkChainEnd(path) : realpathSync(path);
+  replaceAtomically(target, data, followed === undefined, write);
+}
+
+function replaceAtomically(target: string, data: Buffer, claim: boolean, write: WriteNewFile): void {
+  if (claim) closeSync(openSync(target, "wx"));
+  const temporary = temporaryPath(target);
+  try {
+    write(temporary, data);
+    if (!claim) chmodSync(temporary, statSync(target).mode & 0o7777);
+    renameSync(temporary, target);
+  } catch (err) {
+    rmSync(temporary, { force: true });
+    if (claim) rmSync(target, { force: true });
+    throw err;
+  }
+}
+
+/** `.<name>.<pid>-<random>.tmp` beside `target`, the name shortened to stay within NAME_MAX. */
+function temporaryPath(target: string): string {
+  const suffix = `.${process.pid}-${randomBytes(4).toString("hex")}.tmp`;
+  let name = basename(target);
+  while (Buffer.byteLength(`.${name}${suffix}`) > NAME_MAX) name = [...name].slice(0, -1).join("");
+  return join(dirname(target), `.${name}${suffix}`);
+}
+
+/** Where a chain of symbolic links ends, when it ends at a name that is not there. */
+function linkChainEnd(path: string): string {
+  let current = resolve(path);
+  for (let hops = 0; hops < 40; hops++) {
+    const entry = lstatOrUndefined(current);
+    if (entry === undefined || !entry.isSymbolicLink()) return current;
+    current = resolve(dirname(current), readlinkSync(current));
+  }
+  throw Object.assign(new Error(`ELOOP: too many symbolic links, open '${path}'`), { code: "ELOOP" });
+}
+
+function isDevicePath(path: string): boolean {
+  const absolute = resolve(path);
+  return absolute.startsWith("/dev/") || absolute.startsWith("/proc/");
+}
+
+function lstatOrUndefined(path: string): Stats | undefined {
+  try {
+    return lstatSync(path);
+  } catch (err) {
+    if ((err as { code?: unknown }).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
+function statOrUndefined(path: string): Stats | undefined {
+  try {
+    return statSync(path);
+  } catch (err) {
+    if ((err as { code?: unknown }).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
+/** The signals an `-o` write finishes before, and the exit codes the shell gives them. */
+const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
+
+export interface DeferSignalsOptions {
+  signals?: Pick<NodeJS.EventEmitter, "on" | "removeListener">;
+  exit?: (code: number) => void;
+  /** When the listeners go: after the signals a write held back have been delivered. */
+  later?: (task: () => void) => void;
+}
+
+/**
+ * Run `write` with SIGINT, SIGTERM and SIGHUP held back, then end the run with 130, 143
+ * or 129 if one came. Without a listener, Node ends the process at once, in the middle
+ * of a synchronous write — leaving the claimed name and the temporary file behind. A
+ * signal is delivered on the event loop, after `write` returns, so the listeners stay
+ * until the next turn of the loop (`later`) to receive it.
+ */
+export function deferSignals<T>(write: () => T, options: DeferSignalsOptions = {}): T {
+  const signals = options.signals ?? process;
+  const exit = options.exit ?? ((code: number) => process.exit(code));
+  let running = true;
+  let received: keyof typeof SIGNAL_EXIT | undefined;
+  const listeners = (Object.keys(SIGNAL_EXIT) as (keyof typeof SIGNAL_EXIT)[]).map((signal) => {
+    const listener = (): void => {
+      if (running) received ??= signal;
+      else exit(SIGNAL_EXIT[signal]);
+    };
+    signals.on(signal, listener);
+    return [signal, listener] as const;
+  });
+  const remove = (): void => {
+    for (const [signal, listener] of listeners) signals.removeListener(signal, listener);
+  };
+  try {
+    return write();
+  } finally {
+    running = false;
+    if (received !== undefined) {
+      remove();
+      exit(SIGNAL_EXIT[received]);
+    } else {
+      (options.later ?? ((task) => void setImmediate(task)))(remove);
+    }
   }
 }
 
@@ -315,7 +478,7 @@ export const defaultIO: CliIO = {
   err: (text) => process.stderr.write(text + "\n"),
   errIsTerminal: process.stderr.isTTY === true,
   errPartial: (text) => process.stderr.write(text),
-  writeFile: (path, data, options) => writeFileSync(path, data, { flag: options?.overwrite === true ? "w" : "wx" }),
+  writeFile: (path, data, options) => deferSignals(() => writeOutFile(path, data, options?.overwrite === true)),
   appendFile: (path, text) => {
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, text);

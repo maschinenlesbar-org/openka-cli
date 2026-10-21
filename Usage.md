@@ -614,7 +614,14 @@ A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here
 `ka search`, rather than a selection of every record.
 
 `-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
-An existing file is not replaced unless `--force` is given.
+An existing file is not replaced unless `--force` is given; with it, a symbolic link is
+written through (its target replaced, or created when the link dangles). The file is
+written whole or not at all: the output goes to a temporary file beside it, renamed into
+place, so a write that fails (a full disk, `ulimit -f`) leaves no half file under the name,
+and the file `--force` would have replaced stays as it was. Ctrl-C, SIGTERM or SIGHUP
+during the write lets it finish, then ends the run (exit 130, 143, 129). A target that is
+no regular file — `/dev/null`, a FIFO, `/dev/stdout` — is written in place and needs no
+`--force`.
 
 ## `ka status`
 
