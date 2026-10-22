@@ -1,5 +1,5 @@
 {
-  "extractor_version": "pkg:0.12.0+extract:7f1209dc8e97",
+  "extractor_version": "pkg:0.13.0+extract:7f1209dc8e97",
   "human_verified": false,
   "id": "berlin-19-21204",
   "note": "question numbers run into their text (1.2.Welche …), read when the heading asks within three lines (issue #9)",
