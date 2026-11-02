@@ -26,7 +26,12 @@ charged to its `DecodeBudget` (`MAX_DECODED_BYTES`), so eight bombs under the
 per-stream cap still stop at the document's. A Form XObject that draws itself fans
 out exponentially within any depth limit, so `InterpretBudget` counts form
 invocations and interpreted content bytes across a whole document. A page that
-exceeds it is refused and named in `problems`, like an undecodable stream.
+exceeds it is refused and named in `problems`, like an undecodable stream. A
+`/ToUnicode` CMap's work is not proportional to its size either — one `bfrange` line
+can stand for 65,536 mappings — so every mapping the document's CMaps generate is
+charged to its `MappingBudget` (`MAX_TOUNICODE_MAPPINGS`, a million), a CMap is
+parsed once however many fonts share it, and a font whose CMap exceeds the budget
+is unmappable: its page abstains rather than being read through the base encoding.
 
 **A file that stops early says so.** `extractPdfText` reports `truncated` (no
 `%%EOF` in the last 1024 bytes), `unreadPages` (pages naming content the file does not
@@ -54,7 +59,7 @@ document turns into, so `npm run stamp` and a golden re-freeze are required.
 Everything is re-exported from the package root:
 
 ```
-PdfPage, LostObjectStream, PdfDocument, WIN_ANSI, MAC_ROMAN, STANDARD, baseEncoding, glyphToUnicode, ToUnicodeMap, parseToUnicode, Resolver, IMAGE_FILTERS, decodeStream, filterChain, MAX_INFLATED_BYTES, MAX_DECODED_BYTES, DecodeBudget, DecodeLimitError, inflate, applyPredictor, asciiHexDecode, ascii85Decode, runLengthDecode, lzwDecode, GLYPH_SPACE, Font, FontCache, PdfPageText, PdfTextResult, PAGE_SEPARATOR, extractPdfText, PdfImage, extractPdfImages, isWhitespace, isDelimiter, PdfKeyword, LexValue, isKeyword, MAX_NESTING_DEPTH, Lexer, PdfName, PdfString, PdfRef, PdfDict, PdfStream, PdfValue, name, isName, isRef, isStream, isString, isDict, WORD_GAP_EM, LINE_TOLERANCE_EM, normalizeSpaces, Matrix, multiply, TextExtractionResult, newFontCache, extractContentText, assemble, InterpretBudget, BudgetExceededError, MAX_FORM_INVOCATIONS, MAX_INTERPRETED_BYTES
+PdfPage, LostObjectStream, PdfDocument, WIN_ANSI, MAC_ROMAN, STANDARD, baseEncoding, glyphToUnicode, ToUnicodeMap, MAX_TOUNICODE_MAPPINGS, MappingBudget, CMapBudgetError, parseToUnicode, Resolver, IMAGE_FILTERS, decodeStream, filterChain, MAX_INFLATED_BYTES, MAX_DECODED_BYTES, DecodeBudget, DecodeLimitError, inflate, applyPredictor, asciiHexDecode, ascii85Decode, runLengthDecode, lzwDecode, GLYPH_SPACE, Font, FontCache, PdfPageText, PdfTextResult, PAGE_SEPARATOR, extractPdfText, PdfImage, extractPdfImages, isWhitespace, isDelimiter, PdfKeyword, LexValue, isKeyword, MAX_NESTING_DEPTH, Lexer, PdfName, PdfString, PdfRef, PdfDict, PdfStream, PdfValue, name, isName, isRef, isStream, isString, isDict, WORD_GAP_EM, LINE_TOLERANCE_EM, normalizeSpaces, Matrix, multiply, TextExtractionResult, newFontCache, extractContentText, assemble, InterpretBudget, BudgetExceededError, MAX_FORM_INVOCATIONS, MAX_INTERPRETED_BYTES
 ```
 
 ## Depends on

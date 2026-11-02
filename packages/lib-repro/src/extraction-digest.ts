@@ -6,4 +6,4 @@
 // produces it and a test fails when the two disagree, so the value cannot go stale
 // unnoticed — which is the whole point: the previous stamp could not move on its
 // own, and so it never did.
-export const EXTRACTION_DIGEST = "7f1209dc8e97";
+export const EXTRACTION_DIGEST = "6da34b17b70d";

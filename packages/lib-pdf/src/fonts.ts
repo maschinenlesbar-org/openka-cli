@@ -8,9 +8,9 @@
 // a measured number, and a space is inserted when there is really a space.
 
 import { decodeStream } from "./filters.js";
-import { baseEncoding, glyphToUnicode, parseToUnicode, type ToUnicodeMap } from "./encoding.js";
+import { CMapBudgetError, baseEncoding, glyphToUnicode, parseToUnicode, type ToUnicodeMap } from "./encoding.js";
 import type { PdfDocument } from "./document.js";
-import { isDict, isName, isStream, type PdfDict } from "./objects.js";
+import { isDict, isName, isStream, type PdfDict, type PdfStream } from "./objects.js";
 
 /** Glyph space is 1/1000 of text space for every font type PDF supports. */
 export const GLYPH_SPACE = 1000;
@@ -34,8 +34,16 @@ const UNMAPPABLE: Font = {
   unmappable: true,
 };
 
+/** A /ToUnicode CMap abandoned for asking more work than `MAX_TOUNICODE_MAPPINGS` allows. */
+const REFUSED = "refused";
+
 export class FontCache {
   private readonly cache = new Map<PdfDict, Font>();
+  /**
+   * Parsed /ToUnicode streams. Many fonts of one file often share a stream, and it
+   * used to be parsed once per font dictionary — so a costly CMap cost once per font.
+   */
+  private readonly toUnicode = new Map<PdfStream, ToUnicodeMap | typeof REFUSED | undefined>();
   /** Resource names whose font could not be mapped. */
   readonly unmappable = new Set<string>();
 
@@ -55,6 +63,9 @@ export class FontCache {
 
   private build(dict: PdfDict): Font {
     const toUnicode = this.loadToUnicode(dict);
+    // A CMap that blew the budget is a hostile or broken file: reading the codes
+    // through the base encoding instead would be a guess, so the font abstains.
+    if (toUnicode === REFUSED) return UNMAPPABLE;
     return isName(this.doc.get(dict, "Subtype"), "Type0")
       ? this.buildComposite(dict, toUnicode)
       : this.buildSimple(dict, toUnicode);
@@ -152,14 +163,20 @@ export class FontCache {
     };
   }
 
-  private loadToUnicode(dict: PdfDict): ToUnicodeMap | undefined {
+  private loadToUnicode(dict: PdfDict): ToUnicodeMap | typeof REFUSED | undefined {
     const stream = this.doc.resolve(dict.get("ToUnicode"));
     if (!isStream(stream)) return undefined;
+    if (this.toUnicode.has(stream)) return this.toUnicode.get(stream);
+    let parsed: ToUnicodeMap | typeof REFUSED | undefined;
     try {
-      return parseToUnicode(decodeStream(stream, (value) => this.doc.resolve(value)));
-    } catch {
-      return undefined;
+      // Charged to the document's budgets like every other stream it decodes.
+      const data = decodeStream(stream, (value) => this.doc.resolve(value), this.doc.decodeBudget);
+      parsed = parseToUnicode(data, this.doc.mappingBudget);
+    } catch (err) {
+      parsed = err instanceof CMapBudgetError ? REFUSED : undefined;
     }
+    this.toUnicode.set(stream, parsed);
+    return parsed;
   }
 
   /** Byte -> code point for a simple font: base encoding plus /Differences. */

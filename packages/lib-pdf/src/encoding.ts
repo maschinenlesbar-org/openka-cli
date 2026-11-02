@@ -163,11 +163,45 @@ function bufferToCode(bytes: Buffer): number {
 }
 
 /**
+ * How many code mappings the /ToUnicode CMaps of one document may generate, all its
+ * fonts together. One `bfrange` line can expand to 65,536 mappings, so the work of a
+ * CMap is not proportional to its size: a 973-byte file of 2,000 full ranges took
+ * 14 s to parse, and the largest CMap the inflate cap lets through about a day
+ * (security audit 2026-10-27). A complete two-byte Identity map is 65,536 entries,
+ * and real Drucksachen carry a handful of fonts with a few hundred each, so a
+ * million leaves room for fifteen full Identity maps and stops a hostile file at
+ * a fraction of a second.
+ */
+export const MAX_TOUNICODE_MAPPINGS = 1_000_000;
+
+/** What the CMaps of one document are charged to — see `MAX_TOUNICODE_MAPPINGS`. */
+export class MappingBudget {
+  used = 0;
+  constructor(readonly max: number = MAX_TOUNICODE_MAPPINGS) {}
+
+  /** Charge `count` mappings; throws once the budget is spent, before the work is done. */
+  charge(count: number): void {
+    this.used += count;
+    if (this.used > this.max) {
+      throw new CMapBudgetError(`ToUnicode CMap refused: more than ${this.max} code mappings in one document`);
+    }
+  }
+}
+
+/** A CMap abandoned because it asked for more mappings than the budget allows. */
+export class CMapBudgetError extends Error {
+  override readonly name = "CMapBudgetError";
+}
+
+/**
  * Parse a /ToUnicode CMap stream. Only the constructs PDF producers emit for text
  * extraction are handled — codespace ranges, bfchar and bfrange. Anything else is
  * skipped rather than approximated.
+ *
+ * Every entry is charged to `budget` (a range by the codes it covers, before they
+ * are generated), and the parse throws `CMapBudgetError` when it is spent.
  */
-export function parseToUnicode(data: Buffer): ToUnicodeMap {
+export function parseToUnicode(data: Buffer, budget: MappingBudget = new MappingBudget()): ToUnicodeMap {
   const map = new Map<number, string>();
   let codeBytes = 1;
   const lexer = new Lexer(data, 0);
@@ -194,6 +228,7 @@ export function parseToUnicode(data: Buffer): ToUnicodeMap {
           if (src === undefined || isKeyword(src)) break;
           const dst = lexer.next();
           if (dst === undefined || isKeyword(dst)) break;
+          budget.charge(1);
           if (isString(src as PdfValue) && isString(dst as PdfValue)) {
             map.set(bufferToCode((src as { bytes: Buffer }).bytes), bufferToString((dst as { bytes: Buffer }).bytes));
           }
@@ -209,18 +244,28 @@ export function parseToUnicode(data: Buffer): ToUnicodeMap {
           if (hi === undefined || isKeyword(hi)) break;
           const dst = lexer.next();
           if (dst === undefined || isKeyword(dst)) break;
-          if (!isString(lo as PdfValue) || !isString(hi as PdfValue)) continue;
+          if (!isString(lo as PdfValue) || !isString(hi as PdfValue)) {
+            budget.charge(1);
+            continue;
+          }
           const start = bufferToCode((lo as { bytes: Buffer }).bytes);
           const end = bufferToCode((hi as { bytes: Buffer }).bytes);
-          if (end < start || end - start > 65_535) continue;
+          if (end < start || end - start > 65_535) {
+            budget.charge(1);
+            continue;
+          }
           if (isString(dst as PdfValue)) {
+            budget.charge(end - start + 1);
             const base = (dst as { bytes: Buffer }).bytes;
+            // One working copy per range: only its last code unit moves.
+            const shifted = Buffer.from(base);
+            const last = shifted.length >= 2 ? shifted.readUInt16BE(shifted.length - 2) : 0;
             for (let code = start; code <= end; code++) {
-              const shifted = Buffer.from(base);
-              if (shifted.length >= 2) shifted.writeUInt16BE((shifted.readUInt16BE(shifted.length - 2) + (code - start)) & 0xffff, shifted.length - 2);
+              if (shifted.length >= 2) shifted.writeUInt16BE((last + (code - start)) & 0xffff, shifted.length - 2);
               map.set(code, bufferToString(shifted));
             }
           } else if (Array.isArray(dst)) {
+            budget.charge(Math.max(1, dst.length));
             dst.forEach((item, i) => {
               if (isString(item)) map.set(start + i, bufferToString(item.bytes));
             });

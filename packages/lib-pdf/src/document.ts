@@ -11,6 +11,7 @@
 import { ParseError } from "@maschinenlesbar.org/openka-lib-errors";
 import { DecodeBudget, decodeStream, filterChain } from "./filters.js";
 import { Lexer } from "./lexer.js";
+import { MappingBudget } from "./encoding.js";
 import {
   isDict,
   isName,
@@ -65,6 +66,8 @@ export class PdfDocument {
   readonly encrypted: boolean;
   /** What every stream this document decodes is charged to — see `MAX_DECODED_BYTES`. */
   readonly decodeBudget = new DecodeBudget();
+  /** What every /ToUnicode CMap this document parses is charged to — see `MAX_TOUNICODE_MAPPINGS`. */
+  readonly mappingBudget = new MappingBudget();
 
   private constructor(readonly buf: Buffer) {
     this.scanObjects();

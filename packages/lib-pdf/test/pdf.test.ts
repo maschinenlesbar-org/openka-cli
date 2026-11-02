@@ -20,7 +20,7 @@ import {
   lzwDecode,
   runLengthDecode,
 } from "../src/filters.js";
-import { baseEncoding, glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/encoding.js";
+import { MAX_TOUNICODE_MAPPINGS, MappingBudget, baseEncoding, glyphToUnicode, parseToUnicode, WIN_ANSI } from "../src/encoding.js";
 import { multiply, assemble, normalizeSpaces } from "../src/text.js";
 import {
   InterpretBudget,
@@ -792,5 +792,68 @@ describe("an encoding the reader does not model", () => {
     for (const name of ["WinAnsiEncoding", "MacRomanEncoding", "StandardEncoding", undefined]) {
       ok(baseEncoding(name) !== undefined, `${String(name)} should be modelled`);
     }
+  });
+});
+
+describe("a ToUnicode CMap that asks for unbounded work", () => {
+  // Security audit 2026-10-27: one `bfrange` line may expand to 65,536 mappings, and
+  // nothing bounded the lines, so a 973-byte PDF of 2,000 full ranges pinned
+  // extraction for 14 s and a 611 KB one for about a day. The mappings are now
+  // charged to a document-wide budget, and a CMap that exceeds it is abandoned.
+  const fullRanges = (lines: number): string =>
+    `1 begincodespacerange <00> <FF> endcodespacerange\n${lines} beginbfrange\n` +
+    "<0000> <FFFF> <0000>\n".repeat(lines) +
+    "endbfrange\n";
+
+  /** A page drawing "A" once with each of `fonts` simple fonts that share one /ToUnicode stream. */
+  const sharedCMapPdf = (cmap: string, fonts: number): Buffer => {
+    const names = Array.from({ length: fonts }, (_, i) => `F${i + 1}`);
+    const content = `BT 12 TL 72 720 Td ${names.map((name) => `/${name} 12 Tf (A) Tj`).join(" ")} ET`;
+    const fontObjects = names.map(
+      (_, i) => `${i + 6} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 5 0 R >> endobj`,
+    );
+    return Buffer.from(
+      [
+        "%PDF-1.4",
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        `3 0 obj << /Type /Page /Parent 2 0 R /Resources << /Font << ${names.map((name, i) => `/${name} ${i + 6} 0 R`).join(" ")} >> >> /Contents 4 0 R >> endobj`,
+        `4 0 obj << /Length ${content.length} >> stream\n${content}\nendstream endobj`,
+        `5 0 obj << /Length ${cmap.length} >> stream\n${cmap}\nendstream endobj`,
+        ...fontObjects,
+        "trailer << /Root 1 0 R >>",
+        "%%EOF",
+      ].join("\n"),
+      "latin1",
+    );
+  };
+
+  it("stops parsing once the mappings exceed the budget", () => {
+    const started = performance.now();
+    throws(() => parseToUnicode(Buffer.from(fullRanges(2_000), "latin1")), /ToUnicode CMap/);
+    ok(performance.now() - started < 1_000, "the parse should stop at the budget, not run every line");
+  });
+
+  it("charges every mapping to the budget it is given", () => {
+    const budget = new MappingBudget();
+    parseToUnicode(Buffer.from(fullRanges(2), "latin1"), budget);
+    strictEqual(budget.used, 2 * 65_536);
+    ok(MAX_TOUNICODE_MAPPINGS >= 65_536 * 8, "a few full Identity ranges must still fit");
+  });
+
+  it("abstains on a font whose CMap blew the budget, quickly", () => {
+    const started = performance.now();
+    const result = extractPdfText(sharedCMapPdf(fullRanges(2_000), 1));
+    ok(performance.now() - started < 1_000, "extraction should stop at the budget");
+    strictEqual(result.text, "");
+    match(result.problems.join("\n"), /no usable encoding for font\(s\) F1/);
+  });
+
+  it("parses a CMap shared by many fonts once", () => {
+    // 20 fonts x 65,536 mappings would exceed the budget if each font parsed the
+    // stream again; parsed once, it is 65,536.
+    const result = extractPdfText(sharedCMapPdf(fullRanges(1), 20));
+    strictEqual(result.text, "A".repeat(20));
+    deepStrictEqual(result.problems, []);
   });
 });

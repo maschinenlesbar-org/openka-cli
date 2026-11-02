@@ -659,7 +659,11 @@ they need reading quickly. What it does and does not do:
   Q/A pair of ten, marked `ok`.
 - **Fonts** — `ToUnicode` first, then a base encoding plus `/Differences` through a
   glyph-name table. Glyph *widths* are read from `/Widths` and `/W`, which is what
-  makes word breaks measured rather than guessed.
+  makes word breaks measured rather than guessed. A `ToUnicode` CMap is parsed once
+  per stream and charged, mapping by mapping, to the document's `MappingBudget`
+  (`MAX_TOUNICODE_MAPPINGS`, a million): a 973-byte file of 2,000 full `bfrange` lines
+  used to pin extraction for 14 s. A font whose CMap exceeds it is unmappable, so the
+  page abstains (security audit 2026-10-27).
 - **Text assembly** (`text.ts`) — runs are collected with their device positions,
   grouped into lines by baseline, ordered by x, and joined with a space where the
   measured gap exceeds `WORD_GAP_EM`. This is not over-engineering: Berlin's PDFs
