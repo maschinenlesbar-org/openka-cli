@@ -14,6 +14,12 @@ it.
 
 `html.ts` is not a DOM. It is a small set of deterministic scanners over markup whose
 class names are the contract — a fragile contract, and the design says so out loud.
+Every scan is linear in the markup: inside a tag a pattern takes anything but `<`, `>`
+and a quote, or a whole quoted value (which may hold both — the Parlamentsspiegel's
+tooltips do), so a scan stops at the first unquoted `<` and a body whose tags never
+close cannot make it quadratic (140 KB used to block the event loop for ~4 s).
+`classTagPattern(tags, cls)` builds such an opening-tag pattern for a connector's own
+markers.
 `xml.ts` is a dependency-free reader for the subset the parliamentary exports
 actually use; it is not validating and does not pretend to be.
 
@@ -35,7 +41,7 @@ adapter sets them today.
 Everything is re-exported from the package root:
 
 ```
-DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements, describeRequestFloor, floorKeptNote
+DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, classTagPattern, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements, describeRequestFloor, floorKeptNote
 ```
 
 **Counting the upstream.** A `Source` may implement `count({ engine, period?, apiKey? })`:

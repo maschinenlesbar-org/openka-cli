@@ -4,6 +4,13 @@
 // are the contract. That is a fragile contract, and the design says so out loud —
 // when it breaks, discovery yields zero refs, which is exactly the drift signal
 // `ka-factory drift` watches for, and repairing the selectors is a factory job.
+//
+// Every scan is linear in the markup. Inside a tag, a pattern takes anything but `<`,
+// `>` and a quote, or a whole quoted value, which may hold both (`TAG_BODY`) — the
+// Parlamentsspiegel's tooltips carry `title="<b>Keine</b> …"`. An unanchored `[^>]*`
+// ran from every tag start to the end of a body that never closes its tags, so 140 KB
+// of `<div a ` blocked the event loop for ~4 s and a few MB for tens of minutes
+// (security audit 2026-10-27); a scan now stops at the first unquoted `<`.
 
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 
@@ -45,7 +52,26 @@ export function decodeHtml(text: string): string {
 
 /** Strip tags and collapse whitespace — the text a reader would see. */
 export function textOf(html: string): string {
-  return stripControlCharacters(decodeHtml(html.replace(/<[^>]*>/g, " "))).replace(/\s+/g, " ").trim();
+  return stripControlCharacters(decodeHtml(stripTags(html))).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Every `<…>` replaced by a space — what `/<[^>]*>/g` does, in one pass: a tag runs
+ * from a `<` to the first `>` after it, and once no `>` follows, no later `<` can
+ * close either, so the rest is kept as written instead of rescanned from each `<`.
+ */
+function stripTags(html: string): string {
+  let out = "";
+  let kept = 0;
+  for (;;) {
+    const open = html.indexOf("<", kept);
+    if (open === -1) break;
+    const close = html.indexOf(">", open + 1);
+    if (close === -1) break;
+    out += html.slice(kept, open) + " ";
+    kept = close + 1;
+  }
+  return out + html.slice(kept);
 }
 
 /**
@@ -71,21 +97,22 @@ export function visibleTextOf(html: string): string {
  * function exists to prevent.
  */
 export function stripHidden(html: string): string {
-  const opener = /<(span|div|p)\b[^>]*\sclass="(?:[^"]*\s)?d-none(?:\s[^"]*)?"[^>]*>/i;
-  let out = html;
-  // Each pass replaces an element with a single space, so the string strictly
-  // shrinks and the loop cannot run away; the bound is a sanity rail, not a
-  // policy. It used to be 100, which silently stopped stripping on a fragment
-  // with more hidden elements than that and returned half-stripped markup — the
-  // exact defect this function exists to prevent, with no signal that it happened.
-  for (let guard = 0; guard <= html.length; guard++) {
-    const match = opener.exec(out);
-    if (match === null) break;
+  const opener = classTagPattern("(span|div|p)\\b", "d-none", "gi");
+  // One forward pass: each hidden element, contents and all, becomes a single space,
+  // and the scan goes on after it. It used to rescan from the start after every
+  // element (with a guard of 100 that once stopped half-way and leaked the hidden
+  // date); every element is stripped, however many there are.
+  let out = "";
+  let kept = 0;
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(html)) !== null) {
     const tag = (match[1] as string).toLowerCase();
-    const end = endOfElement(out, match.index + match[0].length, tag);
-    out = out.slice(0, match.index) + " " + out.slice(end);
+    const end = endOfElement(html, match.index + match[0].length, tag);
+    out += html.slice(kept, match.index) + " ";
+    kept = end;
+    opener.lastIndex = end;
   }
-  return out;
+  return out + html.slice(kept);
 }
 
 /**
@@ -94,7 +121,7 @@ export function stripHidden(html: string): string {
  * when the document does not close it.
  */
 function endOfElement(html: string, from: number, tag: string): number {
-  const scanner = new RegExp(`<(/?)${tag}\\b[^>]*?(/?)>`, "gi");
+  const scanner = new RegExp(`<(/?)${tag}\\b${TAG_BODY_LAZY}(/?)>`, "gi");
   scanner.lastIndex = from;
   let depth = 1;
   let match: RegExpExecArray | null;
@@ -112,7 +139,7 @@ function endOfElement(html: string, from: number, tag: string): number {
  * is on a whole word, so `ps-folge` does not match `ps-folge-dok`.
  */
 export function blocksWithClass(html: string, cls: string, terminator?: RegExp): string[] {
-  const opener = new RegExp(`<div[^>]*\\sclass="(?:[^"]*\\s)?${escapeRegExp(cls)}(?:\\s[^"]*)?"[^>]*>`, "g");
+  const opener = classTagPattern("div", cls, "g");
   const starts: number[] = [];
   let match: RegExpExecArray | null;
   while ((match = opener.exec(html)) !== null) starts.push(match.index);
@@ -127,7 +154,7 @@ export function blocksWithClass(html: string, cls: string, terminator?: RegExp):
 
 /** The inner HTML of the first `<p class="…cls…">…</p>`-ish region. */
 export function regionWithClass(html: string, cls: string): string | undefined {
-  const opener = new RegExp(`<(p|div|span)[^>]*\\sclass="(?:[^"]*\\s)?${escapeRegExp(cls)}(?:\\s[^"]*)?"[^>]*>`);
+  const opener = classTagPattern("(p|div|span)", cls);
   const match = opener.exec(html);
   if (match === null) return undefined;
   const from = match.index + match[0].length;
@@ -140,21 +167,45 @@ export function regionWithClass(html: string, cls: string): string | undefined {
 /** Every `<span>…</span>` text inside a fragment, in document order. */
 export function spanTexts(html: string): string[] {
   const out: string[] = [];
-  const pattern = /<span\b[^>]*>([\s\S]*?)<\/span>/g;
+  const opener = new RegExp(`<span\\b${TAG_BODY}>`, "g");
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html)) !== null) {
-    const text = textOf(match[1] as string);
+  while ((match = opener.exec(html)) !== null) {
+    const from = match.index + match[0].length;
+    // The first `</span>` closes it (no nesting is counted, as before). With none
+    // left, no later span closes either: stop rather than search again from each.
+    const close = html.indexOf("</span>", from);
+    if (close === -1) break;
+    const text = textOf(html.slice(from, close));
     if (text !== "") out.push(text);
+    opener.lastIndex = close + "</span>".length;
   }
   return out;
 }
 
 /** The `href` of the first anchor in a fragment. */
 export function firstHref(html: string): string | undefined {
-  const match = /<a\b[^>]*\bhref="([^"]+)"/.exec(html);
+  const match = FIRST_HREF.exec(html);
   // A URL becomes `source_documents[].url` and is printed back to a terminal, so
   // it is held to the same hygiene as the text around it.
   return match === null ? undefined : stripControlCharacters(decodeHtml(match[1] as string));
+}
+
+/**
+ * The inside of a tag: anything but `<`, `>` and a quote, or a whole quoted value,
+ * which may hold both. Stopping at an unquoted `<` keeps a scan linear: one that met
+ * no `>` used to run on to the end of the body from every tag start.
+ */
+const TAG_BODY = `(?:[^<>"']|"[^"]*"|'[^']*')*`;
+const TAG_BODY_LAZY = `(?:[^<>"']|"[^"]*"|'[^']*')*?`;
+
+const FIRST_HREF = new RegExp(`<a\\b${TAG_BODY}\\bhref="([^"]+)"`);
+
+/**
+ * An opening tag (`tags` is a pattern for its name, `(p|div)` say) whose class
+ * attribute names `cls` as a whole word, so `ps-folge` does not match `ps-folge-dok`.
+ */
+export function classTagPattern(tags: string, cls: string, flags = ""): RegExp {
+  return new RegExp(`<${tags}${TAG_BODY}\\sclass="(?:[^"]*\\s)?${escapeRegExp(cls)}(?:\\s[^"]*)?"${TAG_BODY}>`, flags);
 }
 
 function escapeRegExp(value: string): string {

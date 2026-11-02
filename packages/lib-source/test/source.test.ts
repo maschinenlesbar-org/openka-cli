@@ -90,6 +90,56 @@ describe("HTML helpers", () => {
   });
 });
 
+describe("HTML helpers on tags that never close (security audit 2026-10-27)", () => {
+  // Unanchored `[^>]*` scans ran from every tag start to the end of a body with no
+  // closing `>`, so the work grew with the square of the body: 140 KB of `<div a `
+  // blocked the event loop for ~4 s in Parlamentsspiegel discovery. 150 KB took
+  // seconds per helper; linear scanners take milliseconds.
+  const SIZE = 150_000;
+  const repeat = (unit: string): string => unit.repeat(Math.ceil(SIZE / unit.length));
+  const fast = (label: string, work: () => unknown): void => {
+    const started = performance.now();
+    work();
+    const took = performance.now() - started;
+    ok(took < 500, `${label} took ${Math.round(took)} ms on ${SIZE} bytes`);
+  };
+
+  it("blocksWithClass", () => fast("blocksWithClass", () => blocksWithClass(repeat("<div a "), "ps-vorgang")));
+  it("blocksWithClass, an unclosed class attribute", () => fast("blocksWithClass", () => blocksWithClass(repeat('<div class="x '), "ps-vorgang")));
+  it("regionWithClass", () => fast("regionWithClass", () => regionWithClass(repeat("<p a "), "ps-titel")));
+  it("firstHref", () => fast("firstHref", () => firstHref(repeat("<a "))));
+  it("textOf", () => fast("textOf", () => textOf(repeat("<span "))));
+  it("visibleTextOf", () => fast("visibleTextOf", () => visibleTextOf(repeat("<span "))));
+  it("visibleTextOf, hidden elements that never close", () => fast("visibleTextOf", () => visibleTextOf(repeat('<span class="d-none"><span '))));
+  it("visibleTextOf, many hidden elements", () => fast("visibleTextOf", () => visibleTextOf(repeat('<span class="d-none">x</span>'))));
+  it("spanTexts", () => fast("spanTexts", () => spanTexts(repeat("<span>x"))));
+  it("quoted values that hold tag starts", () => {
+    for (const unit of ['<div a="', "<div a='", '<div "x', '<p class="d-none <a href="', '<span title="<b>"']) {
+      const body = repeat(unit);
+      fast(`${JSON.stringify(unit)}`, () => {
+        blocksWithClass(body, "ps-vorgang");
+        regionWithClass(body, "ps-titel");
+        firstHref(body);
+        visibleTextOf(body);
+        spanTexts(body);
+      });
+      fast(`a quote left open before ${JSON.stringify(unit)}`, () => blocksWithClass(`<div title="${body}`, "ps-vorgang"));
+    }
+  });
+
+  it("still reads closed markup as before", () => {
+    strictEqual(textOf("a <b title=\"x<y\">c</b> d"), "a c d");
+    strictEqual(textOf("1 < 2 and 3 > 2"), "1 2");
+    strictEqual(textOf("tail <span"), "tail <span");
+    strictEqual(visibleTextOf('<p>A<span class="d-none">B<span>C</span>D</span>E</p><span class="d-none">F'), "A E");
+    strictEqual(firstHref('<a class="x" href="/one">1</a><a href="/two">'), "/one");
+    deepStrictEqual(spanTexts("<span>a</span><span>b"), ["a"]);
+    // A quoted value may hold `<` and `>`: the Parlamentsspiegel's tooltips do.
+    strictEqual(blocksWithClass('<div title="<b>x</b>" class="ps-vorgang">a</div>', "ps-vorgang").length, 1);
+    strictEqual(regionWithClass('<p class="ps-titel" title="<b>x</b>">inner</p>', "ps-titel"), "inner");
+  });
+});
+
 describe("discovery windows", () => {
   const refs = [
     { key: "b", reference: "19/2", legislative_period: 19, title: "", documentType: "kleine_anfrage" as const, askers: [], answered_by: {}, dates: { answered: "2024-06-01" }, documents: [] },

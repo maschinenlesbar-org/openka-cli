@@ -434,3 +434,17 @@ describe("a Sachsen-Anhalt question listed under its KA number", () => {
     ok(rows("parlamentsspiegel-brandenburg.html").every((ref) => ref?.replaces === undefined && ref?.formerly === undefined && !ref?.reference.startsWith("KA")));
   });
 });
+
+describe("a result block whose tags never close (security audit 2026-10-27)", () => {
+  // The follow-up markers matched `<p[^>]*\sclass=…`, which ran from every `<p` to the
+  // end of a block with no closing `>`: the same quadratic scan as lib-source's helpers.
+  for (const unit of ["<p ", '<p class="x ']) {
+    it(`reads a block of ${JSON.stringify(unit)} in linear time`, () => {
+      const block = `<div class="ps-vorgang">ps-detail-SAC_V1_D1 ${unit.repeat(Math.ceil(150_000 / unit.length))}`;
+      const started = performance.now();
+      parseVorgangBlock(block, []);
+      const took = performance.now() - started;
+      ok(took < 500, `took ${Math.round(took)} ms`);
+    });
+  }
+});

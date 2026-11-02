@@ -26,7 +26,7 @@ import { OpenKaError, UsageError } from "@maschinenlesbar.org/openka-lib-errors"
 import { parliamentByKey, PARLIAMENTS, parliamentByHerkunft, type ParliamentKey } from "@maschinenlesbar.org/openka-lib-models";
 import type { AnsweredBy, DocumentType, SourceDocumentRole } from "@maschinenlesbar.org/openka-lib-models";
 import { parseGermanDate, parseUrheber } from "@maschinenlesbar.org/openka-lib-extract";
-import { blocksWithClass, firstHref, regionWithClass, spanTexts, visibleTextOf } from "@maschinenlesbar.org/openka-lib-source";
+import { blocksWithClass, classTagPattern, firstHref, regionWithClass, spanTexts, visibleTextOf } from "@maschinenlesbar.org/openka-lib-source";
 import { parseReference, periodNumber } from "@maschinenlesbar.org/openka-lib-models";
 import {
   applyWindow,
@@ -369,7 +369,10 @@ function fundstelleText(head: string): string {
 }
 
 /** The "N weitere Dokumente" header that every row with follow-ups carries. */
-const FOLGE_MARKER = /<p[^>]*\sclass="(?:[^"]*\s)?ps-folge-dok(?:\s[^"]*)?"[^>]*>/;
+// Built by lib-source, whose tag scan stops at an unquoted `<`: `[^>]*` ran from
+// every `<p` to the end of a block that never closes its tags (security audit
+// 2026-10-27).
+const FOLGE_MARKER = classTagPattern("p", "ps-folge-dok");
 
 /** Parse one `ps-vorgang` result block into a DocRef. */
 export function parseVorgangBlock(block: string, warnings: string[]): DocRef | undefined {
@@ -481,7 +484,7 @@ export function parseVorgangBlock(block: string, warnings: string[]): DocRef | u
  * the fields have to stay attached to the row they describe.
  */
 function followUpSegments(tail: string): string[] {
-  const opener = /<p[^>]*\sclass="(?:[^"]*\s)?ps-dokument(?:\s[^"]*)?"[^>]*>/g;
+  const opener = classTagPattern("p", "ps-dokument", "g");
   const starts: number[] = [];
   let match: RegExpExecArray | null;
   while ((match = opener.exec(tail)) !== null) starts.push(match.index);
