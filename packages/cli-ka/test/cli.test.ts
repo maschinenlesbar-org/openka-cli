@@ -938,6 +938,35 @@ describe("ka", () => {
     });
   }
 
+  for (const part of [["index"], ["index", "tokens"], ["records"], ["state"]]) {
+    it(`calls a corpus whose ${part.join("/")}/ is a symbolic link damaged, and writes nothing through it, exit 3`, async () => {
+      // Security audit 2026-10-27: the layout check followed links, so a received corpus
+      // whose index/ pointed at ../outside had ka reindex replace outside/catalog.json,
+      // and a linked index/tokens/ had it delete every lowercase *.json in the target;
+      // ka doctor said "No problems found."
+      const harness = cliHarness();
+      const outside = mkdtempSync(join(tmpdir(), "openka-outside-"));
+      try {
+        writeFileSync(join(outside, "catalog.json"), "keep");
+        writeFileSync(join(outside, "settings.json"), "keep");
+        if (part.length > 1) mkdirSync(join(harness.corpus, ...part.slice(0, -1)), { recursive: true });
+        symlinkSync(outside, join(harness.corpus, ...part));
+        const damaged = `${join(harness.corpus, ...part)} is a symbolic link, so the corpus at ${harness.corpus} is damaged — the store writes only into directories of its own; replace the link with the directory it points to.`;
+        for (const argv of [["doctor"], ["reindex"], ["stats"], ["sync", "--source", "bayern"]]) {
+          harness.err.length = 0;
+          const code = await run(["--corpus", harness.corpus, ...argv], harness.deps);
+          strictEqual(code, EXIT_STORE, `${argv.join(" ")}: ${harness.stderr()}`);
+          ok(harness.stderr().includes(`] ${damaged}`), `${argv.join(" ")}: ${harness.stderr()}`);
+        }
+        deepStrictEqual(readdirSync(outside).sort(), ["catalog.json", "settings.json"]);
+        strictEqual(readFileSync(join(outside, "catalog.json"), "utf8"), "keep");
+      } finally {
+        harness.cleanup();
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+  }
+
   it("calls a corpus path a sync could never create a problem in ka doctor, exit 3", async () => {
     // "corpus …/afile/sub (not created yet) … No problems found.", exit 0, where the sync
     // then failed (exploratory 2026-10-21, B01-3).

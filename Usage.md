@@ -739,8 +739,10 @@ lock, orphaned documents) do not change the exit code. `--orphaned-documents` al
 the archived documents no record refers to; it reads every record, so it is not done by
 default, and `ka rm --orphaned-documents` removes them. A record an earlier build filed
 under another paper's id (see `ka reextract`) is a problem, named by id; so is a directory
-the corpus keeps (`records/`, `index/`, `state/`, …) that is a file — every other command
-refuses such a corpus as damaged (exit 3). A corpus that does not exist yet is checked for its
+the corpus keeps (`records/`, `index/`, `state/`, …) that is a file or a symbolic link —
+every other command refuses such a corpus as damaged (exit 3), so a corpus received from
+someone else cannot aim the store's writes and deletes outside it. `<corpus>/blobs` alone
+may be a link. A corpus that does not exist yet is checked for its
 volume and for whether a sync could create it (a path below a file, through a dangling
 symbolic link or in a directory you may not write to is a problem), and nothing is created. `--fix` takes the corpus lock, so it exits 3 while
 a sync is writing, and removes only `._*` and `.DS_Store` files — names the corpus never

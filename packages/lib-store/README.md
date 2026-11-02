@@ -121,8 +121,11 @@ not on a bare EEXIST, ENOTDIR or EACCES from mkdir. A reader wants `FileStore.op
 there: a missing directory is a `MissingCorpusError`, a file a `StoreError`, rather
 than an empty corpus that answers "no matches" for a mistyped path. Both doors also refuse
 a damaged layout — `records/`, `index/` or another directory the corpus keeps that is a
-file (`layoutProblem`/`assertLayout`, a `StoreError`) — rather than meeting a bare ENOTDIR
-in the first listing.
+file or a symbolic link (`layoutProblem`/`assertLayout`, a `StoreError`) — rather than
+meeting a bare ENOTDIR in the first listing, or writing and deleting through a link a
+received corpus carried. Only `<corpus>/blobs` may be a link (documents on another
+drive); a blob shard directory (`blobs/<sha[0:2]>/`) that is one is refused before a
+blob is written into it or deleted from it.
 
 Everything the line persists goes through the `Store` interface, so the pipeline,
 search and the CLI can be driven against an in-memory store in tests without

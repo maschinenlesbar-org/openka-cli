@@ -83,6 +83,16 @@ function assertSafeKey(value: string, what: string): void {
   }
 }
 
+/** A store directory that is there but is not a directory. */
+function notDirectoryProblem(path: string, root: string): string {
+  return `${path} is not a directory, so the corpus at ${root} is damaged — move that file aside.`;
+}
+
+/** A store directory that is a symbolic link, which the store would write through. */
+function linkedDirectoryProblem(path: string, root: string): string {
+  return `${path} is a symbolic link, so the corpus at ${root} is damaged — the store writes only into directories of its own; replace the link with the directory it points to.`;
+}
+
 /** Why a parsed catalog is not a list of catalog rows, or undefined when it is one. */
 function catalogProblem(rows: unknown): string | undefined {
   if (!Array.isArray(rows)) return "not a list of rows";
@@ -343,20 +353,54 @@ export class FileStore implements Store {
    * keeps (`records/`, `index/`, `state/`, …) that is there but is not a directory. Every
    * listing and write below it would meet a bare ENOTDIR — `ka doctor`, `stats` and
    * `reindex` ended in "Unexpected error" on it, and a sync failed after downloading.
+   *
+   * A symbolic link in place of one of those directories is damage too: the store
+   * writes, replaces and deletes files there by name, so a corpus received with
+   * `index -> ../..` had `ka reindex` replace a `catalog.json` outside it, and a linked
+   * `index/tokens/` lost every lowercase `*.json` of its target (security audit
+   * 2026-10-27). Each parent is listed before its child, so `index/tokens` is never
+   * looked at through a linked `index`. `<corpus>/blobs` alone may be a link — the
+   * README documents it as the way to keep the documents on another drive.
    */
   layoutProblem(): string | undefined {
-    const dirs = [...CORPUS_DIRECTORIES, ...(this.separateBlobs ? [] : [["blobs"]])];
-    for (const parts of dirs) {
+    for (const parts of CORPUS_DIRECTORIES) {
       const path = this.path(...parts);
-      let isDirectory: boolean;
+      let stats;
       try {
-        isDirectory = statSync(path).isDirectory();
+        stats = lstatSync(path);
       } catch {
         continue;
       }
-      if (!isDirectory) return `${path} is not a directory, so the corpus at ${this.root} is damaged — move that file aside.`;
+      if (stats.isSymbolicLink()) return linkedDirectoryProblem(path, this.root);
+      if (!stats.isDirectory()) return notDirectoryProblem(path, this.root);
+    }
+    if (!this.separateBlobs) {
+      const path = this.path("blobs");
+      let isDirectory: boolean | undefined;
+      try {
+        isDirectory = statSync(path).isDirectory();
+      } catch {
+        isDirectory = undefined;
+      }
+      if (isDirectory === false) return notDirectoryProblem(path, this.root);
     }
     return undefined;
+  }
+
+  /**
+   * Refuse a blob shard directory (`<sha[0:2]>/`) that is a symbolic link before a blob
+   * is written into it or deleted from it: the link would carry the write or the delete
+   * outside the blob store.
+   */
+  private assertBlobShard(digest: string): void {
+    const shard = dirname(this.blobPath(digest));
+    let linked = false;
+    try {
+      linked = lstatSync(shard).isSymbolicLink();
+    } catch {
+      return;
+    }
+    if (linked) throw new StoreError(linkedDirectoryProblem(shard, this.blobsRoot));
   }
 
   /** Throw `StoreError` for a damaged corpus layout (`layoutProblem`). */
@@ -446,6 +490,7 @@ export class FileStore implements Store {
     this.assertBlobStore();
     const digest = sha256(data);
     const path = this.blobPath(digest);
+    this.assertBlobShard(digest);
     // Content-addressed: identical bytes are already the same file. Re-writing
     // would only risk replacing a good blob with a truncated one — unless the file
     // there no longer hashes to its name, in which case fresh bytes repair it.
@@ -476,6 +521,7 @@ export class FileStore implements Store {
 
   deleteBlob(digest: string): void {
     this.assertBlobStore();
+    this.assertBlobShard(digest);
     this.remove(this.blobPath(digest));
   }
 

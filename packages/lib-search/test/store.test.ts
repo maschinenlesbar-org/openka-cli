@@ -2106,3 +2106,34 @@ describe("atomic writes and a link at the temporary name (security audit 2026-10
     ok(lstatSync(join(corpus, "index", "catalog.json")).isFile());
   });
 });
+
+describe("links in place of the store's own directories (security audit 2026-10-27)", () => {
+  const work = mkdtempSync(join(tmpdir(), "openka-dirlink-"));
+  after(() => rmSync(work, { recursive: true, force: true }));
+
+  it("refuses a blob shard directory that is a link before writing or deleting through it", () => {
+    const corpus = join(work, "shard");
+    const outside = join(work, "shard-outside");
+    mkdirSync(join(corpus, "blobs"), { recursive: true });
+    mkdirSync(outside);
+    const digest = sha256("hello");
+    symlinkSync(outside, join(corpus, "blobs", digest.slice(0, 2)));
+    const store = new FileStore(corpus);
+    throws(() => store.putBlob(Buffer.from("hello")), (err: unknown) => err instanceof StoreError && /is a symbolic link/.test(err.message));
+    writeFileSync(join(outside, `${digest}.bin`), "hello");
+    throws(() => store.deleteBlob(digest), (err: unknown) => err instanceof StoreError && /is a symbolic link/.test(err.message));
+    deepStrictEqual(readdirSync(outside), [`${digest}.bin`]);
+  });
+
+  it("still takes a linked <corpus>/blobs, which the README documents", () => {
+    const corpus = join(work, "blobs-link");
+    const drive = join(work, "drive");
+    mkdirSync(corpus);
+    mkdirSync(drive);
+    symlinkSync(drive, join(corpus, "blobs"));
+    const store = new FileStore(corpus);
+    strictEqual(store.layoutProblem(), undefined);
+    const digest = store.putBlob(Buffer.from("hello"));
+    ok(existsSync(join(drive, digest.slice(0, 2), `${digest}.bin`)));
+  });
+});
