@@ -64,7 +64,11 @@ aggregator tied to no parliament runs alone, after the lanes (`planLanes`). The 
 applies to every source and is checked once, up front; a list that is empty or names a
 source twice is refused (`sourceListProblem`). A failing source is that source's
 outcome (`{ status: "failed", error }`), not the end of the run; an aborted `signal`
-stops the running ones between refs and marks the rest `skipped`.
+stops the running ones between refs and marks the rest `skipped`. One `DocumentMemo`
+per run downloads each document URL once, whichever source reaches it first; it keeps
+the archived blob's digest (`RememberedDocument`) or the gap, never the bytes, which a
+later caller reads back from the store — so the run's memory follows the documents in
+flight, not every document the window held.
 
 **Jobs: a window per source.** `syncJobs({ jobs, … })` is the same run over jobs, each
 a source with a window of its own and a `label` (`jobLabel`: `bund@period=21`, or the

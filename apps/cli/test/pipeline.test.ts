@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CHECKPOINT_MS,
+  DocumentMemo,
   SYNC_LIMIT_MIN,
   isoInstant,
   normalizeSyncWindow,
@@ -184,6 +185,22 @@ describe("sync pipeline", () => {
     strictEqual(requests.filter((request) => request.url === PDF_URL).length, 1);
     strictEqual(report.bytesFetched, PDF.length);
     deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents.map((document) => document.role), ["question_pdf", "answer_pdf"]);
+  });
+
+  it("remembers what a document URL gave, not its bytes, for the rest of the run", async () => {
+    // Security audit 2026-10-27: the run's DocumentMemo kept every fetched document's
+    // Buffer until the run ended — 40 documents of 3 MiB held 120 MiB, so a sync over a
+    // large window (or a host listing many large documents) grew without bound. A later
+    // caller reads the bytes back from the content-addressed store.
+    const memo = new DocumentMemo();
+    const store = new MemoryStore();
+    const { transport } = scriptedTransport([{ match: ".pdf", body: PDF }]);
+    const report = await sync({ source: new StubSource(), store, engine: testEngine(transport), documents: memo });
+    strictEqual(report.stored, 1);
+    const { result, again } = await memo.remember(PDF_URL, () => Promise.reject(new Error("fetched again")));
+    strictEqual(again, true);
+    ok(!("bytes" in result), "the memo holds no document bytes");
+    ok("sha256" in result && store.getBlob(result.sha256).equals(PDF));
   });
 
   describe("a document that redirects", () => {

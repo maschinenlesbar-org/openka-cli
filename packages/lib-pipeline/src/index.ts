@@ -498,17 +498,22 @@ interface RunContext {
 }
 
 /**
- * What each document URL gave during one run — bytes or a gap — shared by the
- * sources of a `syncSources` run. Two sources that reach the same documents (a Land's
- * connector and `parlamentsspiegel`) downloaded each one again, only to find it
- * unchanged. Promises are kept, so two lanes asking for one URL at once share one
- * download.
+ * What each document URL gave during one run — the archived blob's digest or a gap —
+ * shared by the sources of a `syncSources` run, over one store. Two sources that reach
+ * the same documents (a Land's connector and `parlamentsspiegel`) downloaded each one
+ * again, only to find it unchanged. Promises are kept, so two lanes asking for one URL
+ * at once share one download.
+ *
+ * The outcome is kept, not the bytes: a caller reads them back from the
+ * content-addressed store. Keeping each document's Buffer held every document the run
+ * fetched until it ended — 40 of 3 MiB were 120 MiB — so memory grew with the window,
+ * not with the documents in flight (security audit 2026-10-27).
  */
 export class DocumentMemo {
-  private readonly entries = new Map<string, Promise<FetchedBytes | FetchGap>>();
+  private readonly entries = new Map<string, Promise<RememberedDocument | FetchGap>>();
 
   /** @internal */
-  remember(url: string, fetch: () => Promise<FetchedBytes | FetchGap>): Promise<{ result: FetchedBytes | FetchGap; again: boolean }> {
+  remember(url: string, fetch: () => Promise<RememberedDocument | FetchGap>): Promise<{ result: RememberedDocument | FetchGap; again: boolean }> {
     const known = this.entries.get(url);
     if (known !== undefined) return known.then((result) => ({ result, again: true }));
     const pending = fetch();
@@ -835,6 +840,13 @@ export interface FetchedBytes {
   fromCache: boolean;
 }
 
+/** A fetched document as the run remembers it (`DocumentMemo`): where its bytes are archived. */
+export interface RememberedDocument {
+  sha256: string;
+  retrievedAt: string;
+  fromCache: boolean;
+}
+
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
 export type FetchGap =
   | { gap: "404" | "robots" | "not-pdf" | "glued" }
@@ -889,7 +901,8 @@ async function fetchDocument(
   expectPdf: boolean,
 ): Promise<FetchedBytes | FetchGap> {
   const { result, again } = await run.fetched.remember(url, () => fetchDocumentOnce(engine, store, url, now, httpCache, run, expectPdf));
-  return again && !("gap" in result) ? { ...result, fromCache: true } : result;
+  if ("gap" in result) return result;
+  return { bytes: store.getBlob(result.sha256), retrievedAt: result.retrievedAt, fromCache: again || result.fromCache };
 }
 
 async function fetchDocumentOnce(
@@ -900,7 +913,7 @@ async function fetchDocumentOnce(
   httpCache: SourceState["http_cache"],
   run: RunContext,
   expectPdf: boolean,
-): Promise<FetchedBytes | FetchGap> {
+): Promise<RememberedDocument | FetchGap> {
   // A URL with a second scheme inside it is two links run together by the source
   // (the Parlamentsspiegel's `….pdfhttps://….doc`, issue #20). Asked for, it answered
   // 404 and was reported as a dead link; it is the source's markup that is broken.
@@ -939,7 +952,7 @@ async function fetchDocumentOnce(
 
   if (response.notModified) {
     return {
-      bytes: store.getBlob(cached?.sha256 as string),
+      sha256: cached?.sha256 as string,
       retrievedAt: isoInstant(now()),
       fromCache: true,
     };
@@ -952,7 +965,7 @@ async function fetchDocumentOnce(
   if (response.etag !== undefined) entry.etag = response.etag;
   if (response.lastModified !== undefined) entry.last_modified = response.lastModified;
   httpCache[url] = entry;
-  return { bytes: store.getBlob(digest), retrievedAt: isoInstant(now()), fromCache: false };
+  return { sha256: digest, retrievedAt: isoInstant(now()), fromCache: false };
 }
 
 /** May `url` be requested? Asks the run's robots policy and warns once per origin. */
