@@ -340,10 +340,20 @@ export function printJson(ctx: ActionContext, value: unknown): void {
   ctx.deps.io.out(escapeControlChars(text));
 }
 
-/** Write text to a file, or print it when no path was given. */
+/**
+ * Write text to a file, or print it when no path was given.
+ *
+ * Printed, DEL and C1 are escaped as `printJson` escapes them. putRecord refuses them,
+ * but a record file is read as it is, and one written outside the library — a corpus
+ * from someone else — carried U+009B (the 8-bit CSI) raw to the terminal through
+ * `get --format json` and `export --format jsonl` (security audit 2026-10-27). A valid
+ * record never holds one, so its output stays byte-identical to the stored file; a
+ * JSON rendering stays equivalent JSON, and the text, Markdown, CSV and Atom renderings
+ * have stripped them already. A file written with `-o` is left as rendered.
+ */
 export function emit(ctx: ActionContext, text: string, outPath: string | undefined): void {
   if (outPath === undefined || outPath === "-") {
-    ctx.deps.io.out(text.replace(/\n$/, ""));
+    ctx.deps.io.out(escapeControlChars(text.replace(/\n$/, "")));
     return;
   }
   const data = Buffer.from(text, "utf8");

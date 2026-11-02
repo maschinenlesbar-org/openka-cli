@@ -2352,6 +2352,31 @@ describe("ka-factory", () => {
     ok(lines.includes("(no question/answer pairs were extracted)"));
   });
 
+  it("escapes DEL and C1 in a JSON rendering on stdout, as printJson does (security audit 2026-10-27)", async () => {
+    // putRecord refuses control characters, but getRecord reads a record file as it is:
+    // one written outside the library (a corpus from someone else) carried U+009B, the
+    // 8-bit CSI, raw to the terminal through ka get --format json/jsonld and ka export
+    // --format jsonl/jsonld.
+    const harness = cliHarness();
+    try {
+      const record = sampleRecord();
+      const store = new FileStore(harness.corpus);
+      store.putRecord(record);
+      indexRecord(store, record);
+      const file = join(harness.corpus, "records", `${record.id}.json`);
+      writeFileSync(file, readFileSync(file, "utf8").replace(`"title": "`, `"title": "Harmless\u009b31mRED\u007f `));
+      for (const argv of [["get", record.id], ["get", record.id, "--format", "jsonld"], ["export", "--format", "jsonl"], ["export", "--format", "jsonld"]]) {
+        harness.out.length = 0;
+        strictEqual(await run(["--corpus", harness.corpus, ...argv], harness.deps), EXIT_OK, `${argv.join(" ")}: ${harness.stderr()}`);
+        const stdout = harness.stdout();
+        ok(stdout.includes("Harmless\\u009b31mRED\\u007f"), `${argv.join(" ")}: ${stdout.slice(0, 200)}`);
+        ok(![...stdout].some((ch) => (ch.codePointAt(0) ?? 0) >= 0x7f && (ch.codePointAt(0) ?? 0) <= 0x9f), `${argv.join(" ")}: raw C1 on stdout`);
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("sanitises an error message, which routinely quotes upstream data", async () => {
     const harness = cliHarness();
     // A record id is echoed back in the "no such record" message.

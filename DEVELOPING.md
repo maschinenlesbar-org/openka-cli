@@ -587,7 +587,10 @@ than aspirational:
 
 1. **Canonical JSON** (`lib-repro`). Keys sorted, two-space
    indent, trailing newline. The bytes on disk, the bytes that are hashed and the
-   bytes `ka get --format json` prints are the same bytes.
+   bytes `ka get --format json` prints are the same bytes — for a record the store
+   wrote. A record file written outside it with DEL or a C1 control in it (which
+   `putRecord` refuses) is printed with those escaped as `\u00XX`, the way every JSON
+   the CLI prints is, so it cannot drive the terminal; `-o` writes it as rendered.
 2. **Extraction is a pure function.** Nothing in `lib-extract` reads the
    clock, the filesystem or the network. `retrieved_at` travels *with* the fetched
    document; it is recorded at fetch time, not observed during extraction.
