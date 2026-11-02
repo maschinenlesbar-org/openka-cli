@@ -17,6 +17,7 @@
 
 import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { CorpusLockedError, MissingCorpusError, StoreError, assertValid, nonBlankProblem, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
@@ -392,12 +393,20 @@ export class FileStore implements Store {
    * Write atomically: a crash or a full disk must never leave a half-written
    * record or index shard behind, because a truncated JSON file would look like
    * corpus corruption rather than an interrupted run.
+   *
+   * The temporary file is created exclusively (`wx`: O_CREAT|O_EXCL, which refuses
+   * any entry already there, a symbolic link included) under a name with random
+   * bytes in it. It used to be `<path>.tmp-<pid>`, opened create-or-truncate: a
+   * corpus from someone else could carry a link at that name for the writer's pid,
+   * the write went through it into any file the user can write, and the rename left
+   * the corpus file linked there (security audit 2026-10-27). The rename replaces a
+   * link at `path` itself rather than following it.
    */
   private writeAtomic(path: string, data: Buffer | string): void {
-    const temporary = `${path}.tmp-${process.pid}`;
+    const temporary = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     try {
       mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(temporary, data);
+      writeFileSync(temporary, data, { flag: "wx" });
       renameSync(temporary, path);
     } catch (err) {
       rmSync(temporary, { force: true });

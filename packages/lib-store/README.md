@@ -22,6 +22,13 @@ both reported success. Readers do not take it. The lock is re-entrant per store
 object; a lock whose process on this host is gone (a killed run) is taken over, one
 from another host is never — the error names the file to delete.
 
+**Every write is atomic and never follows a planted link.** A file is written to a
+temporary beside it, `<name>.tmp-<pid>-<random>`, created exclusively (`wx`, so any
+entry already there, a symbolic link included, is refused), and renamed over the
+name, which replaces a link there rather than following it. The name used to be
+`<name>.tmp-<pid>` opened create-or-truncate, and a corpus from someone else could
+aim a link at that name into any file the user can write.
+
 **Files the store never wrote are skipped when they belong to the platform.**
 macOS writes an AppleDouble companion (`._<name>`) beside every file on a volume
 without extended attributes (FAT32, exFAT), and Finder leaves `.DS_Store`. Every

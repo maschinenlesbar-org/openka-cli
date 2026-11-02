@@ -1,7 +1,7 @@
 // The corpus: the file store, the inverted index, search and the semantic path.
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
@@ -2074,5 +2074,35 @@ describe("index writes batched with the catalog (issue #30)", () => {
     } finally {
       rmSync(store.root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("atomic writes and a link at the temporary name (security audit 2026-10-27)", () => {
+  // writeAtomic wrote `<path>.tmp-<pid>` with a plain create-or-truncate and renamed
+  // it over `<path>`. A corpus from someone else could carry a link at that name for
+  // the writer's pid: the write went through it into any file the user can write,
+  // and the rename then left the corpus file itself linked there.
+  const work = mkdtempSync(join(tmpdir(), "openka-tmplink-"));
+  after(() => rmSync(work, { recursive: true, force: true }));
+
+  it("never writes through a link planted where the old scheme put its temporary file", () => {
+    const corpus = join(work, "corpus");
+    mkdirSync(join(corpus, "state"), { recursive: true });
+    mkdirSync(join(corpus, "index"), { recursive: true });
+    mkdirSync(join(corpus, "records"), { recursive: true });
+    const precious = join(work, "precious.txt");
+    writeFileSync(precious, "PRECIOUS USER FILE");
+    const dangling = join(work, "created-by-store.txt");
+    symlinkSync(precious, join(corpus, "state", `bund.json.tmp-${process.pid}`));
+    symlinkSync(dangling, join(corpus, "index", `catalog.json.tmp-${process.pid}`));
+
+    const store = new FileStore(corpus);
+    store.putSourceState({ source: "bund", http_cache: {} });
+    reindexAll(store);
+
+    strictEqual(readFileSync(precious, "utf8"), "PRECIOUS USER FILE");
+    strictEqual(existsSync(dangling), false);
+    ok(lstatSync(join(corpus, "state", "bund.json")).isFile());
+    ok(lstatSync(join(corpus, "index", "catalog.json")).isFile());
   });
 });
