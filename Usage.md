@@ -178,7 +178,8 @@ still runs over the window, and an Anfrage left out costs nothing:
 - `--only-new`: skip every Anfrage the corpus holds with all its documents, and take the
   rest: those not in the corpus, and those stored without a document (a glued link, a
   document over the size cap, a timeout). A document the source lists and the sync could
-  not fetch (a 404, robots.txt, over the size cap, not a PDF) stays in the record's
+  not fetch (a 404, robots.txt, over the size cap, not a PDF, a loopback or private
+  address) stays in the record's
   `source_documents` without `sha256` and `retrieved_at`, and `ka show` marks it "not
   archived", so a record whose answer paper 404'd says that paper exists.
 
@@ -294,7 +295,7 @@ share one stream:
 
 A `record`'s `status` is `stored`, `unchanged` or `failed`; `abstained` names the fields a
 stored record abstains on, `gaps` the documents that were not fetched with their URL and
-why (`404`, `robots`, `not-pdf`, `glued`, `too-large`), and `error` why one failed. A job
+why (`404`, `robots`, `not-pdf`, `glued`, `too-large`, `private`), and `error` why one failed. A job
 ends with `done` (the report's counts and `timing`; its warnings come just before as
 `warning` events), `failed` (an `ERROR`) or `skipped` (a `WARN` when an earlier job
 failed, an `INFO` when the run was interrupted); the run with `report`, which is what

@@ -7,7 +7,7 @@ import net from "node:net";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { describe, it } from "node:test";
-import { MAX_TIMEOUT_MS, nodeHttpTransport } from "../src/http.js";
+import { MAX_TIMEOUT_MS, nodeHttpTransport, nonPublicHostProblem } from "../src/http.js";
 import {
   DEFAULT_MAX_RESPONSE_BYTES,
   DEFAULT_USER_AGENT,
@@ -52,6 +52,39 @@ describe("scheme checks", () => {
   it("is enforced by the default transport too", async () => {
     await rejects(() => nodeHttpTransport({ method: "GET", url: "file:///etc/passwd" }), /Unsupported protocol/);
   });
+});
+
+describe("hosts only this machine or its network can reach (security audit 2026-10-27)", () => {
+  // An upstream-listed document URL (or a redirect) naming loopback, a private network
+  // or link-local made ka sync request it and archive the answer when it looked like
+  // a PDF. The check is on the literal host: a name is not resolved.
+  for (const url of [
+    "http://127.0.0.1/x.pdf",
+    "http://127.1.2.3:8080/x.pdf",
+    "http://2130706433/x.pdf",
+    "http://0x7f.1/x.pdf",
+    "https://10.0.0.5/a.pdf",
+    "https://172.16.0.1/a.pdf",
+    "https://172.31.255.255/a.pdf",
+    "https://192.168.1.1/a.pdf",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://100.64.0.1/a.pdf",
+    "http://0.0.0.0/a.pdf",
+    "http://[::1]/a.pdf",
+    "http://[::]/a.pdf",
+    "http://[fe80::1]/a.pdf",
+    "http://[fd00::1]/a.pdf",
+    "http://[::ffff:127.0.0.1]/a.pdf",
+    "http://[::ffff:10.0.0.1]/a.pdf",
+    "http://localhost/a.pdf",
+    "http://LOCALHOST./a.pdf",
+    "http://printer.localhost/a.pdf",
+  ]) {
+    it(`refuses ${url}`, () => ok(nonPublicHostProblem(url) !== undefined, url));
+  }
+  for (const url of ["https://www.landtag-niedersachsen.de/a.pdf", "https://8.8.8.8/a.pdf", "https://172.32.0.1/a.pdf", "https://[2001:db8::1]/a.pdf", "https://example.invalid/x", "not a url"]) {
+    it(`leaves ${url} alone`, () => strictEqual(nonPublicHostProblem(url), undefined));
+  }
 });
 
 describe("sanitising upstream text", () => {

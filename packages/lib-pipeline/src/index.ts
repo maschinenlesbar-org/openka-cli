@@ -7,7 +7,7 @@
 // per feed, and leaves the corpus byte-identical.
 
 import { NetworkError, OpenKaApiError, OpenKaError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
-import type { FetchEngine, RetryReasons } from "@maschinenlesbar.org/openka-lib-http";
+import { nonPublicHostProblem, type FetchEngine, type RetryReasons } from "@maschinenlesbar.org/openka-lib-http";
 import { currentReference, makeRecordId, parseReference, periodNumber, referenceSlug, withUnfetchedDocuments, type KaRecord, type SourceDocument } from "@maschinenlesbar.org/openka-lib-models";
 import { indexRecord, unindexRecord, withCorpusLock, type SourceState, type SpaceGuard, type Store } from "@maschinenlesbar.org/openka-lib-store";
 import { extract, type FetchedDocument, type SourceMetadata } from "@maschinenlesbar.org/openka-lib-extract";
@@ -850,12 +850,18 @@ export interface RememberedDocument {
 /** Why a document could not be fetched although nothing failed: the upstream said no. */
 export type FetchGap =
   | { gap: "404" | "robots" | "not-pdf" | "glued" }
+  /** A loopback, private or link-local host (`nonPublicHostProblem`), listed or reached by a redirect: never asked. */
+  | { gap: "private"; url?: string; reason: string }
   /** Larger than the engine takes (`maxResponseBytes`); `bytes` when the response declared its size. */
   | { gap: "too-large"; limit: number; bytes?: number };
 
 function gapText(fetched: FetchGap): string {
   if (fetched.gap === "not-pdf") return "answered something that is not a PDF; nothing was archived";
   if (fetched.gap === "glued") return "is several URLs glued together, not one; nothing was fetched";
+  if (fetched.gap === "private") {
+    const via = fetched.url === undefined ? "" : ` (a redirect to ${fetched.url})`;
+    return `${fetched.reason}${via}; a sync does not fetch from loopback, private or link-local addresses, so nothing was fetched`;
+  }
   if (fetched.gap === "too-large") {
     // What to pass to fetch it: its own size rounded up to a MiB, or twice the cap.
     const MIB = 1024 * 1024;
@@ -919,6 +925,9 @@ async function fetchDocumentOnce(
   // 404 and was reported as a dead link; it is the source's markup that is broken.
   // Only a scheme in the path counts: one in the query (`?u=https://…`) is a value.
   if (/^https?:\/\/[^?#]*?https?:\/\//i.test(url)) return { gap: "glued" };
+  // Before robots.txt, which would be a request to that host too.
+  const listedPrivate = nonPublicHostProblem(url);
+  if (listedPrivate !== undefined) return { gap: "private", reason: listedPrivate };
   // CONCEPT.md §7, at the one place every document URL passes through. A blob
   // already archived under a validator is still re-asked: the rule is about
   // requests, and a 304 is a request.
@@ -936,6 +945,8 @@ async function fetchDocumentOnce(
       ...(canRevalidate ? { validators } : {}),
       // Every hop is a request too, on whatever host and path it lands.
       onRedirect: async (next) => {
+        const hopPrivate = nonPublicHostProblem(next);
+        if (hopPrivate !== undefined) throw new RedirectRefused(next, hopPrivate);
         if (!(await askRobots(run, next))) throw new RedirectRefused(next);
       },
     });
@@ -946,7 +957,7 @@ async function fetchDocumentOnce(
     if (err instanceof NetworkError && err.failure === "too_large") {
       return { gap: "too-large", limit: engine.maxResponseBytes, ...(err.bytes === undefined ? {} : { bytes: err.bytes }) };
     }
-    if (err instanceof RedirectRefused) return { gap: "robots" };
+    if (err instanceof RedirectRefused) return err.privateHost === undefined ? { gap: "robots" } : { gap: "private", url: err.url, reason: err.privateHost };
     throw err;
   }
 
@@ -981,10 +992,13 @@ async function askRobots(run: RunContext, url: string): Promise<boolean> {
   return verdict.allowed;
 }
 
-/** A redirect hop that robots.txt disallows: the document is a gap, as if asked directly. */
+/** A redirect hop that robots.txt disallows, or to a non-public host: the document is a gap, as if asked directly. */
 class RedirectRefused extends Error {
-  constructor(readonly url: string) {
-    super(`redirect to ${url} is disallowed by its host's robots.txt`);
+  constructor(
+    readonly url: string,
+    readonly privateHost?: string,
+  ) {
+    super(privateHost === undefined ? `redirect to ${url} is disallowed by its host's robots.txt` : `redirect to ${url} ${privateHost}`);
   }
 }
 

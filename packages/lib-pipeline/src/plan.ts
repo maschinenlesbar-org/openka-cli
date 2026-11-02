@@ -15,7 +15,7 @@
 //   fetch. A HEAD goes through the same robots.txt check and the same pacing as a
 //   real fetch.
 
-import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
+import { nonPublicHostProblem, type FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 import { makeRecordId, referenceSlug } from "@maschinenlesbar.org/openka-lib-models";
 import { RobotsPolicy, type DocRef, type Source } from "@maschinenlesbar.org/openka-lib-source";
 import type { SourceState, Store } from "@maschinenlesbar.org/openka-lib-store";
@@ -207,27 +207,38 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
   const oversize: string[] = [];
   const missing: string[] = [];
   let refused = 0;
+  let nonPublic = 0;
   for (const url of urls) {
+    // Not asked, like a sync would not ask it — not even for robots.txt.
+    if (nonPublicHostProblem(url) !== undefined) {
+      nonPublic++;
+      continue;
+    }
     const verdict = await robots.decide(url);
     if (!verdict.allowed) {
       refused++;
       continue;
     }
     try {
-      let hopRefused = false;
+      let hopRefused: "robots" | "private" | undefined;
       const response = await engine.head(url, {
         onRedirect: async (next) => {
+          if (nonPublicHostProblem(next) !== undefined) {
+            hopRefused = "private";
+            throw new Error(`redirect to ${next} names a loopback, private or link-local address`);
+          }
           if (!(await robots.decide(next)).allowed) {
-            hopRefused = true;
+            hopRefused = "robots";
             throw new Error(`redirect to ${next} is disallowed by its host's robots.txt`);
           }
         },
       }).catch((err: unknown) => {
-        if (hopRefused) return undefined;
+        if (hopRefused !== undefined) return undefined;
         throw err;
       });
       if (response === undefined) {
-        refused++;
+        if (hopRefused === "private") nonPublic++;
+        else refused++;
         continue;
       }
       // A document the listing names and the server does not have: the sync would store
@@ -243,6 +254,12 @@ async function headSample(engine: FetchEngine, urls: string[], robots: RobotsPol
     }
   }
   if (refused > 0) warnings.push(`${refused} of ${urls.length} sampled document(s) are disallowed by robots.txt and were not asked for`);
+  if (nonPublic > 0) {
+    warnings.push(
+      `${nonPublic} of ${urls.length} sampled document(s) name or redirect to a loopback, private or link-local address; ` +
+        "a sync does not fetch them, and stores their records without them",
+    );
+  }
   if (missing.length > 0) {
     const named = missing.length > 5 ? `${missing.slice(0, 5).join(", ")}, and ${missing.length - 5} more` : missing.join(", ");
     warnings.push(`${missing.length} of ${urls.length} sampled document(s) are not there: ${named}; a sync stores their records without them`);

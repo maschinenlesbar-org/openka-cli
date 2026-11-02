@@ -14,6 +14,13 @@ headers on a cross-origin hop, refuses an https: → http: downgrade, and asks t
 caller's `onRedirect` hook (the pipeline's robots.txt check) about every hop. Doing it
 once here means no adapter has to remember any of it.
 
+**Hosts only this machine can reach.** `nonPublicHostProblem(url)` says why a URL names
+loopback, a private network (RFC 1918, CGNAT, unique-local), link-local (the cloud
+metadata service), an otherwise reserved address or `localhost`, and is undefined for
+anything else. It judges the literal host only — a name is not resolved, so a public
+name a resolver answers with a private address passes. The pipeline asks it for every
+document URL an upstream lists and for every redirect hop, before robots.txt.
+
 **What is retried.** A 429/503 and a dropped connection get the full `maxRetries`;
 a timeout is retried once (`timeoutMs` is per attempt); a response over
 `maxResponseBytes` or a URL that cannot be fetched is not retried at all, because it
@@ -81,7 +88,7 @@ request" and go out together.
 Everything is re-exported from the package root:
 
 ```
-DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_RETRIES, MAX_RETRIES, DEFAULT_MAX_REDIRECTS, MAX_REDIRECTS, DEFAULT_MIN_HOST_INTERVAL_MS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES, userAgentProblem, assertEngineOptions, EngineOptions, HostPacer, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, RetryReasons, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, QueryValue, QueryParams, buildQuery
+DEFAULT_USER_AGENT, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_RETRIES, MAX_RETRIES, DEFAULT_MAX_REDIRECTS, MAX_REDIRECTS, DEFAULT_MIN_HOST_INTERVAL_MS, MAX_HOST_INTERVAL_MS, MIN_RESPONSE_BYTES, userAgentProblem, assertEngineOptions, EngineOptions, HostPacer, assertHttpScheme, sanitizeServerText, CacheValidators, FetchResult, FetchEngine, RetryReasons, retryDelayMs, HttpRequest, HttpResponse, Transport, MAX_TIMEOUT_MS, nodeHttpTransport, nonPublicHostProblem, QueryValue, QueryParams, buildQuery
 ```
 
 ## Depends on

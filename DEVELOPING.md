@@ -1157,3 +1157,12 @@ Stated plainly so they are not mistaken for oversights:
 - **The Parlamentsspiegel adapter is a scraper.** Its markup class names are the
   contract. That is fragile by nature, and the design makes the fragility visible:
   a redesign yields zero results, which is the drift signal, not wrong data.
+- **No resolved-address check on document fetches.** A document URL an upstream lists,
+  and every redirect hop, is refused when its literal host is loopback, private,
+  link-local or `localhost` (`nonPublicHostProblem`, lib-http; the `private` gap), before
+  robots.txt — security audit 2026-10-27. A public *name* that resolves to a private
+  address (split-horizon DNS, rebinding) is still fetched: checking the resolved
+  address in the transport would also refuse networks whose resolver legitimately
+  answers that way, and that trade-off is the maintainer's to make. Discovery requests
+  go to each connector's fixed host and are not checked; the record keeps the listed
+  URL, not the one a redirect ended on (a schema change).

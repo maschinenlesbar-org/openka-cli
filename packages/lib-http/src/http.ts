@@ -5,6 +5,7 @@
 
 import http from "node:http";
 import https from "node:https";
+import { BlockList, isIP } from "node:net";
 import { NetworkError } from "@maschinenlesbar.org/openka-lib-errors";
 
 export interface HttpRequest {
@@ -174,4 +175,60 @@ function send(request: HttpRequest, fresh: boolean): Promise<HttpResponse> {
     if (request.body !== undefined) req.write(request.body);
     req.end();
   });
+}
+
+/**
+ * Addresses only this machine or its network can reach: loopback, "this network",
+ * the RFC 1918 private ranges, CGNAT shared space, link-local (the cloud metadata
+ * service lives there), IETF protocol assignments, benchmarking, multicast and
+ * reserved; for IPv6 the unspecified and loopback addresses, unique-local,
+ * link-local and multicast.
+ */
+const NON_PUBLIC = new BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4],
+] as const) {
+  NON_PUBLIC.addSubnet(network, prefix, "ipv4");
+}
+for (const [network, prefix] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) {
+  NON_PUBLIC.addSubnet(network, prefix, "ipv6");
+}
+
+/** The IPv4 address an IPv4-mapped IPv6 address (`::ffff:7f00:1`, `::ffff:127.0.0.1`) carries, if it is one. */
+function mappedIpv4(address: string): string | undefined {
+  const dotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (dotted !== null) return dotted[1];
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(address);
+  if (hex === null) return undefined;
+  const high = Number.parseInt(hex[1] as string, 16);
+  const low = Number.parseInt(hex[2] as string, 16);
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
+/**
+ * Why `url` names a host only this machine or its network can reach — a loopback,
+ * private, link-local or otherwise non-public address, or `localhost` — or undefined.
+ *
+ * Only the literal host is judged; a name is not resolved, so a public name that a
+ * resolver answers with a private address is not caught here. The WHATWG URL parser
+ * has already normalised the IPv4 spellings (`2130706433`, `0x7f.1`). An upstream
+ * chooses the document URLs a sync fetches and every redirect target, and nothing
+ * stopped it from naming such a host (security audit 2026-10-27).
+ */
+export function nonPublicHostProblem(url: string): string | undefined {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+  const bare = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  const named = bare.replace(/\.$/, "");
+  if (named === "localhost" || named.endsWith(".localhost")) return `names ${hostname}, a loopback host`;
+  const family = isIP(bare);
+  if (family === 0) return undefined;
+  const v4 = family === 6 ? mappedIpv4(bare) : bare;
+  const blocked = v4 !== undefined ? NON_PUBLIC.check(v4, "ipv4") : NON_PUBLIC.check(bare, "ipv6");
+  return blocked ? `names ${hostname}, a loopback, private or link-local address, not a host on the internet` : undefined;
 }

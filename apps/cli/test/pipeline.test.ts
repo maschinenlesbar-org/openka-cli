@@ -203,6 +203,52 @@ describe("sync pipeline", () => {
     ok("sha256" in result && store.getBlob(result.sha256).equals(PDF));
   });
 
+  describe("a document URL on a loopback or private address (security audit 2026-10-27)", () => {
+    // Upstreams choose document URLs and redirect targets; nothing refused loopback,
+    // link-local or private destinations, so a hostile or compromised one could have
+    // ka sync request services only the user's machine reaches and archive the answer.
+    const listing = (url: string): StubSource =>
+      new (class extends StubSource {
+        override async discover(options: DiscoverOptions): Promise<DiscoverResult> {
+          const result = await super.discover(options);
+          return { ...result, refs: result.refs.map((ref) => ({ ...ref, documents: [{ role: "combined_pdf" as const, url, urlStable: true }] })) };
+        }
+      })();
+
+    for (const url of ["http://127.0.0.1:8080/internal/admin.pdf", "https://10.0.0.5/admin/report.pdf", "http://localhost/x.pdf"]) {
+      it(`is not requested when the listing names ${url}`, async () => {
+        const store = new MemoryStore();
+        const { transport, requests } = scriptedTransport([{ match: "/", body: PDF }]);
+        const report = await sync({ source: listing(url), store, engine: testEngine(transport) });
+        strictEqual(report.stored, 1);
+        const host = new URL(url).host;
+        deepStrictEqual(requests.filter((request) => new URL(request.url).host === host).map((request) => request.url), []);
+        ok(report.warnings.some((warning) => warning.includes(url) && warning.includes("loopback, private or link-local")), report.warnings.join("\n"));
+        deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, [{ role: "combined_pdf", url, url_stable: true }], "listed, not archived");
+      });
+    }
+
+    it("is not requested when a document redirects there", async () => {
+      const store = new MemoryStore();
+      const { transport, requests } = scriptedTransport([
+        { match: "10.0.0.5", body: PDF },
+        { match: ".pdf", status: 302, headers: { location: "https://10.0.0.5/admin/report.pdf" } },
+      ]);
+      const report = await sync({ source: new StubSource(), store, engine: testEngine(transport) });
+      strictEqual(report.stored, 1);
+      ok(!requests.some((request) => request.url.includes("10.0.0.5")), requests.map((request) => request.url).join("\n"));
+      ok(report.warnings.some((warning) => warning.includes("loopback, private or link-local")), report.warnings.join("\n"));
+      deepStrictEqual(store.getRecord("berlin-19-10006")?.source_documents, [{ role: "combined_pdf", url: PDF_URL, url_stable: true }], "listed, not archived");
+    });
+
+    it("is not sampled by a dry run", async () => {
+      const { transport, requests } = scriptedTransport([{ match: "/", status: 200, headers: { "content-length": "1000" }, body: "" }]);
+      const plan = await planSync({ source: listing("http://127.0.0.1:8080/x.pdf"), store: new MemoryStore(), engine: testEngine(transport) });
+      ok(!requests.some((request) => request.url.includes("127.0.0.1")), requests.map((request) => request.url).join("\n"));
+      ok(plan.warnings.some((warning) => warning.includes("loopback, private or link-local")), plan.warnings.join("\n"));
+    });
+  });
+
   describe("a document that redirects", () => {
     // The robots check used to cover the first URL only: a redirect to another host,
     // or into a disallowed path on the same one, was fetched without a word.
