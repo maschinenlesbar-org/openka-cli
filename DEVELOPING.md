@@ -330,7 +330,9 @@ What the library rejects with `OpenKaValidationError`, so far:
   (`assertPerceiverOptions`, `lib-perceive`). An omitted one still means the default.
 - **Blank or unsafe factory parameters** — `addGolden` refuses a blank `root` or
   `note` and a `source` that is not a safe key (`goldenKeyProblem`: blank, `..`,
-  upper case); `importEmbeddings` a blank `model` and a `modelSha256` that is not 64
+  upper case) — the record's `parliament` too, when no `source` is given and it names
+  the golden folder, since a record file is read as it is (a hand-edited `../..` used
+  to file the golden outside `--dir`); `importEmbeddings` a blank `model` and a `modelSha256` that is not 64
   hex digits (`modelSha256Problem`); `loadBaseline`/`saveBaseline` a blank path or
   one that is not a string (`baselinePathProblem`). The
   `ka-factory` options `--source` and `--model-sha256` use the same rules, so

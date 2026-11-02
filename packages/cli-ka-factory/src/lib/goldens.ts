@@ -192,7 +192,12 @@ export function addGolden(store: Store, id: string, options: AddGoldenOptions = 
   assertValid("note", options.note, nonBlankProblem);
   const record = store.getRecord(id);
   if (record === undefined) throw new Error(`No record ${id} in the corpus`);
+  // Whatever names the folder is checked, not only `options.source`: without it the
+  // folder is the record's parliament, and a record file is read as it is — a
+  // hand-edited `"parliament": "../.."` filed the golden outside `root` (security audit
+  // 2026-10-27). goldenRootFor checks it again when there is no root.
   const source = options.source ?? record.parliament;
+  assertValid("source", source, goldenKeyProblem);
   const root = options.root ?? goldenRootFor(source);
   const dir = join(root, source, id);
   mkdirSync(dir, { recursive: true });

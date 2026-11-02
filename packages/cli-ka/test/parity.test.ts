@@ -154,6 +154,28 @@ describe("blank and unsafe factory parameters (finding 24)", () => {
     }
   });
 
+  it("refuses a record's parliament that is not a safe key, also with --dir (security audit 2026-10-27)", async () => {
+    // Without --source the golden folder is named after the stored record's parliament,
+    // and records are not validated on read: a hand-edited `"parliament": "../../../out"`
+    // had `goldens add --dir` write record.json, meta.json and the blobs outside the
+    // directory it was given. Only the path without --dir checked it. (`../escaped`
+    // keeps a regression inside the test's own corpus.)
+    const UNSAFE = "Not a source key: expected lower-case letters, digits, '.', '_' and '-', like berlin.";
+    const tampered = (corpus: string): void => {
+      seedOneRecord(corpus);
+      const file = join(corpus, "records", "berlin-19-12345.json");
+      writeFileSync(file, readFileSync(file, "utf8").replace('"parliament": "berlin"', '"parliament": "../escaped"'));
+    };
+    const cliDir = (corpus: string): string => join(corpus, "fixtures");
+    const result = await parity({
+      runner: runFactory,
+      seed: tampered,
+      argv: (corpus) => ["--corpus", corpus, "goldens", "add", "berlin-19-12345", "--dir", cliDir(corpus)],
+      lib: ({ store, corpus }) => addGolden(store, "berlin-19-12345", { root: cliDir(corpus) }),
+    });
+    bothRefused(result, "source", UNSAFE);
+  });
+
   it("refuses a blank fixture directory or note", async () => {
     for (const blank of ["", "  "]) {
       const dir = await parity({
