@@ -2352,6 +2352,43 @@ describe("ka-factory", () => {
     ok(lines.includes("(no question/answer pairs were extracted)"));
   });
 
+  it("sanitises every catalog string a human-readable line prints (security audit 2026-10-27)", async () => {
+    // The catalog is read back as it is: a corpus from someone else whose
+    // index/catalog.json carried ESC sequences in a parliament key, a date, an
+    // abstained field or an extractor version had ka stats, ka search and ka review
+    // --group-by field send them to the terminal (a window title, a cleared screen).
+    const harness = cliHarness();
+    try {
+      const base = sampleRecord();
+      const record = sampleRecord({ extraction: { ...base.extraction, abstained_fields: ["qa"], review_status: "needs_review", parse_complete: false } });
+      const store = new FileStore(harness.corpus);
+      store.putRecord(record);
+      indexRecord(store, record);
+      const catalogFile = join(harness.corpus, "index", "catalog.json");
+      const rows = JSON.parse(readFileSync(catalogFile, "utf8")) as Record<string, unknown>[];
+      const row = rows[0] as Record<string, unknown>;
+      row["parliament"] = "berlin\u001b]0;TITLE\u0007\u001b[2J";
+      row["submitted"] = "\u001b[7mINV\u001b[0m";
+      row["answered"] = "\u009b7mINV";
+      row["abstained_fields"] = { "qa\u001b[5mBLINK": 1 };
+      row["extractor_version"] = "test:1\u001b[32mGREEN";
+      writeFileSync(catalogFile, JSON.stringify(rows, null, 2) + "\n");
+      const isControl = (ch: string): boolean => {
+        const code = ch.codePointAt(0) ?? 0;
+        return (code < 0x20 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+      };
+      for (const argv of [["stats", "--no-disk"], ["stats", "--no-disk", "--by", "parliament"], ["search", "zustand"], ["review"], ["review", "--group-by", "field"], ["sources", "status"]]) {
+        harness.out.length = 0;
+        harness.err.length = 0;
+        await run(["--corpus", harness.corpus, ...argv], harness.deps);
+        const printed = harness.stdout() + harness.stderr();
+        strictEqual([...printed].some(isControl), false, `${argv.join(" ")}: ${JSON.stringify(printed)}`);
+      }
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("escapes DEL and C1 in a JSON rendering on stdout, as printJson does (security audit 2026-10-27)", async () => {
     // putRecord refuses control characters, but getRecord reads a record file as it is:
     // one written outside the library (a corpus from someone else) carried U+009B, the

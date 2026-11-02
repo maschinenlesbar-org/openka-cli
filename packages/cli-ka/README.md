@@ -21,6 +21,14 @@ problem, `4` not found.
 `CliDeps.now`), never with `io.err`; `ka-factory` uses the same module under its own
 program name.
 
+**Corpus strings are upstream data on a terminal.** Every human-readable line passes
+what it prints from a record, the catalog or the source state through
+`sanitizeForTerminal` (or `truncate`, which does), pad widths computed on the sanitised
+text: the catalog is read back as it is, and a corpus from someone else could carry
+ESC sequences in a parliament key, a date, an abstained field or an extractor version
+to `ka stats`, `ka search` and `ka review` (security audit 2026-10-27). JSON on stdout
+escapes DEL and C1 (`escapeControlChars`).
+
 **Every option that takes a value gets a parser.** A blank filter is a usage error,
 never a silently dropped constraint — a search that quietly ignores `--parliament ""`
 returns the whole corpus and looks like it worked.

@@ -15,7 +15,7 @@ import { PERIOD_RANGE, knownGaps, onlyKnownGaps } from "@maschinenlesbar.org/ope
 import { logOf, type CliDeps } from "../io.js";
 import { describeRequestFloor } from "@maschinenlesbar.org/openka-lib-source";
 import { action, apiKeyLookup, noteRequestFloors, parseApiKey, parseBoundedInt, parseParliament, parseRecordId, printJson, problemParser, toEngineOptions, type ActionContext } from "../shared.js";
-import { formatCount, pad, truncate } from "../text.js";
+import { formatCount, pad, sanitizeForTerminal, truncate } from "../text.js";
 import { OCR_MODES, createPerceiver, type OcrMode } from "@maschinenlesbar.org/openka-lib-perceive";
 import { choiceOption } from "../shared.js";
 
@@ -57,17 +57,17 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
             if (result.verdict === "differs" && result.storedVersion !== result.currentVersion) {
               // Stamped by another build, and the content moved too: what moved is the
               // finding, the version only the context.
-              const shown = result.contentDifferences.slice(0, 10).join(", ");
+              const shown = sanitizeForTerminal(result.contentDifferences.slice(0, 10).join(", "));
               const more = result.contentDifferences.length > 10 ? `, and ${result.contentDifferences.length - 10} more` : "";
-              io.out(`DIFF ${result.id}: content differs at ${shown}${more} (produced by ${result.storedVersion}, this build is ${result.currentVersion})`);
+              io.out(`DIFF ${result.id}: content differs at ${shown}${more} (produced by ${sanitizeForTerminal(result.storedVersion)}, this build is ${result.currentVersion})`);
               continue;
             }
-            io.out(`FAIL ${result.id}: ${result.reason ?? "mismatch"}`);
-            for (const path of result.differences.slice(0, 10)) io.out(`       differs at ${path}`);
+            io.out(`FAIL ${result.id}: ${sanitizeForTerminal(result.reason ?? "mismatch")}`);
+            for (const path of result.differences.slice(0, 10)) io.out(`       differs at ${sanitizeForTerminal(path)}`);
             if (result.differences.length > 10) io.out(`       … and ${result.differences.length - 10} more fields`);
           }
           // After an upgrade that is every record: a few named, the rest counted.
-          for (const result of versionOnly.slice(0, 10)) io.out(`VERSION ${result.id}: ${result.reason ?? ""}`);
+          for (const result of versionOnly.slice(0, 10)) io.out(`VERSION ${result.id}: ${sanitizeForTerminal(result.reason ?? "")}`);
           if (versionOnly.length > 10) io.out(`VERSION … and ${versionOnly.length - 10} more`);
           io.out(
             `${report.reproduced}/${report.checked} record(s) reproduced byte-identically.` +
@@ -128,16 +128,16 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           }
           for (const set of grouped) {
             if (set.queued === 0 && set.knownGapsOnly === 0) continue;
-            io.out(`${set.parliament}: ${formatCount(set.queued)} record(s) in the queue`);
+            io.out(`${sanitizeForTerminal(set.parliament)}: ${formatCount(set.queued)} record(s) in the queue`);
             if (set.groups.length > 0) io.out(`  ${pad("FIELD", 22)} ${"OCCURRENCES".padStart(11)} ${"RECORDS".padStart(8)}  EXAMPLES`);
             for (const group of set.groups) {
               io.out(
-                `  ${pad(group.field, 22)} ${formatCount(group.occurrences).padStart(11)} ${formatCount(group.records).padStart(8)}  ${group.examples.join(", ")}` +
+                `  ${pad(sanitizeForTerminal(group.field), 22)} ${formatCount(group.occurrences).padStart(11)} ${formatCount(group.records).padStart(8)}  ${sanitizeForTerminal(group.examples.join(", "))}` +
                   (group.known === true ? "  (never provided by the parliament)" : ""),
               );
             }
             if (set.unknown > 0) {
-              logOf(ctx.deps).info("store", `${set.parliament}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
+              logOf(ctx.deps).info("store", `${sanitizeForTerminal(set.parliament)}: ${set.unknown} record(s) were catalogued before abstained fields were indexed; \`ka reindex\` adds them.`);
             }
           }
           noteKnownGaps(ctx, grouped.reduce((sum, set) => sum + set.knownGapsOnly, 0), grouped.filter((set) => set.knownGapsOnly > 0).map((set) => set.parliament));
@@ -189,7 +189,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
           const record = store.getRecord(entry.id);
           ctx.deps.io.out(`${pad(entry.id, 24)} ${pad(String(entry.abstained), 3)} ${truncate(entry.title, 60)}`);
           for (const field of record?.extraction.abstained_fields.slice(0, 5) ?? []) {
-            ctx.deps.io.out(`    ${field}`);
+            ctx.deps.io.out(`    ${sanitizeForTerminal(field)}`);
           }
         }
         logOf(ctx.deps).info(
@@ -238,7 +238,7 @@ export function registerMaintain(program: Command, deps: CliDeps): void {
         for (const row of rows) {
           const health = row.last_error !== undefined ? "degraded" : row.status;
           ctx.deps.io.out(
-            `${pad(row.key, 26)} ${pad(health, 15)} ${pad(row.records === undefined ? "—" : String(row.records), 8)} ${row.last_sync ?? "never"}`,
+            `${pad(row.key, 26)} ${pad(health, 15)} ${pad(row.records === undefined ? "—" : String(row.records), 8)} ${row.last_sync === undefined ? "never" : sanitizeForTerminal(row.last_sync)}`,
           );
           if (row.last_error !== undefined) ctx.deps.io.out(`    error: ${truncate(row.last_error, 120)}`);
         }

@@ -43,7 +43,8 @@ function addFilterOptions(command: Command): Command {
  */
 export function formatHit(entry: CatalogEntry, score: number, snippet?: string): string {
   const flag = entry.abstained > 0 ? "!" : " ";
-  const date = entry.submitted ?? "—".padEnd(10);
+  // From the catalog, read as it is: sanitised like the title (security audit 2026-10-27).
+  const date = entry.submitted === undefined ? "—".padEnd(10) : sanitizeForTerminal(entry.submitted);
   const line =
     `${flag} ${pad(entry.id, 24)} ${pad(date, 10)} ${pad(truncate(entry.parliament, 14), 14)} ` +
     `${truncate(entry.title, 70)}${score > 0 ? ` (${score.toFixed(2)})` : ""}`;
@@ -63,7 +64,7 @@ export function renderShowLines(record: KaRecord): string[] {
   const lines: string[] = [];
   lines.push(sanitizeForTerminal(record.title || "(no title)"));
   lines.push(
-    `${parliament?.label ?? record.parliament} · Drucksache ${sanitizeForTerminal(record.reference)} · ` +
+    `${parliament?.label ?? sanitizeForTerminal(record.parliament)} · Drucksache ${sanitizeForTerminal(record.reference)} · ` +
       `WP ${record.legislative_period}`,
   );
   const askers = record.askers

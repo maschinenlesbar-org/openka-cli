@@ -216,7 +216,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
       const knownOnly = (n: number): string => (n === 0 ? "" : ` (${formatCount(n)} only where the parliament never provides the field)`);
       io.out(`${summary.parse_complete} parse-complete${rate}, ${summary.needs_review} with abstained fields${knownOnly(summary.known_gaps_only)}`);
       for (const [parliament, bucket] of Object.entries(summary.by_parliament)) {
-        io.out(`  ${parliament}: ${bucket.records} record(s), ${bucket.abstained} needing review${knownOnly(bucket.known_gaps_only)}`);
+        io.out(`  ${sanitizeForTerminal(parliament)}: ${bucket.records} record(s), ${bucket.abstained} needing review${knownOnly(bucket.known_gaps_only)}`);
       }
       printCoverage(ctx, summary);
       printVersions(ctx, summary);
@@ -229,7 +229,7 @@ export function registerOutput(program: Command, deps: CliDeps): void {
         );
         for (const [source, usage] of Object.entries(disk.by_source)) {
           if (usage.files === 0) continue;
-          io.out(`  ${source}: ${formatCount(usage.files)} document(s), ${formatBytes(usage.bytes)} (avg ${formatBytes(usage.bytes / usage.files)})`);
+          io.out(`  ${sanitizeForTerminal(source)}: ${formatCount(usage.files)} document(s), ${formatBytes(usage.bytes)} (avg ${formatBytes(usage.bytes / usage.files)})`);
         }
       }
       if (breakdown !== undefined) printBreakdown(ctx, breakdown);
@@ -244,17 +244,23 @@ function collectDimension(value: string, previous: StatsDimension[] = []): Stats
   return previous.concat([dimension]);
 }
 
-/** When the questions were asked, how many there are, how many are answered — and what was abstained on most. */
+/**
+ * When the questions were asked, how many there are, how many are answered — and what was
+ * abstained on most. Every string here comes from the catalog, which is read back as it
+ * is from a corpus that may have come from someone else, so it is sanitised like any
+ * upstream text (security audit 2026-10-27); so are the parliament keys and versions.
+ */
 function printCoverage(ctx: ActionContext, stats: CorpusStats): void {
   const io = ctx.deps.io;
   const c = stats.coverage;
-  const span = c.first_asked === undefined ? "no question date known" : `asked ${c.first_asked} to ${c.last_asked ?? c.first_asked}`;
+  const span =
+    c.first_asked === undefined ? "no question date known" : `asked ${sanitizeForTerminal(c.first_asked)} to ${sanitizeForTerminal(c.last_asked ?? c.first_asked)}`;
   const undated = c.undated > 0 ? ` (${formatCount(c.undated)} without a question date)` : "";
   const unknown = c.questions_unknown > 0 ? ` (+ ${formatCount(c.questions_unknown)} record(s) not counted yet)` : "";
   io.out(`Coverage: ${span}${undated}; ${formatCount(c.questions)} questions${unknown}; ${formatCount(c.unanswered)} without an answer date`);
   const fields = Object.entries(stats.abstained_by_field).sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
   if (fields.length > 0) {
-    const shown = fields.slice(0, 5).map(([field, count]) => `${field} ${formatCount(count)}`).join(", ");
+    const shown = fields.slice(0, 5).map(([field, count]) => `${sanitizeForTerminal(field)} ${formatCount(count)}`).join(", ");
     io.out(`Abstained most: ${shown}${fields.length > 5 ? `, … ${fields.length - 5} more` : ""} (\`ka review --group-by field\`)`);
   }
 }
@@ -264,10 +270,11 @@ function printVersions(ctx: ActionContext, stats: CorpusStats): void {
   const io = ctx.deps.io;
   const current = extractorVersion(ctx.deps.env);
   const versions = Object.entries(stats.extractor_versions).sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1));
-  const width = Math.max(0, ...versions.map(([version]) => version.length));
+  const shown = versions.map(([version]) => sanitizeForTerminal(version));
+  const width = Math.max(0, ...shown.map((version) => version.length));
   versions.forEach(([version, count], index) => {
     const mark = version === current ? " (this build)" : "";
-    io.out(`${index === 0 ? "Extractor:" : "          "} ${pad(version, width)}  ${formatCount(count)} record(s)${mark}`);
+    io.out(`${index === 0 ? "Extractor:" : "          "} ${pad(shown[index] as string, width)}  ${formatCount(count)} record(s)${mark}`);
   });
   const others = versions.filter(([version]) => version !== current).reduce((sum, [, count]) => sum + count, 0);
   if (others > 0) io.out(`  ${formatCount(others)} record(s) were made by another build — \`ka reextract --all\` brings them to this one.`);
