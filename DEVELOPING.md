@@ -72,6 +72,20 @@ npmjs.com (this repository, workflow `publish.yml`), and later versions go tag �
 (`gh workflow run publish.yml --ref vX.Y.Z`, which takes the version from the tag),
 like every other repository in the workspace.
 
+**`release.yml` runs three jobs**, so no third-party code shares a job with the tarball or
+the write token. **pack** (read-only): verify the tag, write the changelog, `npm ci`,
+`npm test`, `npm pack --workspace @maschinenlesbar.org/openka-cli`, and record the tarball's
+and the notes' sha256 as job outputs. **sbom** (read-only): `npm ci --ignore-scripts`, then
+the CycloneDX tool from `tools/sbom/` — its own package, the tool and its whole tree locked
+with integrity hashes, installed with `npm ci --ignore-scripts --prefix tools/sbom` and run
+from its `node_modules/.bin`, never through `npx` — for the two SBOMs scoped to `apps/cli`.
+**release** (the only job with `contents: write`): no checkout, no npm or Node; it downloads
+both artifacts, checks them against the pack job's digests (`sha256sum --check --strict`) and
+runs `gh release create` with the four assets named one by one. `tools/sbom/` is not a
+workspace and not in the package's `files`; to update the tool, change its version in
+`tools/sbom/package.json` and run `npm install --package-lock-only --ignore-scripts` there.
+`apps/cli/test/release-workflow.test.ts` pins all of this.
+
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
 `node packages/cli-ka/dist/src/index.js --help`.
@@ -112,6 +126,7 @@ packages/
   cli-ka-factory/        THE FACTORY — build-time only, never imported by the line
 tools/pack/              prepack/postpack: bundle the packages into the tarball (shared)
 tools/bump.mjs           version bump + commit + tag (npm run bump; shared)
+tools/sbom/              the CycloneDX SBOM tool, own lockfile (release.yml's sbom job only)
 ```
 
 The layout is the one every maschinenlesbar.org CLI repository has: `apps/` for what
