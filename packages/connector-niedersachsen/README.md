@@ -16,7 +16,9 @@ parser. Since that was fixed, a corpus without the frozen map is not answer-less
 just lacks the confirmation the sweep provides by actually reading the paper. Where
 the map has an entry it is authoritative and **replaces** the row's follow-up rather
 than adding to it, because they are the same paper and appending would fetch and
-extract it twice.
+extract it twice. Only an entry whose URL is https on the Landtag's own host is used:
+the map is read back from the corpus, and an entry naming another host is skipped with
+a warning, the row's follow-up kept.
 
 Every Drucksache sits at a predictable URL — the outer folder is the number rounded
 up to a multiple of 2500, the inner one its 500-wide block, verified across both

@@ -139,7 +139,14 @@ export class NiedersachsenSource implements Source {
   async discover(options: DiscoverOptions): Promise<DiscoverResult> {
     const discovered = await this.aggregator.discover(options);
     const warnings = [...discovered.warnings];
-    const index = options.store?.loadArtifact<AnswerIndex>(ANSWER_INDEX);
+    const stored = options.store?.loadArtifact<unknown>(ANSWER_INDEX);
+    if (stored !== undefined && !isAnswerMap(stored)) {
+      warnings.push(
+        `the corpus's ${ANSWER_INDEX} artifact is not an answer index, so it is ignored and the answers come from ` +
+          "the Parlamentsspiegel rows; rebuild it with `ka-factory answers niedersachsen`.",
+      );
+    }
+    const index = stored !== undefined && isAnswerMap(stored) ? stored : undefined;
 
     if (index === undefined) {
       warnings.push(
@@ -150,9 +157,14 @@ export class NiedersachsenSource implements Source {
       return withDiscoveryState(discovered, discovered.refs, warnings);
     }
 
+    let refused = 0;
     const refs: DocRef[] = discovered.refs.map((ref) => {
-      const answer = index.answers[ref.reference];
+      const answer = Object.hasOwn(index.answers, ref.reference) ? index.answers[ref.reference] : undefined;
       if (answer === undefined) return ref;
+      if (!isLandtagAnswer(answer)) {
+        refused++;
+        return ref;
+      }
       // The answer paper reprints the question above the reply, so it is combined.
       // It replaces whatever follow-up the result row named rather than joining it:
       // they are the same paper, and appending would fetch and extract it twice.
@@ -162,8 +174,48 @@ export class NiedersachsenSource implements Source {
       ];
       return { ...ref, documents };
     });
+    if (refused > 0) {
+      warnings.push(
+        `${refused} ${refused === 1 ? "entry" : "entries"} of the corpus's answer index ${refused === 1 ? "is" : "are"} not an https URL on ` +
+          `${LANDTAG_HOST}, which is all \`ka-factory answers niedersachsen\` writes; ignored, and the Parlamentsspiegel row used instead.`,
+      );
+    }
     return withDiscoveryState(discovered, refs, warnings);
   }
+}
+
+/** The Landtag's own host: the only one an answer-index URL may name. */
+const LANDTAG_HOST = new URL(LANDTAG_NDS).host;
+
+/**
+ * Whether a stored artifact has the shape the factory writes, as far as discovery reads
+ * it: an object whose `answers` is an object. The index is read back from the corpus,
+ * which may have come from someone else, so it is not trusted as typed.
+ */
+function isAnswerMap(value: unknown): value is Pick<AnswerIndex, "answers"> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const answers = (value as { answers?: unknown }).answers;
+  return typeof answers === "object" && answers !== null && !Array.isArray(answers);
+}
+
+/**
+ * Whether an answer-index entry is one the factory could have written: a reference and
+ * an https URL on the Landtag's host. Every URL it writes is `niedersachsenUrl(…)`; a
+ * hand-edited entry naming another host made `ka sync` request robots.txt and the path
+ * there — loopback and the private network included — and archive what looked like a
+ * PDF (security audit 2026-10-27).
+ */
+function isLandtagAnswer(entry: unknown): entry is AnswerEntry {
+  if (typeof entry !== "object" || entry === null) return false;
+  const { reference, url } = entry as { reference?: unknown; url?: unknown };
+  if (typeof reference !== "string" || typeof url !== "string") return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "https:" && parsed.host === LANDTAG_HOST && parsed.username === "" && parsed.password === "";
 }
 
 /** How this connector announces itself to the registry and `ka sources list`. */

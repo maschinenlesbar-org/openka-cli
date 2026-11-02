@@ -955,7 +955,12 @@ map looks complete while being full of holes. `--merge` across legislative perio
 is refused outright, since the numbers mean different things in each.
 `NiedersachsenSource` consumes it and attaches the answer; without it the source
 says so in a warning and yields question-only records, which is honest rather than
-wrong. A sweep of 190 Drucksachen found 67 answers and took the Land from no records
+wrong. The artifact is read back from a corpus that may have come from someone else,
+so it is not trusted as typed: an artifact without an `answers` object is ignored with
+a warning, and an entry whose URL is not https on `www.landtag-niedersachsen.de` — all
+the sweep writes — is skipped (one warning with the count) and the Parlamentsspiegel
+row used instead. A hand-edited entry used to steer `ka sync` to any host, loopback
+included (security audit 2026-10-27). A sweep of 190 Drucksachen found 67 answers and took the Land from no records
 with answers to six of eight.
 
 This is the clearest instance in the project of the two planes doing their jobs: an

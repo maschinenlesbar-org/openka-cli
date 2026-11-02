@@ -15,6 +15,7 @@ import {
   type AnswerIndex,
 } from "../src/index.js";
 import { sweepAnswers } from "@maschinenlesbar.org/openka-cli-ka-factory";
+import type { DiscoverResult } from "@maschinenlesbar.org/openka-lib-source";
 import { MemoryStore, scriptedTransport, testEngine, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 
 const { readFixtureText } = fixturesOf("@maschinenlesbar.org/openka-lib-parlamentsspiegel", import.meta.url);
@@ -209,7 +210,7 @@ describe("Niedersachsen source", () => {
       built_at: "2026-01-02T03:04:05Z",
       period: 19,
       ranges: [{ from: 1, to: 9999 }],
-      answers: { [reference]: { reference: "19/9999", url: "https://x.invalid/answer.pdf" } },
+      answers: { [reference]: { reference: "19/9999", url: niedersachsenUrl(19, 9999) } },
     } satisfies AnswerIndex);
 
     const result = await new NiedersachsenSource().discover({
@@ -219,6 +220,51 @@ describe("Niedersachsen source", () => {
     });
     const documents = result.refs.find((ref) => ref.reference === reference)?.documents ?? [];
     deepStrictEqual(documents.map((document) => document.role), ["question_pdf", "combined_pdf"]);
+  });
+
+  describe("an answer index it did not write (security audit 2026-10-27)", () => {
+    // The factory writes URLs on the Landtag's host only, but the index is read back
+    // from the corpus — which may come from someone else — and its URLs were fetched as
+    // they stood: a hand-edited entry made ka sync GET robots.txt and any path on
+    // loopback, and archive the answer when it looked like a PDF.
+    const discoverWith = async (artifact: unknown): Promise<{ result: DiscoverResult; reference: string; requests: string[] }> => {
+      const store = new MemoryStore();
+      const first = await new NiedersachsenSource().discover({
+        engine: testEngine(scriptedTransport([{ match: "/suche", body: html }]).transport),
+        store,
+        state: { source: "niedersachsen", http_cache: {} },
+      });
+      const reference = first.refs[0]?.reference as string;
+      store.saveArtifact(ANSWER_INDEX, typeof artifact === "function" ? (artifact as (r: string) => unknown)(reference) : artifact);
+      const { transport, requests } = scriptedTransport([{ match: "/suche", body: html }]);
+      const result = await new NiedersachsenSource().discover({ engine: testEngine(transport), store, state: { source: "niedersachsen", http_cache: {} } });
+      return { result, reference, requests: requests.map((request) => request.url) };
+    };
+    const indexWith = (url: unknown) => (reference: string) => ({
+      built_at: "2026-01-02T03:04:05Z",
+      period: 19,
+      ranges: [{ from: 1, to: 9999 }],
+      answers: { [reference]: { reference: "19/9999", url } },
+    });
+
+    for (const url of ["http://127.0.0.1:8080/internal/admin.pdf", "https://10.0.0.5/a.pdf", "http://www.landtag-niedersachsen.de/a.pdf", "https://www.landtag-niedersachsen.de.evil.invalid/a.pdf", "not a url", 42]) {
+      it(`ignores an entry whose URL is ${JSON.stringify(url)}, and uses the result row`, async () => {
+        const { result, reference } = await discoverWith(indexWith(url));
+        const documents = result.refs.find((ref) => ref.reference === reference)?.documents ?? [];
+        ok(!documents.some((document) => document.url === url), "the entry's URL is not a document");
+        ok(documents.some((document) => document.role === "answer_pdf"), "the row's answer stays");
+        ok(result.warnings.some((warning) => warning.includes("1 entry") && warning.includes("www.landtag-niedersachsen.de")), result.warnings.join("\n"));
+      });
+    }
+
+    for (const [label, artifact] of [["a list", []], ["answers that are not an object", { period: 19, ranges: [], answers: "x" }], ["null", null]] as const) {
+      it(`treats ${label} as no usable index, rather than failing`, async () => {
+        const { result } = await discoverWith(artifact);
+        ok(result.refs.length >= 1);
+        ok(result.refs.every((ref) => ref.documents.some((document) => document.role === "answer_pdf")));
+        ok(result.warnings.some((warning) => warning.includes("not an answer index")), result.warnings.join("\n"));
+      });
+    }
   });
 
   it("attaches the answer when the map has one", async () => {
@@ -234,7 +280,7 @@ describe("Niedersachsen source", () => {
       built_at: "2026-01-02T03:04:05Z",
       period: 19,
       ranges: [{ from: 1, to: 9999 }],
-      answers: { [reference]: { reference: "19/9999", url: "https://x.invalid/answer.pdf" } },
+      answers: { [reference]: { reference: "19/9999", url: niedersachsenUrl(19, 9999) } },
     } satisfies AnswerIndex);
 
     const result = await new NiedersachsenSource().discover({
