@@ -52,6 +52,25 @@ describe("scheme checks", () => {
   it("is enforced by the default transport too", async () => {
     await rejects(() => nodeHttpTransport({ method: "GET", url: "file:///etc/passwd" }), /Unsupported protocol/);
   });
+
+  it("refuses a URL typed without its scheme without its user name, token or password (security audit 2026-10-27, F6)", async () => {
+    // `my_user:pw@h` does not parse ("_" is no scheme character) and was quoted with its
+    // password; `T0kenS3cret:@h` parses with the token as its scheme, which the message named.
+    for (const url of ["my_user:s3cret-pw@h.example/x", "T0kenS3cret:@h.example/x", "alice:s3cret-pw@h.example/x"]) {
+      const err = await nodeHttpTransport({ method: "GET", url }).then(
+        () => Promise.reject(new Error(`${url}: accepted`)),
+        (caught: unknown) => caught,
+      );
+      ok(err instanceof NetworkError, String(err));
+      ok(!/s3cret|t0kens3cret|T0kenS3cret|my_user|alice/.test(err.message), err.message);
+      match(err.message, /\*\*\*@h\.example\/x$/);
+    }
+    // A scheme spelled as one (`scheme://`) is still named.
+    await rejects(() => nodeHttpTransport({ method: "GET", url: "ftp://alice:s3cret-pw@h.example/x" }), (err: unknown) => {
+      strictEqual((err as Error).message, 'Unsupported protocol "ftp:" in URL: ftp://h.example/x');
+      return true;
+    });
+  });
 });
 
 describe("hosts only this machine or its network can reach (security audit 2026-10-27)", () => {

@@ -14,6 +14,7 @@ import {
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 import { buildQuery, type QueryParams } from "./query.js";
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
+import { withoutUserinfo } from "./userinfo.js";
 
 export const DEFAULT_USER_AGENT =
   "openka-cli (+https://github.com/maschinenlesbar-org/openka-cli)";
@@ -136,18 +137,6 @@ export interface RetryEvent {
   reason?: string;
   /** The URL being retried, userinfo removed. */
   url: string;
-}
-
-/** The URL without its userinfo, which a log must not carry. */
-function withoutUserinfo(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.username = "";
-    parsed.password = "";
-    return parsed.href;
-  } catch {
-    return url;
-  }
 }
 
 /**

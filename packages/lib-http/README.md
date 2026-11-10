@@ -27,7 +27,10 @@ a timeout is retried once (`timeoutMs` is per attempt); a response over
 would fail the same way at the same cost. The transport says which it was through
 `NetworkError.failure`. A request that fails for good is a `NetworkError` that names it —
 `GET https://…/dokument/70000: Request timed out after 30000ms`, the URL without its
-userinfo — with the same `failure` and the transport's error as its `cause`.
+userinfo — with the same `failure` and the transport's error as its `cause`. The
+transport's own refusals (`Invalid URL: …`, `Unsupported protocol "ftp:" in URL: …`)
+quote no userinfo either: a URL typed without its scheme (`user:pw@host`, `TOKEN:@host`)
+is shown as `***@host`, and a scheme is named only when the value spells `<scheme>://`.
 
 **A kept-alive connection the server closed is not a retry** (issue #31). Connections
 are kept alive, and a server closes an idle one after its own timeout. The pool learns

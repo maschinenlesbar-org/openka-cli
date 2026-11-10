@@ -7,6 +7,7 @@ import http from "node:http";
 import https from "node:https";
 import { BlockList, isIP } from "node:net";
 import { NetworkError } from "@maschinenlesbar.org/openka-lib-errors";
+import { spellsScheme, withoutUserinfo } from "./userinfo.js";
 
 export interface HttpRequest {
   method: string;
@@ -91,14 +92,17 @@ function send(request: HttpRequest, fresh: boolean): Promise<HttpResponse> {
     try {
       url = new URL(request.url);
     } catch {
-      reject(new NetworkError(`Invalid URL: ${request.url}`, { failure: "bad_url" }));
+      reject(new NetworkError(`Invalid URL: ${withoutUserinfo(request.url)}`, { failure: "bad_url" }));
       return;
     }
 
     // Only http/https. Rejecting here keeps file:/ftp:/data: from ever reaching a
     // driver, including on a redirect hop the engine hands us.
+    // No message quotes a userinfo: `user:pw@host` typed without its scheme parses with
+    // the user name as the scheme, so a scheme is named only when the value spells one.
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      reject(new NetworkError(`Unsupported protocol "${url.protocol}" in URL: ${request.url}`, { failure: "bad_url" }));
+      const named = spellsScheme(request.url) ? ` "${url.protocol}"` : "";
+      reject(new NetworkError(`Unsupported protocol${named} in URL: ${withoutUserinfo(request.url)}`, { failure: "bad_url" }));
       return;
     }
 
