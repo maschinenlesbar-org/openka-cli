@@ -498,6 +498,8 @@ export class FetchEngine {
     let method = startMethod;
     let body = startBody;
     let currentHeaders = headers;
+    // What an error answer that echoes the request's credentials must not show.
+    const secrets = credentialValues(headers);
 
     for (let hop = 0; ; hop++) {
       const response = await this.attempt(method, url, currentHeaders, body, maxRetries);
@@ -506,7 +508,7 @@ export class FetchEngine {
       if (status >= 300 && status < 400 && status !== 304) {
         const location = firstHeader(response.headers["location"]);
         if (location === undefined) {
-          throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body) });
+          throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body, secrets) });
         }
         if (hop >= this.maxRedirects) {
           throw new NetworkError(`Too many redirects (> ${this.maxRedirects}) starting at ${withoutUserinfo(startUrl)}`);
@@ -554,7 +556,7 @@ export class FetchEngine {
 
       // Neither the message nor `.url` carries a userinfo, as no log line does.
       if (status < 200 || status >= 300) {
-        throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body) });
+        throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body, secrets) });
       }
 
       const contentType = firstHeader(response.headers["content-type"]);
@@ -719,8 +721,31 @@ function validatorsOf(headers: Record<string, string | string[] | undefined>): {
   return out;
 }
 
-function bodyPreview(body: Buffer): string {
-  return sanitizeServerText(body.subarray(0, 2048).toString("utf8"));
+function bodyPreview(body: Buffer, secrets: readonly string[] = []): string {
+  const preview = body.subarray(0, PREVIEW_BYTES).toString("utf8");
+  if (secrets.length === 0) return sanitizeServerText(preview);
+  // Scrubbed before it is cut, so no cut leaves a secret's first half: the text read runs past
+  // the preview by the longest secret, and the scrubbed text is cut to the preview's length.
+  const text = body.subarray(0, PREVIEW_BYTES + Buffer.byteLength(secrets[0] ?? "", "utf8")).toString("utf8");
+  return sanitizeServerText(secrets.reduce((out, secret) => out.split(secret).join("***"), text).slice(0, preview.length));
+}
+
+/** How much of an error answer `OpenKaApiError.body` keeps. */
+const PREVIEW_BYTES = 2048;
+
+/**
+ * The values of a request's credential headers (SENSITIVE_HEADERS): each whole (an
+ * X-API-Key with an inner space included) and its part after a scheme word (`ApiKey <key>`
+ * and `Bearer <token>` → the key, the token), longest first so none is left half-replaced
+ * by a shorter one. An error answer that echoes them is scrubbed of them (`bodyPreview`).
+ */
+function credentialValues(headers: Record<string, string>): string[] {
+  const values = Object.entries(headers)
+    .filter(([name]) => SENSITIVE_HEADERS.includes(name.toLowerCase()))
+    .flatMap(([, value]) => [value.trim(), value.replace(/^\S+\s+(?=\S)/, "").trim()])
+    // Shorter than `***`, a "secret" would only shred the text around it.
+    .filter((value) => value.length > 3);
+  return [...new Set(values)].sort((a, b) => b.length - a.length);
 }
 
 /** Linear backoff, overridden by a `Retry-After` the server sent. Capped at 60s. */

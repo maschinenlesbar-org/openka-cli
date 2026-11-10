@@ -1014,3 +1014,41 @@ describe("onRetry", () => {
     throws(() => new FetchEngine({ onRetry: "nope" as unknown as () => void }), OpenKaValidationError);
   });
 });
+
+describe("a credential a request carried is scrubbed from the error answer (security audit 2026-10-27, class D)", () => {
+  // The DIP key went out as `authorization: ApiKey <key>`; a server that echoed it in an error
+  // answer put it into OpenKaApiError.body, which the library hands to its callers as sent.
+  it("scrubs a credential header's value whole and its part after the scheme word", async () => {
+    for (const [headers, secrets] of [
+      [{ authorization: "ApiKey Dk9ZqW3xT7pL" }, ["Dk9ZqW3xT7pL"]],
+      // Echoed whole: no word of it is left (it was scrubbed from its second word on).
+      [{ "x-api-key": "Zq9xWv first-part" }, ["Zq9xWv first-part", "Zq9xWv"]],
+      [{ Authorization: "Bearer tok-77AbCdEf" }, ["tok-77AbCdEf"]],
+      [{ cookie: "session=s3ss10nV4lue" }, ["session=s3ss10nV4lue"]],
+    ] as const) {
+      const echo = `{"message":"key ${Object.values(headers)[0]} rejected","detail":"${secrets[0]}"}`;
+      for (const status of [401, 500]) {
+        const { transport } = scriptedTransport([{ match: "dip", status, body: echo }]);
+        const err = await testEngine(transport, { maxRetries: 0 })
+          .get("https://search.dip.example/api/v1/vorgang", { headers: { ...headers } })
+          .catch((caught: unknown) => caught);
+        ok(err instanceof OpenKaApiError && err.status === status, String(err));
+        for (const secret of secrets) ok(!err.body.includes(secret) && !err.message.includes(secret), `${secret}: ${err.body}`);
+        match(err.body, /\*\*\*/);
+      }
+    }
+  });
+
+  it("scrubs a key that straddles the preview's cut before cutting, so no half of it is left", async () => {
+    const key = "Dk9ZqW3xT7pL";
+    for (let pad = 2040; pad <= 2048; pad++) {
+      const { transport } = scriptedTransport([{ match: "dip", status: 500, body: `${"x".repeat(pad)}${key} and more` }]);
+      const err = await testEngine(transport, { maxRetries: 0 })
+        .get("https://search.dip.example/api/v1/vorgang", { headers: { authorization: `ApiKey ${key}` } })
+        .catch((caught: unknown) => caught);
+      ok(err instanceof OpenKaApiError, String(err));
+      ok(!err.body.includes("Dk9Z"), `${pad}: ${err.body.slice(-20)}`);
+      ok(err.body.length <= 2048, `${pad}: ${err.body.length}`);
+    }
+  });
+});
