@@ -12,7 +12,7 @@
 // systemd and in containers it is usually locked or missing, and this file is what
 // such a setup would fall back to anyway.
 
-import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, isAbsolute } from "node:path";
 import { StoreError, UsageError, isBlank, type Problem } from "@maschinenlesbar.org/openka-lib-errors";
@@ -126,23 +126,46 @@ export class CredentialStore {
       stats = lstatSync(this.path);
     } catch (err) {
       if ((err as { code?: unknown }).code === "ENOENT") return {};
-      throw new StoreError(`Could not read the credentials file ${this.path}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      throw this.readError(err);
     }
-    if (!stats.isFile()) throw new StoreError(`${this.path} is not a regular file; it cannot be the credentials file.`);
-    if (process.platform !== "win32") {
-      if (typeof process.getuid === "function" && stats.uid !== process.getuid()) {
-        throw new StoreError(`The credentials file ${this.path} belongs to another user; it is not read.`);
+    if (!stats.isFile()) throw this.notRegular();
+    // Then the file is opened once, without following a link (O_NOFOLLOW) and without
+    // waiting on a FIFO (O_NONBLOCK), and the checks run on that descriptor: it was
+    // checked by name and read by name, so a link put in its place in between — in a
+    // config directory others can write to — was followed (security audit 2026-10-27).
+    let fd: number;
+    try {
+      fd = openSync(this.path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      if (code === "ELOOP" || code === "EMLINK") throw this.notRegular();
+      if (code === "ENOENT") return {};
+      throw this.readError(err);
+    }
+    let text: string;
+    try {
+      stats = fstatSync(fd);
+      if (!stats.isFile()) throw this.notRegular();
+      if (process.platform !== "win32") {
+        if (typeof process.getuid === "function" && stats.uid !== process.getuid()) {
+          throw new StoreError(`The credentials file ${this.path} belongs to another user; it is not read.`);
+        }
+        if ((stats.mode & 0o077) !== 0) {
+          throw new StoreError(
+            `The credentials file ${this.path} can be read by others (mode ${(stats.mode & 0o777).toString(8)}); ` +
+              `it is not used until only you can: chmod 600 ${this.path}`,
+          );
+        }
       }
-      if ((stats.mode & 0o077) !== 0) {
-        throw new StoreError(
-          `The credentials file ${this.path} can be read by others (mode ${(stats.mode & 0o777).toString(8)}); ` +
-            `it is not used until only you can: chmod 600 ${this.path}`,
-        );
-      }
+      text = readFileSync(fd, "utf8");
+    } catch (err) {
+      throw err instanceof StoreError ? err : this.readError(err);
+    } finally {
+      closeSync(fd);
     }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(readFileSync(this.path, "utf8"));
+      parsed = JSON.parse(text);
     } catch (err) {
       throw new StoreError(`The credentials file ${this.path} is not valid JSON; fix it, or remove it and set the values again.`, { cause: err });
     }
@@ -174,6 +197,16 @@ export class CredentialStore {
       rmSync(temporary, { force: true });
       throw this.writeError(err);
     }
+  }
+
+  /** "<path> is not a regular file", for a link, a directory, a FIFO or a device at the path. */
+  private notRegular(): StoreError {
+    return new StoreError(`${this.path} is not a regular file; it cannot be the credentials file.`);
+  }
+
+  /** "Could not read the credentials file <path>: <reason>", the cause kept. */
+  private readError(err: unknown): StoreError {
+    return new StoreError(`Could not read the credentials file ${this.path}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 
   /** "Could not write the credentials file <path>: <reason>", the cause kept. */

@@ -481,7 +481,8 @@ What the library now computes that a `ka` action used to compute on its own:
 - **Where a credential comes from** — `apiKeyLookup` (`cli-ka`'s `shared.ts`): `--api-key`,
   then the source's environment variable, then the credentials file (`CredentialStore`,
   `lib-store`: `$XDG_CONFIG_HOME/openka/credentials`, mode 0600, atomic, refused when
-  others can read it or it lies inside the corpus). `ka config set` reads the value
+  others can read it or it lies inside the corpus; read through one descriptor opened
+  with O_NOFOLLOW, the owner and mode checked on it with fstat). `ka config set` reads the value
   through `CliIO.readSecret` — a prompt without echo, or stdin — and never from argv; the
   CLI harness gives every test a config directory of its own, so no test touches the
   user's file.

@@ -4,7 +4,9 @@ import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws 
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { after, describe, it } from "node:test";
+import { after, describe, it, mock } from "node:test";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
@@ -1733,6 +1735,34 @@ describe("the credentials file", () => {
       rmSync(store.path);
       symlinkSync(join(root, "elsewhere"), store.path);
       throws(() => store.get("bund.api-key"), /is not a regular file/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the file it checked: one descriptor, opened without following a link (security audit 2026-10-27)", { skip: process.platform === "win32" }, () => {
+    // read() checked the path with lstat and then read it by name: a link put in its place
+    // in between (a loosely moded config directory) was followed, to a file others can read.
+    // lstatSync is made to see the checked file once, as at the moment of the check.
+    const root = dir();
+    try {
+      const store = new CredentialStore(join(root, "credentials"));
+      store.set("bund.api-key", KEY);
+      const checked = lstatSync(store.path);
+      const elsewhere = join(root, "elsewhere");
+      writeFileSync(elsewhere, JSON.stringify({ "bund.api-key": "OTHERS-CAN-READ-THIS-KEY" }), { mode: 0o644 });
+      chmodSync(elsewhere, 0o644);
+      rmSync(store.path);
+      symlinkSync(elsewhere, store.path);
+      const real = fs.lstatSync;
+      const lstat = mock.method(fs, "lstatSync", (...args: Parameters<typeof fs.lstatSync>) => (args[0] === store.path ? checked : real(...args)));
+      syncBuiltinESMExports();
+      try {
+        throws(() => store.get("bund.api-key"), (err: unknown) => err instanceof StoreError && /is not a regular file/.test(err.message));
+      } finally {
+        lstat.mock.restore();
+        syncBuiltinESMExports();
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
