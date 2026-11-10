@@ -12,7 +12,6 @@ import {
   mkdirSync,
   openSync,
   readlinkSync,
-  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -175,6 +174,24 @@ function isRegularFile(fd: number): boolean {
   }
 }
 
+/**
+ * Whose links `--force` follows (`linkTarget`): the caller's user id, and how a path's
+ * owner and mode are read. The seam of the link rule, so a test can be another user
+ * without root.
+ */
+export interface LinkOwners {
+  /** The caller's user id; undefined where there is none (Windows), where no link is refused. */
+  uid: number | undefined;
+  /** The owner and mode of `path`: through links with `follow` (a directory), of the link itself without. */
+  ownerOf(path: string, follow: boolean): { uid: number; mode: number };
+}
+
+/** The process's user and the real file system. */
+const processOwners: LinkOwners = {
+  uid: process.getuid?.(),
+  ownerOf: (path, follow) => (follow ? statSync(path) : lstatSync(path)),
+};
+
 /** How `writeOutFile` writes the temporary file: an exclusive create. Injected by tests. */
 export type WriteNewFile = (path: string, data: Buffer) => void;
 
@@ -195,13 +212,14 @@ const NAME_MAX = 255;
  *   and the claim is removed again if the write fails. A replaced file keeps its mode.
  * - An existing name needs `overwrite` (`--force`): EEXIST otherwise. With it, a symbolic
  *   link is written through — its target is replaced, a dangling link's target created —
- *   and the link stays a link, as a shell's `>` would leave it.
+ *   and the link stays a link, as a shell's `>` would leave it; but not a link another
+ *   user made in a directory others can write to (`linkTarget`, EACCES).
  * - A target that is no regular file — `/dev/null`, a FIFO, a socket, `/dev/stdout`,
  *   anything under `/dev/` — is written in place, and needs no `--force`: nothing that
  *   existed can be lost.
  * - A directory is EISDIR.
  */
-export function writeOutFile(path: string, data: Buffer, overwrite: boolean, write: WriteNewFile = writeNewFile): void {
+export function writeOutFile(path: string, data: Buffer, overwrite: boolean, write: WriteNewFile = writeNewFile, owners: LinkOwners = processOwners): void {
   const entry = lstatOrUndefined(path);
   if (entry === undefined) return replaceAtomically(path, data, true, write);
   const followed = entry.isSymbolicLink() ? statOrUndefined(path) : entry;
@@ -214,8 +232,8 @@ export function writeOutFile(path: string, data: Buffer, overwrite: boolean, wri
   }
   if (!overwrite) throw Object.assign(new Error(`EEXIST: file already exists, open '${path}'`), { code: "EEXIST" });
   if (!entry.isSymbolicLink()) return replaceAtomically(path, data, false, write);
-  const target = followed === undefined ? linkChainEnd(path) : realpathSync(path);
-  replaceAtomically(target, data, followed === undefined, write);
+  const target = linkTarget(path, owners);
+  replaceAtomically(target, data, lstatOrUndefined(target) === undefined, write);
 }
 
 function replaceAtomically(target: string, data: Buffer, claim: boolean, write: WriteNewFile): void {
@@ -240,13 +258,41 @@ function temporaryPath(target: string): string {
   return join(dirname(target), `.${name}${suffix}`);
 }
 
-/** Where a chain of symbolic links ends, when it ends at a name that is not there. */
-function linkChainEnd(path: string): string {
+/** Most links followed for one `-o` path, as the kernel's ELOOP limit. */
+const MAX_LINKS = 40;
+
+/** The mode bits of a directory others share: sticky, or writable by others. */
+const SHARED_DIRECTORY = 0o1002;
+
+/**
+ * The file a path names, through any symbolic links, so `--force` writes where a link
+ * points: also when the link dangles, where the file it names is created. A loop
+ * throws (ELOOP). A link is followed only when the caller or the owner of its directory
+ * made it, or nobody else can write to that directory (neither sticky nor writable by
+ * others): the rule of Linux's fs.protected_symlinks, checked at every hop, the last
+ * dangling one too. The kernel never sees these links (they are read here and the file
+ * is renamed onto the target), so its own check cannot apply: a link another user
+ * planted in /tmp sent the output over any file the caller could replace (security
+ * audit 2026-10-27). Such a link throws (EACCES), naming it.
+ */
+function linkTarget(path: string, owners: LinkOwners): string {
   let current = resolve(path);
-  for (let hops = 0; hops < 40; hops++) {
-    const entry = lstatOrUndefined(current);
-    if (entry === undefined || !entry.isSymbolicLink()) return current;
-    current = resolve(dirname(current), readlinkSync(current));
+  for (let hops = 0; hops <= MAX_LINKS; hops++) {
+    let link: string;
+    try {
+      if (!lstatSync(current).isSymbolicLink()) return current;
+      link = readlinkSync(current);
+    } catch {
+      return current; // nothing there (yet): this is the file to create
+    }
+    if (owners.uid !== undefined) {
+      const owner = owners.ownerOf(current, false).uid;
+      const dir = owners.ownerOf(dirname(current), true);
+      if (owner !== owners.uid && owner !== dir.uid && (dir.mode & SHARED_DIRECTORY) !== 0) {
+        throw Object.assign(new Error(`"${current}" is a link another user made in a directory others can write to; it is not followed`), { code: "EACCES" });
+      }
+    }
+    current = resolve(dirname(current), link);
   }
   throw Object.assign(new Error(`ELOOP: too many symbolic links, open '${path}'`), { code: "ELOOP" });
 }

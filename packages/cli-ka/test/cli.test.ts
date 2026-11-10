@@ -16,7 +16,7 @@ import { TextBuilder, escapeControlChars, sanitizeForTerminal, truncate } from "
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
-import { InterruptedRunError, defaultIO, deferSignals, handleOutputErrors, readSecretFrom, stdoutWriter, writeOutFile } from "../src/io.js";
+import { InterruptedRunError, defaultIO, deferSignals, handleOutputErrors, readSecretFrom, stdoutWriter, writeOutFile, type LinkOwners } from "../src/io.js";
 import { EventEmitter, once } from "node:events";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -2826,6 +2826,111 @@ describe("the -o file", () => {
 
   it("writes a target that is no regular file in place, without --force", () => {
     writeOutFile("/dev/null", Buffer.from("x\n"), false);
+  });
+
+  // Security audit 2026-10-27, class G: --force resolved a link by hand and renamed the
+  // output onto its target, so the kernel never saw the link and fs.protected_symlinks
+  // never applied: a link another user planted in /tmp sent the output over any file the
+  // caller could replace. Owners are injected, so no test needs a second user or root.
+  const ME = 1000;
+  const OTHER = 1001;
+  /** /tmp: owned by root, sticky and world-writable. */
+  const SHARED = { uid: 0, mode: 0o41777 };
+  /** `links` maps a link to its owner (the caller otherwise), `dirs` a directory to its owner and mode. */
+  const owners = (links: Record<string, number>, dirs: Record<string, { uid: number; mode: number }>): LinkOwners => ({
+    uid: ME,
+    ownerOf: (path, follow) => (follow ? (dirs[path] ?? { uid: ME, mode: 0o40755 }) : { uid: links[path] ?? ME, mode: 0o120777 }),
+  });
+  const writeNew = (path: string, data: Buffer): void => writeFileSync(path, data, { flag: "wx" });
+  /** A directory with a victim file and a link `out.json` to it. */
+  const planted = (test: (t: { dir: string; victim: string; link: string }) => void): void =>
+    inDir((dir) => {
+      const victim = join(dir, "victim.txt");
+      writeFileSync(victim, "keep me\n");
+      const link = join(dir, "out.json");
+      symlinkSync(victim, link);
+      test({ dir, victim, link });
+    });
+
+  it("does not follow with --force a link another user made in a directory others can write to (G)", () => {
+    planted(({ dir, victim, link }) => {
+      // Sticky and world-writable, as /tmp, or only writable by others: both count.
+      for (const mode of [SHARED, { uid: ME, mode: 0o40777 }]) {
+        throws(
+          () => writeOutFile(link, Buffer.from("x"), true, writeNew, owners({ [link]: OTHER }, { [dir]: mode })),
+          (err: unknown) => (err as { code?: string }).code === "EACCES" && /is a link another user made in a directory others can write to/.test((err as Error).message) && (err as Error).message.includes(link),
+        );
+        strictEqual(readFileSync(victim, "utf8"), "keep me\n");
+        ok(lstatSync(link).isSymbolicLink());
+      }
+    });
+  });
+
+  it("applies the link rule at every hop, a dangling last one included (G)", () => {
+    planted(({ dir, victim }) => {
+      const inner = join(dir, "inner");
+      symlinkSync(victim, inner);
+      const outer = join(dir, "outer.json");
+      symlinkSync(inner, outer);
+      throws(() => writeOutFile(outer, Buffer.from("x"), true, writeNew, owners({ [inner]: OTHER }, { [dir]: SHARED })), /another user/);
+      strictEqual(readFileSync(victim, "utf8"), "keep me\n");
+      const dangling = join(dir, "dangling.json");
+      const target = join(dir, "created-elsewhere.json");
+      symlinkSync(target, dangling);
+      throws(() => writeOutFile(dangling, Buffer.from("x"), true, writeNew, owners({ [dangling]: OTHER }, { [dir]: SHARED })), /another user/);
+      ok(!existsSync(target));
+    });
+  });
+
+  it("still follows the caller's own links, the directory owner's, and any link in a directory only its owner writes (G)", () => {
+    const cases: Array<[string, (t: { dir: string; link: string }) => LinkOwners]> = [
+      ["the caller's own link in a shared directory", ({ dir }) => owners({}, { [dir]: SHARED })],
+      ["a link of the shared directory's owner", ({ dir, link }) => owners({ [link]: 0 }, { [dir]: SHARED })],
+      ["another user's link in a directory only its owner writes", ({ dir, link }) => owners({ [link]: OTHER }, { [dir]: { uid: OTHER, mode: 0o40755 } })],
+      ["another user's link where no caller id exists", ({ dir, link }) => ({ ...owners({ [link]: OTHER }, { [dir]: SHARED }), uid: undefined })],
+    ];
+    for (const [label, who] of cases) {
+      planted((t) => {
+        writeOutFile(t.link, Buffer.from("new\n"), true, writeNew, who(t));
+        strictEqual(readFileSync(t.victim, "utf8"), "new\n", label);
+        ok(lstatSync(t.link).isSymbolicLink(), label);
+      });
+    }
+  });
+
+  it("refuses a foreign link in a shared directory through ka get -o --force, exit 1, the file untouched (G)", async () => {
+    const harness = await seeded();
+    const dir = mkdtempSync(join(tmpdir(), "openka-out-"));
+    try {
+      const victim = join(dir, "victim.txt");
+      writeFileSync(victim, "keep me\n");
+      const link = join(dir, "out.json");
+      symlinkSync(victim, link);
+      const foreign = owners({ [link]: OTHER }, { [dir]: SHARED });
+      const writeFile = (path: string, data: Buffer, options?: { overwrite?: boolean }): void => writeOutFile(path, data, options?.overwrite === true, writeNew, foreign);
+      const deps = { ...harness.deps, io: { ...harness.deps.io, writeFile } };
+      strictEqual(await run(["--corpus", harness.corpus, "get", "berlin-19-10006", "-o", link, "--force"], deps), EXIT_ERROR);
+      match(harness.stderr(), /is a link another user made in a directory others can write to; it is not followed/);
+      strictEqual(readFileSync(victim, "utf8"), "keep me\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      harness.cleanup();
+    }
+  });
+
+  it("reports a link it cannot inspect as that, not as an existing file", { skip: process.getuid?.() === 0 }, () => {
+    inDir((dir) => {
+      const closed = join(dir, "closed");
+      mkdirSync(closed);
+      const link = join(dir, "out.json");
+      symlinkSync(join(closed, "x.json"), link);
+      chmodSync(closed, 0o000);
+      try {
+        throws(() => writeOutFile(link, Buffer.from("x"), false), (err: unknown) => (err as { code?: string }).code === "EACCES");
+      } finally {
+        chmodSync(closed, 0o700);
+      }
+    });
   });
 
   it("keeps a temporary name within NAME_MAX for a long file name", () => {

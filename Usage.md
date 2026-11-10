@@ -628,7 +628,10 @@ A `--query` with nothing searchable in it (`"???"`, `"a"`) is a usage error here
 
 `-o, --out <file>` (on `get`, `export` and `feed`) writes to a file; `-o -` is stdout.
 An existing file is not replaced unless `--force` is given; with it, a symbolic link is
-written through (its target replaced, or created when the link dangles). The file is
+written through (its target replaced, or created when the link dangles) — but not a link
+another user made in a directory others can write to, such as `/tmp` (the rule of Linux's
+`fs.protected_symlinks`, at every hop of a chain): that is an error (exit 1) naming the
+link, and nothing is written. The file is
 written whole or not at all: the output goes to a temporary file beside it, renamed into
 place, so a write that fails (a full disk, `ulimit -f`) leaves no half file under the name,
 and the file `--force` would have replaced stays as it was. Ctrl-C, SIGTERM or SIGHUP
