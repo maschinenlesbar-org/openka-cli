@@ -49,7 +49,10 @@ pipeline turns them into a run's `timing`.
 Sachsen-Anhalt's 08/7068) is enforced while the body streams in, and before it when the
 response declares a larger `Content-Length` — then `NetworkError.bytes` carries that
 size. A HEAD answer is exempt: it declares a body it does not send. `engine.maxResponseBytes`
-is readable, so the pipeline can say what to pass to fetch a document over it.
+is readable, so the pipeline can say what to pass to fetch a document over it. Small
+chunks are joined as they arrive (at 1,024 chunks or 64 KiB), so what an answer holds in
+memory follows its bytes, not the number of chunks a server sends it in: a Buffer per
+one-byte chunk took ~210 bytes of heap each (security audit 2026-10-27).
 
 `--base-url` is trusted input but only `http:` and `https:` are accepted, checked at
 parse time, in the engine, and again per hop.

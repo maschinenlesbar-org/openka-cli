@@ -539,6 +539,77 @@ describe("the default transport against a real socket", () => {
   it("caps a timeout at the longest delay Node's timers support", () => {
     ok(MAX_TIMEOUT_MS === 2_147_483_647);
   });
+
+  /** One chunked answer of `pieces`, as the bytes a server writes. */
+  const chunkedAnswer = (pieces: readonly string[]): Buffer =>
+    Buffer.from(
+      "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n" +
+        pieces.map((piece) => `${piece.length.toString(16)}\r\n${piece}\r\n`).join("") +
+        "0\r\n\r\n",
+      "latin1",
+    );
+
+  /** Serve one raw answer from a TCP server on 127.0.0.1 for `fn`, which gets its URL. */
+  const withRawServer = async (answer: Buffer, fn: (url: string) => Promise<void>): Promise<void> => {
+    const server = net.createServer((socket) => {
+      socket.once("data", () => socket.end(answer));
+      socket.on("error", () => {});
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      await fn(`http://127.0.0.1:${(server.address() as net.AddressInfo).port}/`);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  };
+
+  it("joins a body sent in many tiny chunks whole and in order, and the byte cap still holds", async () => {
+    // 300,001 chunks of 1 to 3 bytes: whatever the transport joins on the way, every byte is
+    // kept once, in order (the memory side is the next test, in a small heap).
+    const pieces = Array.from({ length: 300_001 }, (_, i) => "abc".slice(0, (i % 3) + 1));
+    const wire = chunkedAnswer(pieces);
+    const expected = pieces.join("");
+    await withRawServer(wire, async (url) => {
+      const response = await nodeHttpTransport({ method: "GET", url });
+      strictEqual(response.status, 200);
+      ok(response.body.equals(Buffer.from(expected, "latin1")));
+    });
+    await withRawServer(wire, (url) => rejects(() => nodeHttpTransport({ method: "GET", url, maxResponseBytes: expected.length - 1 }), /exceeded maxResponseBytes/));
+    await withRawServer(wire, async (url) => {
+      strictEqual((await nodeHttpTransport({ method: "GET", url, maxResponseBytes: expected.length })).body.length, expected.length);
+    });
+  });
+
+  it("reads an answer of two million one-byte chunks within a small heap", { timeout: 30_000 }, async () => {
+    // Node emits one 'data' event per chunk of a chunked answer, and a Buffer kept per
+    // chunk holds ~210 bytes of heap: 2 MB sent one byte at a time ended the process
+    // under a 256 MB heap, far below the 128 MiB byte cap (security audit 2026-10-27,
+    // class I). The transport runs in a process with a 128 MB heap; the server here.
+    await withRawServer(chunkedAnswer(Array.from({ length: 2_000_000 }, () => "a")), async (url) => {
+      const module = new URL("../src/http.js", import.meta.url).href;
+      const child = spawn(
+        process.execPath,
+        [
+          "--max-old-space-size=128",
+          "--input-type=module",
+          "-e",
+          `const { nodeHttpTransport } = await import(${JSON.stringify(module)});
+           const response = await nodeHttpTransport({ method: "GET", url: process.argv[1] });
+           console.log(response.body.length);`,
+          url,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (data: Buffer) => (out += String(data)));
+      child.stderr.on("data", (data: Buffer) => (err += String(data)));
+      const [code, signal] = (await once(child, "exit")) as [number | null, string | null];
+      deepStrictEqual([code, signal, out.trim()], [0, null, "2000000"], err.slice(-500));
+    });
+  });
 });
 
 describe("engine options", () => {

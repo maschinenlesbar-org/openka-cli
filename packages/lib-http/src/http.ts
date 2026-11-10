@@ -38,6 +38,11 @@ export type Transport = (request: HttpRequest) => Promise<HttpResponse>;
  */
 export const MAX_TIMEOUT_MS = 2_147_483_647;
 
+/** The most received chunks the default transport keeps unjoined. */
+const COALESCE_CHUNKS = 1024;
+/** The bytes of unjoined chunks at which the default transport joins them into one Buffer. */
+const COALESCE_BYTES = 64 * 1024;
+
 /** Socket errors that mean the server had closed a kept-alive connection before the request reached it. */
 const STALE_SOCKET_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNABORTED"]);
 
@@ -56,6 +61,9 @@ const IDEMPOTENT = new Set(["GET", "HEAD", "OPTIONS"]);
  * transport first lets the event loop take a turn, and a request that still fails on a
  * reused socket before any response is sent once more on a new connection — not a
  * retry, since it never reached the server.
+ *
+ * Small chunks of a body are joined as they arrive, so the memory an answer holds
+ * follows its bytes, not the number of chunks a server sends it in.
  */
 export const nodeHttpTransport: Transport = async (request) => {
   // One turn of the event loop: a close the server sent while the loop was busy is
@@ -112,7 +120,13 @@ function send(request: HttpRequest, fresh: boolean): Promise<HttpResponse> {
     // `agent: false` is a connection of its own, closed after this request.
     const req = driver.request(url, { method: request.method, headers: request.headers, ...(fresh ? { agent: false } : {}) }, (res) => {
       responded = true;
+      // Small chunks are joined as they arrive (`pending`, at most COALESCE_CHUNKS of them
+      // or COALESCE_BYTES), so the Buffers kept follow the bytes, not the number of chunks
+      // a server chooses to send: a Buffer per one-byte chunk held ~210 bytes of heap each,
+      // and 2 MB sent one byte at a time ended the process (security audit 2026-10-27).
       const chunks: Buffer[] = [];
+      let pending: Buffer[] = [];
+      let pendingBytes = 0;
       let received = 0;
       let aborted = false;
 
@@ -136,12 +150,18 @@ function send(request: HttpRequest, fresh: boolean): Promise<HttpResponse> {
           reject(new NetworkError(`Response exceeded maxResponseBytes (${maxBytes})`, { failure: "too_large" }));
           return;
         }
-        chunks.push(chunk);
+        pending.push(chunk);
+        pendingBytes += chunk.length;
+        if (pending.length >= COALESCE_CHUNKS || pendingBytes >= COALESCE_BYTES) {
+          chunks.push(pending.length === 1 ? chunk : Buffer.concat(pending, pendingBytes));
+          pending = [];
+          pendingBytes = 0;
+        }
       });
       res.on("end", () => {
         if (aborted) return;
         clearDeadline();
-        resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) });
+        resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat([...chunks, ...pending]) });
       });
       res.on("error", (err) => {
         if (aborted) return;
