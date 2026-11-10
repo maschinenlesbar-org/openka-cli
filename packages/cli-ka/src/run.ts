@@ -8,6 +8,7 @@ import { buildProgram, defaultDeps } from "./program.js";
 import { InterruptedRunError, OutputError, logOf, type CliDeps } from "./io.js";
 import { DEFAULT_LOG_FORMAT, LOG_PROGRAM, createLogger, logFormatFromArgv, type LogFormat, type Logger } from "./log.js";
 import { VersionOnlyError } from "@maschinenlesbar.org/openka-lib-verify";
+import { createSource, sourceKeys } from "@maschinenlesbar.org/openka-lib-registry";
 
 /**
  * Exit codes, documented so they are scriptable:
@@ -87,8 +88,32 @@ function writeCommanderErr(command: Command, deps: CliDeps, state: { errorLogged
  * The logger for what happens outside `run()` — Node's process warnings, a stdout write
  * error — in the format argv asks for, on the real stderr. The bin shims build it.
  */
-export function processLogger(argv: readonly string[], program: string = LOG_PROGRAM): Logger {
-  return createLogger({ format: logFormatFromArgv(argv), write: (line) => process.stderr.write(line + "\n"), program });
+export function processLogger(argv: readonly string[], program: string = LOG_PROGRAM, env: NodeJS.ProcessEnv = process.env): Logger {
+  return createLogger({ format: logFormatFromArgv(argv), write: (line) => process.stderr.write(line + "\n"), program, secrets: runSecrets(argv, env) });
+}
+
+/** The environment variables sources read their key from (`DIP_API_KEY`). */
+function credentialEnvNames(): string[] {
+  return [...new Set(sourceKeys().flatMap((key) => createSource(key).apiKeyEnv ?? []))];
+}
+
+/**
+ * The credentials a run is given before it reads any file: every `--api-key` value in argv
+ * (`--api-key KEY`, `--api-key=KEY`) and the value of every source's key variable
+ * (`DIP_API_KEY`), each as given and trimmed. A key from the credentials file is added when
+ * it is read (`apiKeyLookup`). The log replaces them all (`Logger.secrets`).
+ */
+export function runSecrets(argv: readonly string[], env: NodeJS.ProcessEnv): Set<string> {
+  const values: string[] = [];
+  argv.forEach((token, i) => {
+    if (token === "--api-key" && argv[i + 1] !== undefined) values.push(argv[i + 1] as string);
+    else if (token.startsWith("--api-key=")) values.push(token.slice("--api-key=".length));
+  });
+  for (const name of credentialEnvNames()) {
+    const value = env[name];
+    if (value !== undefined) values.push(value);
+  }
+  return new Set(values.flatMap((value) => [value, value.trim()]).filter((value) => value !== ""));
 }
 
 /**
@@ -96,7 +121,8 @@ export function processLogger(argv: readonly string[], program: string = LOG_PRO
  * parses it, so that commander's own usage errors are records in that format too.
  */
 export function withLogger(deps: CliDeps, argv: readonly string[], program: string = LOG_PROGRAM): CliDeps {
-  return { ...deps, log: createLogger({ format: logFormatFromArgv(argv), write: (line) => deps.io.err(line), now: () => deps.now(), program }) };
+  const secrets = runSecrets(argv, deps.env);
+  return { ...deps, log: createLogger({ format: logFormatFromArgv(argv), write: (line) => deps.io.err(line), now: () => deps.now(), program, secrets }) };
 }
 
 /**

@@ -300,13 +300,20 @@ function noteIgnoredFiles(deps: CliDeps, store: FileStore): void {
 export function apiKeyLookup(ctx: ActionContext): (source: { key: string; apiKeyEnv?: string }) => string | undefined {
   const flag = ctx.opts["apiKey"] as string | undefined;
   let store: CredentialStore | undefined;
+  // The log replaces the key handed out from now on (`Logger.secrets`): one from the
+  // credentials file is known only once it is read.
+  const secrets = logOf(ctx.deps).secrets;
+  const known = (key: string | undefined): string | undefined => {
+    if (key !== undefined && key.trim() !== "") for (const form of [key, key.trim()]) secrets.add(form);
+    return key;
+  };
   return (source) => {
     if (source.apiKeyEnv === undefined) return undefined;
-    if (flag !== undefined) return flag;
+    if (flag !== undefined) return known(flag);
     const fromEnv = ctx.deps.env[source.apiKeyEnv];
-    if (fromEnv !== undefined && fromEnv.trim() !== "") return fromEnv;
+    if (fromEnv !== undefined && fromEnv.trim() !== "") return known(fromEnv);
     store ??= CredentialStore.fromEnv(ctx.deps.env);
-    return store.get(`${source.key}.api-key`);
+    return known(store.get(`${source.key}.api-key`));
   };
 }
 

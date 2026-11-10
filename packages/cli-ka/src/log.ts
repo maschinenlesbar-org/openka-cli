@@ -137,6 +137,13 @@ export interface Logger {
   format: LogFormat;
   /** The first part of every topic: `ka`, `ka-factory`. */
   readonly program: string;
+  /**
+   * The run's credentials (an API key from `--api-key`, the environment or the credentials
+   * file): each is replaced by `***` in every record's message and fields before the record is
+   * formatted, so no format, no event and no `--log-file` shows it. Shared by the loggers of a
+   * run; a key read later (the credentials file, read only when needed) is added then.
+   */
+  readonly secrets: Set<string>;
   error(area: string, msg: string, fields?: Record<string, unknown>): void;
   warn(area: string, msg: string, fields?: Record<string, unknown>): void;
   info(area: string, msg: string, fields?: Record<string, unknown>): void;
@@ -165,17 +172,49 @@ function cleanMessage(msg: string): string {
   return msg.replace(/[\r\n]+$/, "").split("\n").map(sanitizeForTerminal).join("\n");
 }
 
-/** A logger that writes each record, formatted, to `write` (stderr: `CliIO.err`). */
-export function createLogger(options: { format: LogFormat; write: (line: string) => void; now?: () => Date; program?: string }): Logger {
+/** A secret shorter than this is not replaced: `***` in place of every "ab" would only shred the text. */
+const MIN_SECRET_LENGTH = 4;
+
+/** `text` with every secret replaced by `***`, the longest first, so none is left half-replaced by a shorter one. */
+function redactSecrets(text: string, secrets: ReadonlySet<string>): string {
+  if (secrets.size === 0) return text;
+  const list = [...secrets].filter((secret) => secret.length >= MIN_SECRET_LENGTH).sort((a, b) => b.length - a.length);
+  return list.reduce((out, secret) => (out.includes(secret) ? out.split(secret).join("***") : out), text);
+}
+
+/** `value` (a record's fields: JSON data) with every string in it redacted, at any depth. */
+function redactFields(value: unknown, secrets: ReadonlySet<string>): unknown {
+  if (typeof value === "string") return redactSecrets(value, secrets);
+  if (Array.isArray(value)) return value.map((item) => redactFields(item, secrets));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactFields(item, secrets)]));
+  }
+  return value;
+}
+
+/**
+ * A logger that writes each record, formatted, to `write` (stderr: `CliIO.err`). `secrets`
+ * (shared with the run's other loggers) are replaced in each record (`Logger.secrets`).
+ */
+export function createLogger(options: {
+  format: LogFormat;
+  write: (line: string) => void;
+  now?: () => Date;
+  program?: string;
+  secrets?: Set<string>;
+}): Logger {
   const now = options.now ?? (() => new Date());
   const program = options.program ?? LOG_PROGRAM;
+  const secrets = options.secrets ?? new Set<string>();
   const listeners: ((record: LogRecord) => void)[] = [];
+  // Redacted before the message is cleaned (and again after: cleaning may join what a
+  // control character split), so the record's frame is never touched.
   const record: Logger["record"] = (level, area, msg, fields) => ({
     ts: now().toISOString(),
     level,
     topic: `${program}.${area}`,
-    msg: cleanMessage(msg),
-    ...(fields === undefined ? {} : { fields }),
+    msg: redactSecrets(cleanMessage(redactSecrets(msg, secrets)), secrets),
+    ...(fields === undefined ? {} : { fields: redactFields(fields, secrets) as Record<string, unknown> }),
   });
   const write: Logger["write"] = (made) => {
     options.write(formatLogRecord(made, logger.format));
@@ -185,6 +224,7 @@ export function createLogger(options: { format: LogFormat; write: (line: string)
   const logger: Logger = {
     format: options.format,
     program,
+    secrets,
     record,
     write,
     log,

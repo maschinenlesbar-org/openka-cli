@@ -448,3 +448,20 @@ describe("the area an ending error is logged under", () => {
     strictEqual(errorArea(new NetworkError("socket hang up"), "sync"), "http");
   });
 });
+
+describe("a logger's secrets (security audit 2026-10-27)", () => {
+  it("replaces each secret in a record's message and fields, also one added later and in a logger sharing them", () => {
+    const lines: string[] = [];
+    const secrets = new Set(["Dk9ZqW3xT7pL"]);
+    const log = createLogger({ format: "jsonl", write: (line) => lines.push(line), now: () => new Date(0), secrets });
+    log.warn("sync", "key Dk9ZqW3xT7pL refused", { url: "https://h/?k=Dk9ZqW3xT7pL", nested: { list: ["a Dk9ZqW3xT7pL"] }, n: 3 });
+    log.secrets.add("Zq9xWv first-part");
+    const shared = createLogger({ format: "text", write: (line) => lines.push(line), now: () => new Date(0), secrets: log.secrets });
+    shared.info("cli", "got Zq9xWv first-part back");
+    const made = log.record("INFO", "sync", "Dk9ZqW3xT7pL");
+    for (const line of [...lines, JSON.stringify(made)]) ok(!line.includes("Dk9ZqW3xT7pL") && !line.includes("Zq9xWv"), line);
+    deepStrictEqual(JSON.parse(lines[0] ?? "{}").nested, { list: ["a ***"] });
+    strictEqual(JSON.parse(lines[0] ?? "{}").n, 3);
+    match(lines[1] ?? "", /got \*\*\* back$/);
+  });
+});

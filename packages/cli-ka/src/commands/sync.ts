@@ -192,7 +192,8 @@ export function registerSync(program: Command, deps: CliDeps): void {
         // The progress line is the text log; the events on stderr replace it (jsonl), a
         // log file does not. Its records go to stderr only, on a logger of their own
         // that the file does not tap: the file has the events, which say more.
-        const stderrOnly = (): Logger => createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now });
+        const stderrOnly = (): Logger =>
+          createLogger({ format: log.format, program: log.program, write: (line) => io.err(line), now: ctx.deps.now, secrets: log.secrets });
         const progress = ctx.global.quiet === true || jsonl ? undefined : new SyncProgress(io, ctx.deps.now, stderrOnly());
         // The text summary at the end repeats the run's warnings and errors for people.
         // The events carry each of them already (a failed Anfrage's `record`, a

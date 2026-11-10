@@ -3142,3 +3142,48 @@ describe("sync warnings", () => {
     }
   });
 });
+
+describe("the log keeps the run's credentials out (security audit 2026-10-27, openka-cli open item)", () => {
+  // The log redacted nothing: a key that reached a record — commander's echo of a mistyped
+  // option, a server text a warning quotes — was written to stderr, the jsonl events and
+  // --log-file as it was.
+  const SECRET = "Dk9ZqW3xT7pLm2Vb";
+
+  it("redacts a key from --api-key or DIP_API_KEY wherever a record shows it", async () => {
+    for (const [argv, env] of [
+      [["sync", `--apikey=${SECRET}`], { DIP_API_KEY: SECRET }],
+      [["sync", "--api-key", SECRET, `--apikey=${SECRET}`], {}],
+      [["--log-format", "jsonl", "sync", `--apikey=${SECRET}`], { DIP_API_KEY: ` ${SECRET} ` }],
+    ] as const) {
+      const harness = cliHarness({ env: { ...env } });
+      try {
+        strictEqual(await run([...argv], harness.deps), EXIT_USAGE, harness.stderr());
+        match(harness.stderr(), /unknown option '--apikey=\*\*\*'/);
+        ok(!harness.stderr().includes(SECRET), harness.stderr());
+      } finally {
+        harness.cleanup();
+      }
+    }
+  });
+
+  it("redacts a stored key once ka sync has read it, from a warning that quotes a server value", async () => {
+    // A Kleine Anfrage whose Drucksachennummer is the key: the connector warns, quoting it.
+    const positions = JSON.stringify({
+      numFound: 1,
+      documents: [{ id: "1", vorgang_id: "9", vorgangsposition: "Kleine Anfrage", datum: "2024-01-02", fundstelle: { dokumentnummer: SECRET } }],
+    });
+    const { transport } = scriptedTransport([
+      { match: "/api/v1/vorgangsposition", body: positions, headers: { "content-type": "application/json" } },
+      { match: "search.dip.bundestag.de", body: '{"numFound":0,"documents":[]}', headers: { "content-type": "application/json" } },
+    ]);
+    const harness = cliHarness({ transport });
+    try {
+      new CredentialStore(join(harness.config, "openka", "credentials")).set("bund.api-key", SECRET);
+      await run(["--corpus", harness.corpus, "sync", "--source", "bund", "--limit", "1"], harness.deps);
+      match(harness.stderr(), /cannot read a Wahlperiode from "\*\*\*"/);
+      ok(!harness.stderr().includes(SECRET), harness.stderr());
+    } finally {
+      harness.cleanup();
+    }
+  });
+});

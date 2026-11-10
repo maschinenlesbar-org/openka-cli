@@ -251,6 +251,17 @@ log.ts) is cut at a character and ends in `… (N more characters)`; the message
 a reference or an upstream reason cut it at the source too (`truncate` with `ID_WIDTH`,
 200, and `MESSAGE_WIDTH`, 2000, text.ts), while an event's own fields stay whole.
 
+The log never shows the run's credentials: `Logger.secrets`, shared by the run's loggers, holds
+every `--api-key` value and the value of every source's key variable (`DIP_API_KEY`), each as
+given and trimmed (`runSecrets`, run.ts), and a key from the credentials file once
+`apiKeyLookup` has read it. Each is replaced by `***` in a record's message (before it is
+cleaned) and in every string of its fields, so neither format, no event and no `--log-file`
+shows it — commander's echo of a mistyped `--apikey=<key>` and a server value a warning quotes
+included. The engine keeps them out of `OpenKaApiError.body` too: it scrubs the values of the
+request's credential headers (Authorization, X-API-Key, Cookie: whole, and after a scheme word
+such as `ApiKey`) from an error answer before the 2 KiB preview is cut. stdout is not redacted:
+`ka config get bund.api-key --reveal` prints the key on purpose.
+
 - **Code logs through `logOf(deps)`** (`level(area, msg, fields?)`), never with
   `io.err` directly. A command's own notes go under its name — `ActionContext.area` is
   the top-level command (`sync`, `export`, `sources`); cross-cutting records keep
