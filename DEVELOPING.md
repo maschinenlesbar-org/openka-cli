@@ -84,7 +84,8 @@ both artifacts, checks them against the pack job's digests (`sha256sum --check -
 runs `gh release create` with the four assets named one by one. `tools/sbom/` is not a
 workspace and not in the package's `files`; to update the tool, change its version in
 `tools/sbom/package.json` and run `npm install --package-lock-only --ignore-scripts` there.
-`apps/cli/test/release-workflow.test.ts` pins all of this.
+`apps/cli/test/conformance-p31-release-pipeline.test.ts` pins all of this: the kit's P31,
+its body as in every other repository (it has no adapter).
 
 One package: `npm test -w @maschinenlesbar.org/openka-lib-pdf`. One test file:
 `node --test packages/lib-pdf/dist/test/pdf.test.js`. The CLI from source:
@@ -319,6 +320,12 @@ at …`. The format itself is `test/log.test.ts`'s, and the checks every reposit
 workspace shares are `packages/cli-ka/test/conformance-p23-log-format.test.ts` (P23): its
 body is the other repositories', with one switch of its own (`BASE_URL = false`: `ka` has
 no `--base-url`), and its adapter counts the Bundestag (`sources count --source bund`).
+Of the security audit's P28–P31 (2026-10-27), only P31 (the release pipeline) is copied:
+P28 and P29 are written for the kit's single client — a free-form call, a number scan, a
+credential in the base URL, none of which `ka` has — and P30 for the kit's `OutputFiles`
+seam. Their classes are checked in openka's own tests where the shape exists: the
+transport's chunks and refusals (`lib-http`), the escapers' and the index's memory
+(`cli-ka`, `lib-search`), and `-o`'s link rule and stream check (`cli-ka`'s "the -o file").
 
 ## The library validates its own inputs
 
