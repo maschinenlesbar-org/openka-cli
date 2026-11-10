@@ -832,6 +832,45 @@ describe("a kept-alive connection the server has closed (issue #31)", () => {
   });
 });
 
+describe("no engine message or error quotes a URL's userinfo (security audit 2026-10-27, F5)", () => {
+  const SECRETS = /s3cret|T0kenS3cret|t0kens3cret|alice|my_user/;
+  const everything = (err: unknown): string => `${(err as Error).message} ${(err as { url?: string }).url ?? ""}`;
+
+  it("refuses a base URL, an absolute URL or a relative one without quoting its userinfo", async () => {
+    // `T0kenS3cret:@h` parses with the token as its scheme, which the message named and quoted.
+    for (const baseUrl of ["T0kenS3cret:@h.example", "my_user:s3cret-pw@h.example", "ftp://alice:s3cret-pw@h.example"]) {
+      throws(() => new FetchEngine({ baseUrl }), (err: unknown) => err instanceof NetworkError && !SECRETS.test(err.message), baseUrl);
+      throws(() => assertHttpScheme(baseUrl), (err: unknown) => err instanceof NetworkError && !SECRETS.test(err.message), baseUrl);
+    }
+    const { transport, requests } = scriptedTransport([]);
+    for (const url of ["T0kenS3cret:@h.example/x", "my_user:s3cret-pw@h.example/x"]) {
+      await rejects(() => testEngine(transport).get(url), (err: unknown) => err instanceof NetworkError && !SECRETS.test(err.message), url);
+    }
+    strictEqual(requests.length, 0);
+  });
+
+  it("names an error answer, a redirect loop and a refused downgrade without the base URL's userinfo", async () => {
+    const baseUrl = "https://alice:s3cret-pw@h.example/api";
+    const notFound = scriptedTransport([{ match: "/gone", status: 404, body: "no" }]);
+    await rejects(() => testEngine(notFound.transport, { baseUrl }).get("/gone"), (err: unknown) => {
+      ok(err instanceof OpenKaApiError);
+      strictEqual(err.message, "HTTP 404 for GET https://h.example/api/gone");
+      strictEqual(err.url, "https://h.example/api/gone");
+      return true;
+    });
+    const loop = scriptedTransport([{ match: "/loop", status: 302, headers: { location: "/api/loop" } }]);
+    await rejects(() => testEngine(loop.transport, { baseUrl, maxRedirects: 2 }).get("/loop"), (err: unknown) => {
+      ok(err instanceof NetworkError && /^Too many redirects/.test(err.message) && !SECRETS.test(everything(err)), everything(err));
+      return true;
+    });
+    const downgrade = scriptedTransport([{ match: "/from", status: 302, headers: { location: "http://alice:s3cret-pw@h.example/to" } }]);
+    await rejects(() => testEngine(downgrade.transport, { baseUrl }).get("/from"), (err: unknown) => {
+      ok(err instanceof NetworkError && /from https: to http:/.test(err.message) && !SECRETS.test(everything(err)), everything(err));
+      return true;
+    });
+  });
+});
+
 describe("a failed request names itself", () => {
   // "8/6344 failed: Request timed out after 30000ms", "8/6344: connect ECONNREFUSED
   // 10.0.0.1:443" — no method, host or path, while an HTTP error said "HTTP 500 for GET

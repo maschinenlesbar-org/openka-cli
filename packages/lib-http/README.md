@@ -31,6 +31,10 @@ userinfo — with the same `failure` and the transport's error as its `cause`. T
 transport's own refusals (`Invalid URL: …`, `Unsupported protocol "ftp:" in URL: …`)
 quote no userinfo either: a URL typed without its scheme (`user:pw@host`, `TOKEN:@host`)
 is shown as `***@host`, and a scheme is named only when the value spells `<scheme>://`.
+The engine's messages follow the same rule — a refused base URL (`assertHttpScheme`), a
+relative URL without a base, a redirect loop, a refused https: → http: hop — and so do
+`OpenKaApiError`'s message and `.url`: a base URL with a userinfo is sent as given, but
+never quoted.
 
 **A kept-alive connection the server closed is not a retry** (issue #31). Connections
 are kept alive, and a server closes an idle one after its own timeout. The pool learns

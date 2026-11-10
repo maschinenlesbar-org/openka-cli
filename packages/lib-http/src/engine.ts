@@ -14,7 +14,7 @@ import {
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
 import { buildQuery, type QueryParams } from "./query.js";
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
-import { withoutUserinfo } from "./userinfo.js";
+import { spellsScheme, withoutUserinfo } from "./userinfo.js";
 
 export const DEFAULT_USER_AGENT =
   "openka-cli (+https://github.com/maschinenlesbar-org/openka-cli)";
@@ -190,16 +190,21 @@ export class HostPacer {
   }
 }
 
-/** Reject a base URL that is not http(s), before any request is built. */
+/**
+ * Reject a base URL that is not http(s), before any request is built. The message
+ * quotes no userinfo (`withoutUserinfo`), and names the scheme only when the value
+ * spells `<scheme>://`: `T0kenS3cret:@host` parses with the token as its scheme.
+ */
 export function assertHttpScheme(baseUrl: string): void {
   let url: URL;
   try {
     url = new URL(baseUrl);
   } catch {
-    throw new NetworkError(`Invalid base URL: ${baseUrl}`);
+    throw new NetworkError(`Invalid base URL: ${withoutUserinfo(baseUrl)}`);
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new NetworkError(`Unsupported protocol "${url.protocol}" in base URL: ${baseUrl}`);
+    const named = spellsScheme(baseUrl) ? ` "${url.protocol}"` : "";
+    throw new NetworkError(`Unsupported protocol${named} in base URL: ${withoutUserinfo(baseUrl)}`);
   }
 }
 
@@ -388,7 +393,7 @@ export class FetchEngine {
       // document link the feed got wrong), not a missing setting. Same failure as a
       // URL the transport refuses, so it is not retried.
       if (this.baseUrl === undefined) {
-        throw new NetworkError(`Invalid URL (not absolute, and no base URL is configured): ${pathOrUrl}`, { failure: "bad_url" });
+        throw new NetworkError(`Invalid URL (not absolute, and no base URL is configured): ${withoutUserinfo(pathOrUrl)}`, { failure: "bad_url" });
       }
       url = `${this.baseUrl}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
     }
@@ -501,10 +506,10 @@ export class FetchEngine {
       if (status >= 300 && status < 400 && status !== 304) {
         const location = firstHeader(response.headers["location"]);
         if (location === undefined) {
-          throw new OpenKaApiError({ status, url, method, body: bodyPreview(response.body) });
+          throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body) });
         }
         if (hop >= this.maxRedirects) {
-          throw new NetworkError(`Too many redirects (> ${this.maxRedirects}) starting at ${startUrl}`);
+          throw new NetworkError(`Too many redirects (> ${this.maxRedirects}) starting at ${withoutUserinfo(startUrl)}`);
         }
         const next = new URL(location, url);
         assertHttpScheme(next.toString());
@@ -512,7 +517,7 @@ export class FetchEngine {
         // unprotected, and a record built from them claims to be reproducible from
         // what the parliament published (exploratory test 2026-10-07).
         if (new URL(url).protocol === "https:" && next.protocol === "http:") {
-          throw new NetworkError(`Refusing a redirect from https: to http: (${url} → ${next.toString()})`, { failure: "bad_url" });
+          throw new NetworkError(`Refusing a redirect from https: to http: (${withoutUserinfo(url)} → ${withoutUserinfo(next.toString())})`, { failure: "bad_url" });
         }
         // Credentials never cross an *origin* boundary, whatever the upstream asks
         // for. Comparing origins rather than hosts matters because a same-host
@@ -547,8 +552,9 @@ export class FetchEngine {
         };
       }
 
+      // Neither the message nor `.url` carries a userinfo, as no log line does.
       if (status < 200 || status >= 300) {
-        throw new OpenKaApiError({ status, url, method, body: bodyPreview(response.body) });
+        throw new OpenKaApiError({ status, url: withoutUserinfo(url), method, body: bodyPreview(response.body) });
       }
 
       const contentType = firstHeader(response.headers["content-type"]);
@@ -623,7 +629,7 @@ export class FetchEngine {
     // caught failure, so lastError is set; the fallback still names the request
     // rather than reading "undefined".
     if (lastError instanceof NetworkError) throw namedFailure(method, url, lastError);
-    throw lastError instanceof Error ? lastError : new NetworkError(`${method} ${url} failed: ${String(lastError ?? "no attempt was made")}`);
+    throw lastError instanceof Error ? lastError : new NetworkError(`${method} ${withoutUserinfo(url)} failed: ${String(lastError ?? "no attempt was made")}`);
   }
 
   /**
