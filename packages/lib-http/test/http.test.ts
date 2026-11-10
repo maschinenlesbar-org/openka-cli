@@ -56,7 +56,18 @@ describe("scheme checks", () => {
   it("refuses a URL typed without its scheme without its user name, token or password (security audit 2026-10-27, F6)", async () => {
     // `my_user:pw@h` does not parse ("_" is no scheme character) and was quoted with its
     // password; `T0kenS3cret:@h` parses with the token as its scheme, which the message named.
-    for (const url of ["my_user:s3cret-pw@h.example/x", "T0kenS3cret:@h.example/x", "alice:s3cret-pw@h.example/x"]) {
+    // A mistyped scheme (`http//`, the colon left out; `http/`, `htp:/`) left the userinfo unfound too (F7).
+    for (const url of [
+      "my_user:s3cret-pw@h.example/x",
+      "T0kenS3cret:@h.example/x",
+      "alice:s3cret-pw@h.example/x",
+      "http//alice:s3cret-pw@h.example/x",
+      "http/alice:s3cret-pw@h.example/x",
+      "htp:/alice:s3cret-pw@h.example/x",
+      "http//alice:s3cret/pw@h.example/x",
+      // A scheme spelled, but a "/" in the password: the URL does not parse, its authority runs to the last "@".
+      "https://alice:s3cret/pw@h.example/x",
+    ]) {
       const err = await nodeHttpTransport({ method: "GET", url }).then(
         () => Promise.reject(new Error(`${url}: accepted`)),
         (caught: unknown) => caught,
