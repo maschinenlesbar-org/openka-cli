@@ -637,7 +637,8 @@ place, so a write that fails (a full disk, `ulimit -f`) leaves no half file unde
 and the file `--force` would have replaced stays as it was. Ctrl-C, SIGTERM or SIGHUP
 during the write lets it finish, then ends the run (exit 130, 143, 129). A target that is
 no regular file — `/dev/null`, a FIFO, `/dev/stdout` — is written in place and needs no
-`--force`.
+`--force`; what decides is what the path names when it is opened, so a path that turned
+into a regular file meanwhile is treated as one (an existing file needs `--force`).
 
 ## `ka status`
 

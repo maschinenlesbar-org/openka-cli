@@ -2,7 +2,9 @@
 // scripted transport and a fixed clock. No network, and no subprocess but one memory test.
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
+import fs, { Stats } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join } from "node:path";
 import { EXIT_ERROR, EXIT_OK, EXIT_STORE, EXIT_USAGE, EXIT_VERSION_ONLY, run } from "../src/run.js";
@@ -2931,6 +2933,28 @@ describe("the -o file", () => {
         chmodSync(closed, 0o700);
       }
     });
+  });
+
+  it("writes a stream target only when the descriptor opened is a stream (G2)", () => {
+    // Security audit 2026-10-27, class G2: the path was classified as a FIFO, then opened
+    // again by name with "w" (O_CREAT, O_TRUNC, following links): a link switched to a
+    // regular file in between was truncated and written without --force. statSync is made
+    // to see a FIFO once, as at the moment of the classification.
+    planted(({ link, victim }) => {
+      const fifo = Object.assign(Object.create(Stats.prototype) as Stats, { mode: 0o10644 });
+      const real = fs.statSync;
+      const stat = mock.method(fs, "statSync", (...args: Parameters<typeof fs.statSync>) => (args[0] === link ? fifo : real(...args)));
+      syncBuiltinESMExports();
+      try {
+        throws(() => writeOutFile(link, Buffer.from("appended\n"), false), { code: "EEXIST" });
+      } finally {
+        stat.mock.restore();
+        syncBuiltinESMExports();
+      }
+      strictEqual(readFileSync(victim, "utf8"), "keep me\n");
+    });
+    // A real stream is still written in place, without --force.
+    writeOutFile("/dev/null", Buffer.from("x\n"), false);
   });
 
   it("keeps a temporary name within NAME_MAX for a long file name", () => {

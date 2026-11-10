@@ -7,6 +7,7 @@ import {
   appendFileSync,
   chmodSync,
   closeSync,
+  constants,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -216,7 +217,8 @@ const NAME_MAX = 255;
  *   user made in a directory others can write to (`linkTarget`, EACCES).
  * - A target that is no regular file — `/dev/null`, a FIFO, a socket, `/dev/stdout`,
  *   anything under `/dev/` — is written in place, and needs no `--force`: nothing that
- *   existed can be lost.
+ *   existed can be lost. The descriptor opened decides (`writeInPlace`): one that is no
+ *   stream by then, a regular file under `/dev/` too, is written as a file.
  * - A directory is EISDIR.
  */
 export function writeOutFile(path: string, data: Buffer, overwrite: boolean, write: WriteNewFile = writeNewFile, owners: LinkOwners = processOwners): void {
@@ -226,10 +228,9 @@ export function writeOutFile(path: string, data: Buffer, overwrite: boolean, wri
   if (followed?.isDirectory() === true) {
     throw Object.assign(new Error(`EISDIR: illegal operation on a directory, open '${path}'`), { code: "EISDIR" });
   }
-  if ((followed !== undefined && !followed.isFile()) || isDevicePath(path)) {
-    writeFileSync(path, data);
-    return;
-  }
+  // A stream is written in place; a path that is no stream by the time it is opened
+  // takes the way of a file below (`writeInPlace` checks the descriptor).
+  if (((followed !== undefined && !followed.isFile()) || isDevicePath(path)) && writeInPlace(path, data)) return;
   if (!overwrite) throw Object.assign(new Error(`EEXIST: file already exists, open '${path}'`), { code: "EEXIST" });
   if (!entry.isSymbolicLink()) return replaceAtomically(path, data, false, write);
   const target = linkTarget(path, owners);
@@ -295,6 +296,71 @@ function linkTarget(path: string, owners: LinkOwners): string {
     current = resolve(dirname(current), link);
   }
   throw Object.assign(new Error(`ELOOP: too many symbolic links, open '${path}'`), { code: "ELOOP" });
+}
+
+/** A path that names an open descriptor: `/dev/stdout`, `/dev/stderr`, `/dev/fd/N`, `/proc/self/fd/N`. */
+const DESCRIPTOR_PATH = /^\/dev\/(?:stdout|stderr|fd\/\d+)$|^\/proc\/self\/fd\/\d+$/;
+
+/**
+ * Write `data` to a stream target (a device, a FIFO, a socket, a descriptor path) in
+ * place, every byte, and return true; or return false, writing nothing, when what the
+ * path names by the time it is opened is no stream. The descriptor is checked, not the
+ * name: a link switched to a regular file after the path was classified was truncated
+ * and written without --force (security audit 2026-10-27). The open creates nothing (no
+ * O_CREAT) and blocks as before, so a FIFO whose reader comes later still works.
+ */
+function writeInPlace(path: string, data: Buffer): boolean {
+  // Append: on a descriptor path that leads to a file (`-o /dev/stdout >> log`), the
+  // shell's own mode stands; on a device or a FIFO it makes no difference.
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_WRONLY | constants.O_APPEND);
+  } catch (err) {
+    // Linux cannot open a socket through its descriptor path (ENXIO), and a process
+    // started with socket stdio has one: `-o /dev/stdout` is then written to the
+    // descriptor the process already holds, which stays open.
+    const own = descriptorOf(path);
+    if ((err as { code?: unknown }).code !== "ENXIO" || own === undefined) throw err;
+    writeAll(own, data);
+    return true;
+  }
+  try {
+    // A descriptor path keeps whatever the shell opened, a regular file too.
+    const stats = fstatSync(fd);
+    if (!DESCRIPTOR_PATH.test(path) && !stats.isFIFO() && !stats.isCharacterDevice() && !stats.isSocket()) return false;
+    writeAll(fd, data);
+    return true;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** The descriptor a descriptor path names (`/dev/stdout` 1, `/dev/fd/63` 63), else undefined. */
+function descriptorOf(path: string): number | undefined {
+  if (path === "/dev/stdout") return 1;
+  if (path === "/dev/stderr") return 2;
+  const n = /^\/(?:dev|proc\/self)\/fd\/(\d+)$/.exec(path)?.[1];
+  return n === undefined ? undefined : Number(n);
+}
+
+/** A short pause for a non-blocking descriptor that is full (EAGAIN), without a busy loop. */
+const pause = new Int32Array(new SharedArrayBuffer(4));
+
+/**
+ * Write all of `data` to `fd`, or throw. `writeSync` may write less than asked (a
+ * file-size limit, a full disk): the rest is written in a loop, and the call that cannot
+ * write throws (EFBIG, ENOSPC). A descriptor the shell made non-blocking answers EAGAIN
+ * while the reader is behind: wait a moment and go on.
+ */
+function writeAll(fd: number, data: Buffer): void {
+  for (let at = 0; at < data.length; ) {
+    try {
+      at += writeSync(fd, data, at);
+    } catch (err) {
+      if ((err as { code?: unknown }).code !== "EAGAIN") throw err;
+      Atomics.wait(pause, 0, 0, 5);
+    }
+  }
 }
 
 function isDevicePath(path: string): boolean {
