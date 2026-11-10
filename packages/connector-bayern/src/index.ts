@@ -46,7 +46,7 @@ import {
   type UpstreamCount,
 } from "@maschinenlesbar.org/openka-lib-source";
 import { ParlamentsspiegelSource } from "@maschinenlesbar.org/openka-lib-parlamentsspiegel";
-import { decodeEntities } from "@maschinenlesbar.org/openka-lib-source";
+import { decodeEntities, elementContents } from "@maschinenlesbar.org/openka-lib-source";
 import { UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { makeRecordId } from "@maschinenlesbar.org/openka-lib-models";
 
@@ -87,10 +87,12 @@ export interface FeedItem {
 
 // Tags are matched with their attributes and in any case: `<item xml:lang="de">` is
 // as much RSS as `<item>`, and a pattern that wants the bare tag drops every item
-// of such a feed without a word.
+// of such a feed without a word. `elementContents` reads them in linear time: a
+// `<tag\b[^>]*>([\s\S]*?)</tag\s*>` ran from every opener to the end of a feed that
+// never closes its tags (security audit 2026-10-27).
 const FIELD = (block: string, tag: string): string | undefined => {
-  const match = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}\\s*>`, "i").exec(block);
-  return match === null ? undefined : decodeEntities((match[1] ?? "").trim());
+  const content = elementContents(block, tag).next();
+  return content.done === true ? undefined : decodeEntities(content.value.trim());
 };
 
 /**
@@ -101,8 +103,7 @@ const FIELD = (block: string, tag: string): string | undefined => {
  */
 export function parseFeed(xml: string): FeedItem[] {
   const items: FeedItem[] = [];
-  for (const match of xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item\s*>/gi)) {
-    const block = match[1] ?? "";
+  for (const block of elementContents(xml, "item")) {
     const title = FIELD(block, "title") ?? "";
     const reference = /(\d+)\s*\/\s*(\d+)/.exec(title);
     if (reference === null) continue;

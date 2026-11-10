@@ -75,6 +75,38 @@ function stripTags(html: string): string {
 }
 
 /**
+ * The opening tag `<name …>` as a global, case-insensitive pattern (`name` is a regex
+ * source): inside it anything but `<`, `>` and a quote, or a whole quoted value
+ * (`TAG_BODY`), so a scan stops at the first unquoted `<`.
+ */
+export function openingTagPattern(name: string): RegExp {
+  return new RegExp(`<${name}\\b${TAG_BODY}>`, "gi");
+}
+
+/**
+ * The content of each `<tag …>…</tag>` in document order, as a lazy
+ * `<tag\b[^>]*>([\s\S]*?)</tag\s*>` reads it: from an opening tag `accept` takes (given
+ * the whole tag) to the first `</tag>` after it, the search going on after that closer.
+ * Linear: the opening tag stops at an unquoted `<`, and once one element has no closer,
+ * no later one has, so the scan ends there rather than searching again from every
+ * opener to the end (security audit 2026-10-27).
+ */
+export function* elementContents(html: string, tag: string, accept: (openingTag: string) => boolean = () => true): Generator<string> {
+  const opener = openingTagPattern(tag);
+  const closer = new RegExp(`</${tag}\\s*>`, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(html)) !== null) {
+    if (!accept(match[0])) continue;
+    const from = match.index + match[0].length;
+    closer.lastIndex = from;
+    const end = closer.exec(html);
+    if (end === null) return;
+    yield html.slice(from, end.index);
+    opener.lastIndex = closer.lastIndex;
+  }
+}
+
+/**
  * Remove the regions a browser does not show (`class="d-none"`), then read the text.
  *
  * This is the difference between reading a result row and misreading it. The

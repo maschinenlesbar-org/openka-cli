@@ -365,3 +365,29 @@ describe("a feed that has moved past the last sync", () => {
     strictEqual(limited.state?.feed_newest, undefined);
   });
 });
+
+describe("a feed whose tags never close (security audit 2026-10-27)", () => {
+  // `<item\b[^>]*>([\s\S]*?)</item\s*>` ran from every `<item` to the end of a feed
+  // that never closes its tags, and the lazy content from every opener to the end of one
+  // without `</item>`: 60 KB took a second, and the work grows with the square of the body.
+  const SIZE = 150_000;
+  const repeat = (unit: string): string => unit.repeat(Math.ceil(SIZE / unit.length));
+  for (const unit of ["<item ", "<item>", "<item><title ", "<item><title>19/1 ", '<item a="<x"', "</item <item>"]) {
+    it(`reads ${JSON.stringify(unit)} repeated in linear time`, () => {
+      const started = performance.now();
+      parseFeed(repeat(unit));
+      const took = performance.now() - started;
+      ok(took < 500, `${Math.round(took)} ms`);
+    });
+  }
+
+  it("still reads items with attributes, in any case, closed by the first </item>", () => {
+    const feed =
+      '<rss><ITEM xml:lang="de"><title>Initiativdrucksache 19/7</title><description>A &amp; B</description><pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate></item >' +
+      "<item><title>Drucksache 19/8</title></item><item><title>no number</title></item><item><title>19/9";
+    deepStrictEqual(parseFeed(feed), [
+      { reference: "19/7", period: 19, number: "7", subject: "A & B", published: "Mon, 01 Jan 2024 00:00:00 GMT" },
+      { reference: "19/8", period: 19, number: "8", subject: "" },
+    ]);
+  });
+});

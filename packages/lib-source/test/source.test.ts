@@ -3,6 +3,7 @@
 
 import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import { describe, it } from "node:test";
+import { elementContents } from "../src/index.js";
 import { applyWindow, blocksWithClass, childText, decodeEntities, decodeHtml, firstHref, parseXml, parseXmlFragment, regionWithClass, spanTexts, streamElements, textOf, visibleTextOf } from "../src/index.js";
 import { scriptedTransport, testEngine } from "@maschinenlesbar.org/openka-lib-testing";
 import type { Transport } from "@maschinenlesbar.org/openka-lib-http";
@@ -125,6 +126,12 @@ describe("HTML helpers on tags that never close (security audit 2026-10-27)", ()
       });
       fast(`a quote left open before ${JSON.stringify(unit)}`, () => blocksWithClass(`<div title="${body}`, "ps-vorgang"));
     }
+  });
+
+  it("elementContents reads to the first closer, goes on after it, and stops at an element that never closes", () => {
+    deepStrictEqual([...elementContents('<I a="<x>">1</i ><i>2</I><b>3</b><i x>4', "i")], ["1", "2"]);
+    deepStrictEqual([...elementContents("<p>a</p><p>b</p>", "p", (tag) => tag === "<p>")], ["a", "b"]);
+    for (const unit of ["<i ", "<i>", '<i a="<', "</i <i>"]) fast(JSON.stringify(unit), () => [...elementContents(repeat(unit), "i")]);
   });
 
   it("still reads closed markup as before", () => {

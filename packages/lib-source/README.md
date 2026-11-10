@@ -41,7 +41,7 @@ adapter sets them today.
 Everything is re-exported from the package root:
 
 ```
-DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, classTagPattern, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements, describeRequestFloor, floorKeptNote
+DocRefDocument, DocRef, DiscoverOptions, DiscoverResult, Source, CountOptions, UpstreamCount, withDiscoveryState, applyWindow, SourceStatus, SourceEntry, decodeHtml, textOf, visibleTextOf, stripHidden, blocksWithClass, regionWithClass, spanTexts, firstHref, classTagPattern, openingTagPattern, elementContents, XmlNode, decodeEntities, parseXml, parseXmlFragment, childrenNamed, child, childText, streamElements, describeRequestFloor, floorKeptNote
 ```
 
 **Counting the upstream.** A `Source` may implement `count({ engine, period?, apiKey? })`:

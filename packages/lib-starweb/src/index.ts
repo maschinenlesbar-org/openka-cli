@@ -21,7 +21,7 @@
 // sits, what the type is called, which Fraktion asked — differs per Land and stays
 // in the connector.
 
-import { decodeHtml } from "@maschinenlesbar.org/openka-lib-source";
+import { decodeHtml, elementContents, openingTagPattern } from "@maschinenlesbar.org/openka-lib-source";
 import type { FetchEngine } from "@maschinenlesbar.org/openka-lib-http";
 
 /** One installation's addresses. */
@@ -42,7 +42,9 @@ export interface StarwebSession {
 /** Every hidden input on a page, in document order. */
 export function hiddenFields(html: string): Record<string, string> {
   const fields: Record<string, string> = {};
-  const pattern = /<input\b[^>]*>/gi;
+  // A tag stops at an unquoted `<`: `<input\b[^>]*>` ran from every `<input` to the end
+  // of a page that never closes its tags (security audit 2026-10-27).
+  const pattern = openingTagPattern("input");
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(html)) !== null) {
     const tag = match[0];
@@ -111,12 +113,19 @@ export async function runSearch(
 
 /** One hit per `<tbody name="RecordRepeater">`. */
 export function recordBlocks(html: string): string[] {
-  return [...html.matchAll(/<tbody\b[^>]*name="RecordRepeater"[^>]*>([\s\S]*?)<\/tbody\s*>/gi)].map((m) => m[1] ?? "");
+  // In linear time (`elementContents`): the pattern this replaces,
+  // `<tbody\b[^>]*name="RecordRepeater"[^>]*>([\s\S]*?)</tbody\s*>`, took minutes on a
+  // page of unclosed `<tbody name="RecordRepeater" ` (security audit 2026-10-27).
+  return [...elementContents(html, "tbody", (tag) => /name="RecordRepeater"/i.test(tag))];
 }
 
 /** The visible text of a block, entities decoded and whitespace collapsed. */
 export function blockText(block: string): string {
-  return decodeHtml(block.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  // Tags replaced only up to the last `>`: past it no `<` can close, and `<[^>]+>` over
+  // the whole block ran from every such `<` to its end (security audit 2026-10-27).
+  const end = block.lastIndexOf(">") + 1;
+  const stripped = block.slice(0, end).replace(/<[^>]+>/g, " ") + block.slice(end);
+  return decodeHtml(stripped).replace(/\s+/g, " ").trim();
 }
 
 /** The first absolute PDF link in a block — STARWEB links the file directly. */

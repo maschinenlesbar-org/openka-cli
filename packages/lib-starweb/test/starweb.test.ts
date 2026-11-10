@@ -61,3 +61,31 @@ describe("reading a result page", () => {
     ok(!noHits(RESULTS));
   });
 });
+
+describe("a result page whose tags never close (security audit 2026-10-27)", () => {
+  // `<input\b[^>]*>`, `<tbody\b[^>]*name="RecordRepeater"[^>]*>([\s\S]*?)</tbody\s*>` and
+  // `<[^>]+>` ran from every tag start to the end of a page that never closes its tags:
+  // 60 KB took a second for each, and `<tbody name="RecordRepeater" ` repeated minutes.
+  const SIZE = 150_000;
+  const repeat = (unit: string): string => unit.repeat(Math.ceil(SIZE / unit.length));
+  const fast = (label: string, work: () => unknown): void => {
+    const started = performance.now();
+    work();
+    const took = performance.now() - started;
+    ok(took < 500, `${label} took ${Math.round(took)} ms`);
+  };
+  for (const unit of ["<input ", "<tbody ", '<tbody name="RecordRepeater" ', '<tbody name="RecordRepeater">', "<", '<input value="<x" ']) {
+    it(`reads ${JSON.stringify(unit)} repeated in linear time`, () => {
+      const page = repeat(unit);
+      fast("hiddenFields", () => hiddenFields(page));
+      fast("recordBlocks", () => recordBlocks(page));
+      fast("blockText", () => blockText(page));
+    });
+  }
+
+  it("still reads hidden inputs (a quoted > now whole), record blocks and their text", () => {
+    deepStrictEqual(hiddenFields('<INPUT type="hidden" name="a" value="1&amp;2"><input type=hidden name="b" value="x>y"><input name="c" value="3">'), { a: "1&2", b: "x>y" });
+    deepStrictEqual(recordBlocks('<tbody class="x" NAME="RecordRepeater" id="1">A</tbody ><tbody>B</tbody><tbody name="RecordRepeater">C</TBODY><tbody name="RecordRepeater">D'), ["A", "C"]);
+    strictEqual(blockText("a<b>b</b> <> c &amp; <i"), "a b <> c & <i");
+  });
+});
