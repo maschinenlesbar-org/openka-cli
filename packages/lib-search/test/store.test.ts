@@ -5,6 +5,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, describe, it } from "node:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { BLOBS_ENV, FileStore, RECORD_ID_REASON, archivedDocument, resolveBlobRoot, assertRecordId, documentRoleProblem, recordIdProblem } from "@maschinenlesbar.org/openka-lib-store";
 import { CorpusLockedError, MissingCorpusError, StoreError, UsageError } from "@maschinenlesbar.org/openka-lib-errors";
 import { hostname } from "node:os";
@@ -105,6 +107,34 @@ describe("tokenizer", () => {
     strictEqual(offsets[2], 2);
     strictEqual(offsets[3], 2);
     strictEqual(offsets[4], 3);
+  });
+
+  it("normalises a record of millions of characters within a small heap (security audit 2026-10-27, class C)", { timeout: 30_000 }, async () => {
+    // normalizeTerm and normalizeWithOffsets built their result with one `+=` per
+    // character, a rope node each, over a record's whole text: indexing or a snippet of
+    // a 7 MB answer ended the process under a 128 MB heap. Run in a child process with
+    // that heap, since a heap limit is a property of a process.
+    const child = spawn(
+      process.execPath,
+      [
+        "--max-old-space-size=128",
+        "--input-type=module",
+        "-e",
+        `const { normalizeTerm, normalizeWithOffsets, tokenize } = await import(${JSON.stringify(import.meta.resolve("@maschinenlesbar.org/openka-lib-store"))});
+         const text = "Brücke ".repeat(1_000_000);
+         const normalized = normalizeTerm(text);
+         const tokens = tokenize(text).length;
+         const withOffsets = normalizeWithOffsets("Brücke ".repeat(400_000));
+         console.log(normalized.length, normalized.slice(0, 8), tokens, withOffsets.normalized.length, withOffsets.offsets.length, withOffsets.offsets[3]);`,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (data: Buffer) => (out += String(data)));
+    child.stderr.on("data", (data: Buffer) => (err += String(data)));
+    const [code, signal] = (await once(child, "exit")) as [number | null, string | null];
+    deepStrictEqual([code, signal, out.trim()], [0, null, "8000000 bruecke  1000000 3200000 3200000 2"], err.slice(-500));
   });
 
   it("drops single characters, which carry no selectivity", () => {

@@ -7,6 +7,7 @@
 // JSON shards written by `FileStore`.
 
 import { createHash } from "node:crypto";
+import { TextBuilder } from "./text-builder.js";
 
 /** How much more a token in the title counts than one in the body. */
 export const TITLE_BOOST = 3;
@@ -21,11 +22,12 @@ const UMLAUTS: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss"
  * otherwise map `I` differently and change the index on a different machine.
  */
 export function normalizeTerm(term: string): string {
-  let out = "";
-  for (const ch of term.normalize("NFC").toLowerCase()) {
-    out += UMLAUTS[ch] ?? ch;
-  }
-  return out
+  // One replace, not a `+=` per character: a term is often a record's whole text, and a
+  // rope node per character exhausted a 128 MB heap on a 7 MB answer.
+  return term
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[äöüß]/g, (ch) => UMLAUTS[ch] ?? ch)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .normalize("NFC");
@@ -163,16 +165,16 @@ export function parseQuery(query: string): ParsedQuery {
  * the text the reader actually sees.
  */
 export function normalizeWithOffsets(text: string): { normalized: string; offsets: number[] } {
-  let normalized = "";
+  const normalized = new TextBuilder();
   const offsets: number[] = [];
   let at = 0;
   for (const character of text) {
     const mapped = normalizeTerm(character);
     for (let i = 0; i < mapped.length; i++) offsets.push(at);
-    normalized += mapped;
+    normalized.push(mapped);
     at += character.length;
   }
-  return { normalized, offsets };
+  return { normalized: normalized.toString(), offsets };
 }
 
 /**

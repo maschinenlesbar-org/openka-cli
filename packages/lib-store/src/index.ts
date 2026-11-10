@@ -10,3 +10,4 @@ export * from "./doctor.js";
 export * from "./run-status.js";
 export * from "./credentials.js";
 export * from "./remove.js";
+export * from "./text-builder.js";

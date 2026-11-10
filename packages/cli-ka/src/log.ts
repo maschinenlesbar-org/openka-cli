@@ -15,7 +15,7 @@
 //
 // Both bins share this module: `ka-factory` builds its logger with its own program name.
 
-import { cutText, sanitizeForTerminal, toWellFormed } from "./text.js";
+import { TextBuilder, cutText, sanitizeForTerminal, toWellFormed } from "./text.js";
 
 /** The log formats `--log-format` takes. */
 export const LOG_FORMATS = ["text", "jsonl"] as const;
@@ -65,16 +65,19 @@ function escapedInRecords(c: number): boolean {
  * free of those characters.
  */
 export function escapeForRecord(text: string): string {
-  let out = "";
+  // A jsonl record's own fields are not cut, so the pieces are joined in batches.
+  const out = new TextBuilder();
   let from = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
     if (!escapedInRecords(c)) continue;
     const escaped = c === 0x0d ? "\\r" : c === 0x0a ? "\\n" : "\\u" + c.toString(16).padStart(4, "0");
-    out += text.slice(from, i) + escaped;
+    out.push(text.slice(from, i), escaped);
     from = i + 1;
   }
-  return from === 0 ? text : out + text.slice(from);
+  if (from === 0) return text;
+  out.push(text.slice(from));
+  return out.toString();
 }
 
 /**

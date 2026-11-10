@@ -1,5 +1,5 @@
 // The CLI, driven in-process through `run()` with a real temporary corpus, a
-// scripted transport and a fixed clock. No subprocess, no network.
+// scripted transport and a fixed clock. No network, and no subprocess but one memory test.
 
 import { deepStrictEqual, doesNotMatch, match, ok, rejects, strictEqual, throws } from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -12,12 +12,13 @@ import { runFactory } from "@maschinenlesbar.org/openka-cli-ka-factory";
 import { parseIsoDate, parseBoundedInt, parseNonEmpty } from "../src/shared.js";
 import { CredentialStore, FileStore, RunStatusRecorder, indexRecord, resolveCorpusRoot, toCatalogEntry, type FilesystemInfo, type VolumeProbe } from "@maschinenlesbar.org/openka-lib-store";
 import { hostname, tmpdir } from "node:os";
-import { escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
+import { TextBuilder, escapeControlChars, sanitizeForTerminal, truncate } from "../src/text.js";
 import { formatHit, renderShowLines } from "../src/commands/query.js";
 import { sampleRecord, scriptedTransport, fixturesOf } from "@maschinenlesbar.org/openka-lib-testing";
 import { cliHarness } from "./harness.js";
 import { InterruptedRunError, defaultIO, deferSignals, handleOutputErrors, readSecretFrom, stdoutWriter, writeOutFile } from "../src/io.js";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 // Real documents come from the connector that recorded them: one copy of the
@@ -246,6 +247,48 @@ describe("option parsers", () => {
 describe("terminal-safe text", () => {
   it("escapes the control characters JSON leaves raw", () => {
     strictEqual(escapeControlChars('"a\u009bb"'), '"a\\u009bb"');
+  });
+
+  it("escapes millions of DEL and C1 characters within a small heap, the log's escaper too (security audit 2026-10-27, class C)", { timeout: 30_000 }, async () => {
+    // One `+=` per escape made a rope node each: a record of six million U+0085 (12 MB
+    // on disk) printed by `ka get` ended the process under a 128 MB heap. The escapers
+    // run in a child process with that heap; the only test here that starts one,
+    // since a heap limit is a property of a process.
+    const text = new URL("../src/text.js", import.meta.url).href;
+    const log = new URL("../src/log.js", import.meta.url).href;
+    const child = spawn(
+      process.execPath,
+      [
+        "--max-old-space-size=128",
+        "--input-type=module",
+        "-e",
+        `const { escapeControlChars } = await import(${JSON.stringify(text)});
+         const { escapeForRecord } = await import(${JSON.stringify(log)});
+         const input = "\\u0085".repeat(6_000_000);
+         const json = escapeControlChars(input);
+         const record = escapeForRecord(input);
+         console.log(json.length, json.slice(0, 12), record.length, record.slice(-6));`,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (data: Buffer) => (out += String(data)));
+    child.stderr.on("data", (data: Buffer) => (err += String(data)));
+    const [code, signal] = (await once(child, "exit")) as [number | null, string | null];
+    deepStrictEqual([code, signal, out.trim()], [0, null, "36000000 \\u0085\\u0085 36000000 \\u0085"], err.slice(-500));
+  });
+
+  it("joins a TextBuilder's pieces in order across batches", () => {
+    const builder = new TextBuilder();
+    const expected: string[] = [];
+    for (let i = 0; i < 40_000; i++) {
+      builder.push(String(i), ",");
+      expected.push(String(i), ",");
+    }
+    strictEqual(builder.toString(), expected.join(""));
+    strictEqual(new TextBuilder().toString(), "");
+    strictEqual(escapeControlChars('x\u007fy\u0080'), "x\\u007fy\\u0080");
   });
 
   it("strips escape sequences from upstream text", () => {

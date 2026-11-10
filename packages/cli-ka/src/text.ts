@@ -2,6 +2,10 @@
 
 import { stripBidiControls } from "@maschinenlesbar.org/openka-lib-render";
 import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
+import { TextBuilder } from "@maschinenlesbar.org/openka-lib-store";
+
+/** The library's, so the escapers here and the index's normalisation build text one way. */
+export { TextBuilder };
 
 /**
  * Escape the control characters JSON.stringify leaves raw. It escapes C0 but not
@@ -10,16 +14,18 @@ import { stripControlCharacters } from "@maschinenlesbar.org/openka-lib-text";
  * equivalent, valid JSON, since these only occur inside strings.
  */
 export function escapeControlChars(json: string): string {
-  let result = "";
+  const result = new TextBuilder();
   let from = 0;
   for (let i = 0; i < json.length; i++) {
     const code = json.charCodeAt(i);
     if (code >= 0x7f && code <= 0x9f) {
-      result += json.slice(from, i) + "\\u" + code.toString(16).padStart(4, "0");
+      result.push(json.slice(from, i), "\\u" + code.toString(16).padStart(4, "0"));
       from = i + 1;
     }
   }
-  return from === 0 ? json : result + json.slice(from);
+  if (from === 0) return json;
+  result.push(json.slice(from));
+  return result.toString();
 }
 
 /**
